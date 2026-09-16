@@ -1,0 +1,1830 @@
+<meta charset="utf-8">
+<title>OpenMC Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* A deliberately dark, single-theme IDE, painted explicitly so it holds on any host ground. */
+:root{
+  --ground:#0e1013; --frame:#15181b; --panel:#1b1e22; --panel2:#22262b; --raise:#2a2f35; --line:#31363d; --line2:#424951;
+  --text:#d8dde3; --muted:#8c949e; --faint:#5e6670;
+  --accent:#52b8ff; --accent-ink:#04121d; --accent-soft:rgba(82,184,255,.14); --sel:#1c4a70;
+  --warn:#e6b455; --err:#f07575; --ok:#6fd49c; --tally:#c89df2;
+  --ui:"IBM Plex Sans",system-ui,"Segoe UI",sans-serif; --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--ground);color:var(--text);font:13px/1.45 var(--ui)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.app{height:100%;box-sizing:border-box;padding-block:12px;padding-inline:16px;display:flex}
+.win{flex:1;min-width:0;display:grid;grid-template-rows:auto auto minmax(0,1fr);background:var(--frame);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+
+/* Title bar */
+.titlebar{display:flex;align-items:center;gap:12px;padding:6px 10px;border-bottom:1px solid var(--line);min-width:0}
+.brand{display:flex;align-items:center;gap:8px;font-weight:600;letter-spacing:.01em;white-space:nowrap}
+.brand svg{color:var(--accent)}
+.proj{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.chip{font:500 11px/1 var(--mono);color:var(--muted);border:1px solid var(--line2);border-radius:99px;padding:4px 8px;white-space:nowrap}
+.spacer{flex:1}
+.runbtn{display:flex;align-items:center;gap:6px;background:var(--accent);color:var(--accent-ink);border:0;border-radius:5px;padding:5px 12px;font-weight:600;cursor:pointer}
+.runbtn:hover{filter:brightness(1.08)}
+
+/* Ribbon */
+.ribbon{border-bottom:1px solid var(--line);background:var(--panel)}
+.rtabs{display:flex;gap:2px;padding:0 8px;border-bottom:1px solid var(--line);overflow-x:auto}
+.rtab{background:none;border:0;border-bottom:2px solid transparent;padding:6px 12px;color:var(--muted);cursor:pointer;white-space:nowrap}
+.rtab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent)}
+.rbody{display:flex;gap:0;padding:6px 6px 2px;overflow-x:auto}
+.rgroup{display:flex;flex-direction:column;align-items:center;padding:0 8px;border-right:1px solid var(--line);flex:none}
+.rgroup:last-child{border-right:0}
+.rbtns{display:flex;gap:2px;position:relative}
+.rbtn{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:54px;padding:5px 6px;background:none;border:1px solid transparent;border-radius:5px;cursor:pointer;font-size:11.5px;color:var(--text);white-space:nowrap}
+.rbtn svg{color:var(--accent)}
+.rbtn:hover{background:var(--raise);border-color:var(--line2)}
+.rbtn:disabled{opacity:.4;cursor:not-allowed;background:none;border-color:transparent}
+.rlabel{font-size:10.5px;color:var(--faint);padding:2px 0 3px;letter-spacing:.04em;text-transform:uppercase}
+.menu{position:fixed;z-index:20;background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:4px;min-width:250px;max-height:60vh;overflow:auto;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+.menu h4{margin:6px 8px 4px;font:500 10.5px var(--ui);color:var(--faint);text-transform:uppercase;letter-spacing:.05em}
+.menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;border-radius:4px;padding:5px 8px;cursor:pointer}
+.menu button:hover,.menu button:focus-visible{background:var(--sel)}
+.menu small{margin-left:auto;color:var(--muted);font:11px var(--mono)}
+
+/* Main three-column body */
+.main{display:grid;grid-template-columns:236px minmax(0,1fr) 308px;min-height:0}
+.panel{display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--panel)}
+.phead{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);font-weight:500;white-space:nowrap;min-height:20px}
+.phead .sub{color:var(--muted);font-weight:400;overflow:hidden;text-overflow:ellipsis}
+.pscroll{overflow:auto;min-height:0;flex:1}
+.explorer{border-right:1px solid var(--line)}
+.propspanel{border-left:1px solid var(--line)}
+
+/* Explorer tree */
+.tgroup{padding:2px 0}
+.thead{display:flex;align-items:center}
+.ttoggle{flex:1;display:flex;align-items:center;gap:6px;background:none;border:0;padding:4px 8px;cursor:pointer;text-align:left;font-weight:500}
+.ttoggle .caret{width:10px;color:var(--faint);transition:transform .12s}
+.ttoggle[aria-expanded="false"] .caret{transform:rotate(-90deg)}
+.count{color:var(--faint);font:11px var(--mono)}
+.tadd{background:none;border:1px solid transparent;border-radius:4px;color:var(--muted);cursor:pointer;width:24px;height:22px;margin-right:6px}
+.tadd:hover{border-color:var(--line2);color:var(--accent)}
+.titem{display:flex;align-items:center;gap:7px;width:100%;background:none;border:0;padding:3px 10px 3px 26px;cursor:pointer;text-align:left;min-width:0}
+.titem:hover{background:var(--panel2)}
+.titem.is-sel{background:var(--sel)}
+.titem .glyph{flex:none;display:grid;place-items:center;width:14px;height:14px;color:var(--muted)}
+.titem.is-sel .glyph{color:var(--text)}
+.swatch{width:11px;height:11px;border-radius:2px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
+.tname{flex:0 1 auto;min-width:4ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tmeta{flex:0 1 auto;min-width:0;max-width:48%;margin-left:auto;padding-left:8px;color:var(--faint);font:11px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.titem.is-sel .tmeta{color:#a9c6de}
+.grip{flex:none;width:10px;height:14px;margin-left:-18px;margin-right:-2px;color:var(--faint);opacity:0;cursor:grab;touch-action:none;display:grid;place-items:center}
+.titem:hover .grip,.titem.is-sel .grip{opacity:1}
+.titem[data-kind="part"]{cursor:grab}
+.titem.dragging{opacity:.45}
+body.is-dragging,body.is-dragging *{cursor:grabbing!important;user-select:none}
+.dropline{position:fixed;z-index:30;height:2px;background:var(--accent);border-radius:1px;pointer-events:none;box-shadow:0 0 0 1px rgba(82,184,255,.25)}
+.dropline::before{content:"";position:absolute;left:-1px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--accent)}
+@media (hover:none){.grip{opacity:1}}
+.tempty{padding:3px 10px 5px 26px;color:var(--faint);font-size:12px}
+
+/* Center: tabs, viewport, script, output */
+.center{display:grid;grid-template-rows:auto minmax(0,1fr) 188px;min-width:0;min-height:0;background:var(--panel)}
+.dtabs{display:flex;border-bottom:1px solid var(--line);background:var(--frame);overflow-x:auto}
+.dtab{display:flex;align-items:center;gap:6px;background:none;border:0;border-right:1px solid var(--line);padding:7px 14px;color:var(--muted);cursor:pointer;white-space:nowrap}
+.dtab[aria-selected="true"]{background:var(--panel);color:var(--text);box-shadow:inset 0 2px 0 var(--accent)}
+.doc{display:flex;flex-direction:column;min-height:0;min-width:0}
+.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 10px;border-bottom:1px solid var(--line)}
+.seg{display:flex;border:1px solid var(--line2);border-radius:5px;overflow:hidden}
+.seg button{background:none;border:0;padding:3px 9px;cursor:pointer;color:var(--muted);font:500 11.5px var(--mono)}
+.seg button[aria-pressed="true"]{background:var(--sel);color:var(--text)}
+.tbtn{display:flex;align-items:center;gap:5px;background:var(--panel2);border:1px solid var(--line2);border-radius:5px;padding:3px 9px;cursor:pointer;font-size:12px}
+.tbtn:hover{border-color:var(--faint)}
+.tbtn:disabled{opacity:.45;cursor:not-allowed}
+.tlabel{color:var(--muted);font-size:12px;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.tlabel input[type=number]{width:72px}
+.readout{margin-left:auto;color:var(--muted);font:11.5px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:100%}
+.vpwrap{position:relative;flex:1;min-height:0;background:var(--ground)}
+#vp{position:absolute;inset:0;display:block;cursor:crosshair}
+.legend{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:3px;padding:7px 9px;background:rgba(21,24,27,.88);border:1px solid var(--line);border-radius:6px;font-size:11.5px;pointer-events:none;max-width:45%}
+.legend div{display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.codewrap{flex:1;overflow:auto;min-height:0;background:#111316}
+pre.code{margin:0;padding:10px 0;font:12.5px/1.6 var(--mono);counter-reset:ln;tab-size:4;min-width:max-content}
+pre.code .ln{display:block;padding-right:24px;white-space:pre}
+pre.code .ln::before{counter-increment:ln;content:counter(ln);display:inline-block;width:42px;padding-right:14px;text-align:right;color:var(--faint);user-select:none}
+.t-com,.t-doc{color:#6f8a74}.t-str{color:#e3b378}.t-kw{color:#d38fd8}.t-mod{color:#7cc4ff}.t-num{color:#b5d78a}
+
+.output{border-top:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.otabs{display:flex;align-items:center;border-bottom:1px solid var(--line);padding:0 6px}
+.otab{background:none;border:0;border-bottom:2px solid transparent;padding:5px 10px;color:var(--muted);cursor:pointer;display:flex;gap:6px;align-items:center}
+.otab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent)}
+.badge{font:500 10.5px/1 var(--mono);padding:2px 5px;border-radius:8px;background:var(--raise);color:var(--muted)}
+.badge.err{background:rgba(240,117,117,.18);color:var(--err)}
+.badge.warn{background:rgba(230,180,85,.16);color:var(--warn)}
+.olist{list-style:none;margin:0;padding:4px 0;overflow:auto;flex:1;font:12px/1.5 var(--mono)}
+.olist li{display:flex;gap:10px;padding:2px 12px;align-items:baseline}
+.olist li.click{cursor:pointer}
+.olist li.click:hover{background:var(--panel2)}
+.sev{flex:none;width:44px;font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:.04em}
+.sev.error{color:var(--err)}.sev.warn{color:var(--warn)}.sev.info{color:var(--accent)}.sev.ok{color:var(--ok)}
+.otime{color:var(--faint);flex:none}
+.omsg{min-width:0;overflow-wrap:anywhere}
+.omsg code{color:#e3b378}
+
+/* Properties */
+.pfilter{padding:6px 10px;border-bottom:1px solid var(--line)}
+input[type=text],input[type=number],select{box-sizing:border-box;width:100%;background:var(--panel2);border:1px solid var(--line2);border-radius:4px;padding:3px 6px;min-width:0}
+input[type=number]{font-family:var(--mono);font-size:12px}
+input:hover,select:hover{border-color:var(--faint)}
+input[type=color]{width:44px;height:24px;padding:0 2px;background:var(--panel2);border:1px solid var(--line2);border-radius:4px}
+input[type=checkbox]{accent-color:var(--accent)}
+.psec h3{margin:0;padding:6px 10px;font:600 11px var(--ui);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:var(--panel2);border-block:1px solid var(--line)}
+.psec:first-child h3{border-top:0}
+.prow{display:grid;grid-template-columns:96px minmax(0,1fr);gap:4px 8px;align-items:center;padding:4px 10px}
+.prow>label{color:var(--muted);font-size:12px}
+.pctl{display:flex;align-items:center;gap:6px;min-width:0}
+.unit{color:var(--faint);font:11px var(--mono);white-space:nowrap}
+.pctl.vec{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+.vcell{display:flex;align-items:center;gap:3px;min-width:0}
+.vcell span{color:var(--faint);font:11px var(--mono)}
+.pctl.multi{flex-wrap:wrap;gap:3px 10px}
+.chk{display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap}
+.hint{grid-column:1/-1;margin:0;color:var(--faint);font-size:11.5px}
+.prow.note{grid-template-columns:1fr}
+.prow.note p{margin:0;color:var(--muted);font-size:12px}
+.prow.note code,.hint code{font:11.5px var(--mono);color:#e3b378}
+.mcnp{grid-column:1/-1;margin:2px 0 0;padding:6px 8px;background:#111316;border:1px solid var(--line);border-radius:4px;font:11.5px/1.5 var(--mono);color:#b9c3cd;white-space:pre-wrap;overflow-wrap:anywhere}
+.empty{padding:14px 12px;color:var(--muted)}
+.layers{display:flex;align-items:center;gap:10px}
+.layers .chk{color:var(--muted)}
+.runbtn.stop{background:var(--err);color:#1a0707}
+.statusdot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
+.statusdot.running{background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.statusdot.done{background:var(--ok)}.statusdot.failed,.statusdot.interrupted{background:var(--err)}.statusdot.stopped{background:var(--warn)}
+.olist li.raw{padding:0 12px;white-space:pre;color:#b9c3cd}
+.opane{overflow:auto;flex:1;padding:8px 12px;font-size:12.5px}
+.opane h4{margin:10px 0 4px;font:600 11px var(--ui);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.opane h4:first-child{margin-top:0}
+.rtable{border-collapse:collapse;font:12px var(--mono);min-width:100%}
+.rtable th{text-align:left;color:var(--faint);font-weight:500;padding:2px 12px 2px 0;border-bottom:1px solid var(--line)}
+.rtable td{padding:2px 12px 2px 0;white-space:nowrap}
+.rtable td.num{text-align:right;font-variant-numeric:tabular-nums}
+.rel-ok{color:var(--ok)}.rel-q{color:var(--warn)}.rel-bad{color:var(--err)}
+.runrow{display:flex;align-items:center;gap:10px;padding:4px 0;border-bottom:1px solid var(--line)}
+.runrow .rname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.runrow .rmeta{color:var(--faint);font:11.5px var(--mono);white-space:nowrap}
+.envline{color:var(--muted);font:11.5px var(--mono)}
+
+@media (max-width:900px){
+  html,body{height:auto}
+  .app{height:auto}
+  .win{grid-template-rows:auto auto auto}
+  .main{grid-template-columns:minmax(0,1fr)}
+  .explorer{border-right:0;border-bottom:1px solid var(--line);max-height:260px}
+  .center{grid-template-rows:auto 420px 200px}
+  .propspanel{border-left:0;border-top:1px solid var(--line)}
+  .chip{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="app">
+<div class="win">
+  <header class="titlebar">
+    <div class="brand"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="9" cy="9" r="3" fill="currentColor"/><ellipse cx="9" cy="9" rx="7.5" ry="3" transform="rotate(35 9 9)"/></svg>OpenMC Studio</div>
+    <span class="proj" id="projName"></span>
+    <span class="spacer"></span>
+    <span class="chip" id="runChip"></span>
+    <button class="runbtn" id="runBtn" type="button"><svg width="12" height="12" viewBox="0 0 18 18" aria-hidden="true"><path d="M5 3l10 6-10 6z" fill="currentColor"/></svg>Run</button>
+  </header>
+
+  <nav class="ribbon" aria-label="Commands">
+    <div class="rtabs" role="tablist" id="rtabs"></div>
+    <div class="rbody" id="rbody"></div>
+  </nav>
+
+  <div class="main">
+    <aside class="panel explorer" aria-label="Explorer">
+      <div class="phead">Explorer</div>
+      <div class="pscroll" id="tree"></div>
+    </aside>
+
+    <section class="center" aria-label="Editor">
+      <div class="dtabs" role="tablist">
+        <button class="dtab" role="tab" id="tabView" aria-selected="true" type="button">Viewport</button>
+        <button class="dtab" role="tab" id="tabCode" aria-selected="false" type="button">model.py</button>
+      </div>
+
+      <div class="doc" id="docView">
+        <div class="toolbar">
+          <div class="seg" role="group" aria-label="Slice plane">
+            <button type="button" data-plane="xy">XY</button><button type="button" data-plane="xz">XZ</button><button type="button" data-plane="yz">YZ</button>
+          </div>
+          <label class="tlabel" for="sliceIn"><span id="sliceAxis">at y =</span> <input type="number" id="sliceIn" step="any" value="0"> cm</label>
+          <div class="seg" role="group" aria-label="Zoom">
+            <button type="button" id="zoomOut" aria-label="Zoom out">−</button><button type="button" id="zoomFit">Fit</button><button type="button" id="zoomIn" aria-label="Zoom in">+</button>
+          </div>
+          <span class="layers" id="layers" hidden>
+            <label class="chk"><input type="checkbox" id="showMesh" checked> Flux map</label>
+            <select id="meshPick" aria-label="Mesh tally to show"></select>
+            <label class="chk"><input type="checkbox" id="showTracks" checked> Tracks</label>
+            <button class="tbtn" type="button" id="replayBtn" hidden>Replay neutron</button>
+          </span>
+          <span class="readout" id="readout">Hover the view for coordinates · click to select</span>
+        </div>
+        <div class="vpwrap" id="vpwrap">
+          <canvas id="vp" tabindex="0" aria-label="Geometry slice. Click a region or source to select it."></canvas>
+          <div class="legend" id="legend"></div>
+        </div>
+      </div>
+
+      <div class="doc" id="docCode" hidden>
+        <div class="toolbar">
+          <span class="tlabel">Generated from the model. It updates as you edit.</span>
+          <span class="spacer"></span>
+          <button class="tbtn" type="button" id="copyCode">Copy</button>
+          <button class="tbtn" type="button" id="saveCode">Save model.py</button>
+        </div>
+        <div class="codewrap"><pre class="code" id="code"></pre></div>
+      </div>
+
+      <div class="output">
+        <div class="otabs" role="tablist">
+          <button class="otab" role="tab" id="otProblems" aria-selected="true" type="button">Problems <span class="badge" id="probBadge">0</span></button>
+          <button class="otab" role="tab" id="otLog" aria-selected="false" type="button">Log</button>
+          <button class="otab" role="tab" id="otResults" aria-selected="false" type="button" hidden>Results</button>
+          <button class="otab" role="tab" id="otRuns" aria-selected="false" type="button" hidden>Runs</button>
+        </div>
+        <ul class="olist" id="problems"></ul>
+        <ul class="olist" id="log" hidden></ul>
+        <div class="opane" id="results" hidden></div>
+        <div class="opane" id="runs" hidden></div>
+      </div>
+    </section>
+
+    <aside class="panel propspanel" aria-label="Properties">
+      <div class="phead">Properties <span class="sub" id="propsTitle"></span></div>
+      <div class="pfilter"><input type="text" id="propFilter" placeholder="Filter properties" aria-label="Filter properties"></div>
+      <div class="pscroll" id="props"></div>
+    </aside>
+  </div>
+</div>
+</div>
+<input type="file" id="openFile" accept=".json,application/json" hidden>
+<div class="menu" id="matMenu" hidden role="menu"></div>
+<div class="dropline" id="dropLine" hidden></div>
+<script>
+"use strict";
+/* ───────── Icons ───────── */
+const ICON = {
+  sphere:'<circle cx="9" cy="9" r="6.5"/><ellipse cx="9" cy="9" rx="6.5" ry="2.4"/>',
+  cylinder:'<ellipse cx="9" cy="4.5" rx="5" ry="2"/><path d="M4 4.5v9c0 1.1 2.2 2 5 2s5-.9 5-2v-9"/>',
+  box:'<path d="M3 6l6-3 6 3v6.5l-6 3-6-3z"/><path d="M3 6l6 3 6-3M9 9v6.5"/>',
+  material:'<path d="M7 2.5h4M7.5 2.5V7L3.5 14a1.3 1.3 0 0 0 1.1 1.9h8.8a1.3 1.3 0 0 0 1.1-1.9L10.5 7V2.5"/><path d="M5.2 11h7.6"/>',
+  source:'<circle cx="9" cy="9" r="2" fill="currentColor"/><path d="M9 1.5v3M9 13.5v3M1.5 9h3M13.5 9h3M3.7 3.7l2.1 2.1M12.2 12.2l2.1 2.1M3.7 14.3l2.1-2.1M12.2 5.8l2.1-2.1"/>',
+  cellTally:'<circle cx="9" cy="9" r="6.5"/><circle cx="9" cy="9" r="3"/><circle cx="9" cy="9" r=".8" fill="currentColor"/>',
+  meshTally:'<rect x="2.5" y="2.5" width="13" height="13" rx="1"/><path d="M6.8 2.5v13M11.2 2.5v13M2.5 6.8h13M2.5 11.2h13"/>',
+  duplicate:'<rect x="6" y="6" width="9.5" height="9.5" rx="1.5"/><path d="M12 6V3.5a1 1 0 0 0-1-1H3.5a1 1 0 0 0-1 1V11a1 1 0 0 0 1 1H6"/>',
+  del:'<path d="M3 5h12M7 5V3h4v2M4.5 5l.8 10.5h7.4L13.5 5"/>',
+  up:'<path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/>',
+  down:'<path d="M9 3.5v11M4.5 10 9 14.5 13.5 10"/>',
+  dice:'<rect x="2.5" y="2.5" width="13" height="13" rx="3"/><circle cx="6" cy="6" r=".9" fill="currentColor"/><circle cx="12" cy="12" r=".9" fill="currentColor"/><circle cx="9" cy="9" r=".9" fill="currentColor"/>',
+  copy:'<rect x="6" y="6" width="9.5" height="9.5" rx="1.5"/><path d="M12 6V3.5a1 1 0 0 0-1-1H3.5a1 1 0 0 0-1 1V11a1 1 0 0 0 1 1H6"/>',
+  save:'<path d="M9 2.5v9M5 7.5l4 4 4-4M3 13.5v2h12v-2"/>',
+  open:'<path d="M9 11.5v-9M5 6.5l4-4 4 4M3 13.5v2h12v-2"/>',
+  reset:'<path d="M3.5 9a5.5 5.5 0 1 0 1.8-4.1"/><path d="M3.5 2.5v3h3"/>',
+  world:'<rect x="2.5" y="2.5" width="13" height="13" rx="1" stroke-dasharray="2.2 2"/>',
+  settings:'<path d="M3 5h12M3 9h12M3 13h12"/><circle cx="6" cy="5" r="1.7" fill="#1b1e22"/><circle cx="12" cy="9" r="1.7" fill="#1b1e22"/><circle cx="8" cy="13" r="1.7" fill="#1b1e22"/>'
+};
+const ic = (n, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
+
+/* ───────── Material library ─────────
+   Densities and weight fractions from PNNL-15870 Rev. 1, "Compendium of Material
+   Composition Data for Radiation Transport Modeling" (entry numbers in `ref`).
+   S(a,b) names are the OpenMC thermal-scattering tables that fit each material. */
+const PRESETS = [
+  {key:'water', ref:'PNNL #354', name:'Water, liquid', color:'#3f86d6', density:0.998207, frac:'wo', comps:'H:0.111894, O:0.888106', sab:'c_H_in_H2O'},
+  {key:'heavywater', ref:'PNNL #353', name:'Water, heavy', color:'#5aa5c9', density:1.10534, frac:'wo', comps:'H2:0.201133, O:0.798867', sab:'c_D_in_D2O'},
+  {key:'poly', ref:'PNNL #248', name:'Polyethylene', color:'#d8cfa6', density:0.93, frac:'wo', comps:'H:0.143716, C:0.856284', sab:'c_H_in_CH2'},
+  {key:'bpoly', ref:'PNNL #247', name:'Polyethylene, borated (10% B)', color:'#b9c48a', density:1.0, frac:'wo', comps:'H:0.125355, B:0.1, C:0.774645', sab:'c_H_in_CH2'},
+  {key:'paraffin', ref:'PNNL #358', name:'Paraffin wax', color:'#e6dcb8', density:0.93, frac:'wo', comps:'H:0.148605, C:0.851395', sab:'c_H_in_CH2'},
+  {key:'graphite', ref:'PNNL #63', name:'Graphite, reactor grade', color:'#767c85', density:1.7, frac:'wo', comps:'B:0.000001, C:0.999999', sab:'c_Graphite'},
+  {key:'beryllium', ref:'PNNL #24', name:'Beryllium', color:'#9fb7a8', density:1.848, frac:'wo', comps:'Be:1', sab:'c_Be'},
+  {key:'concrete', ref:'PNNL #97', name:'Concrete, ordinary (NIST)', color:'#a19c8b', density:2.3, frac:'wo', comps:'H:0.0221, C:0.002484, O:0.57493, Na:0.015208, Mg:0.001266, Al:0.019953, Si:0.304627, K:0.010045, Ca:0.042951, Fe:0.006435', sab:''},
+  {key:'lead', ref:'PNNL #171', name:'Lead', color:'#8b94a8', density:11.35, frac:'wo', comps:'Pb:1', sab:''},
+  {key:'iron', ref:'PNNL #158', name:'Iron', color:'#b3714e', density:7.874, frac:'wo', comps:'Fe:1', sab:''},
+  {key:'ss304', ref:'PNNL #298', name:'Steel, stainless 304', color:'#9aa4ad', density:8.0, frac:'wo', comps:'C:0.0004, Si:0.005, P:0.00023, S:0.00015, Cr:0.19, Mn:0.01, Fe:0.70173, Ni:0.0925', sab:''},
+  {key:'tungsten', ref:'PNNL #331', name:'Tungsten', color:'#6e7a90', density:19.3, frac:'wo', comps:'W:1', sab:''},
+  {key:'aluminum', ref:'PNNL #6', name:'Aluminum', color:'#c3cbd3', density:2.6989, frac:'wo', comps:'Al:1', sab:''},
+  {key:'cadmium', ref:'PNNL #51', name:'Cadmium', color:'#c7a86b', density:8.65, frac:'wo', comps:'Cd:1', sab:''},
+  {key:'b4c', ref:'PNNL #40', name:'Boron carbide', color:'#5f6e4b', density:2.52, frac:'wo', comps:'B:0.78261, C:0.21739', sab:''},
+  {key:'uo2', ref:'PNNL #334', name:'Uranium dioxide (3 at% U-235)', color:'#d8b33c', density:10.96, frac:'wo', comps:'O:0.118533, U234:0.000235, U235:0.026444, U236:0.000122, U238:0.854666', sab:''},
+  {key:'air', ref:'PNNL #4', name:'Air, dry (sea level)', color:'#7fa3b8', density:0.001205, frac:'wo', comps:'C:0.000124, N:0.755268, O:0.231781, Ar:0.012827', sab:''},
+  {key:'helium', ref:'PNNL #151', name:'Helium, natural', color:'#a7d8cf', density:0.000166, frac:'wo', comps:'He:1', sab:''},
+  {key:'he3', ref:'Ideal gas, 4 atm, 20 °C', name:'He-3 detector gas (4 atm)', color:'#8fe0c4', density:0.000502, frac:'ao', comps:'He3:1', sab:''}
+];
+const CUSTOM_MAT = {name:'New material', color:'#b48ead', density:1, frac:'ao', comps:'H:2, O:1', sab:'', ref:''};
+
+const SCORES = ['flux','total','absorption','fission','nu-fission','scatter','(n,gamma)','(n,p)','(n,a)','heating'];
+
+/* ───────── State ───────── */
+const clone = o => JSON.parse(JSON.stringify(o));
+let seq = Math.floor(Date.now() % 1e9);
+const newId = p => p + (++seq).toString(36);
+function uniqueName(list, base) {
+  const names = new Set(list.map(x => x.name));
+  let n = base, i = 2;
+  while (names.has(n)) n = `${base} ${i++}`;
+  return n;
+}
+function presetMat(key, id) {
+  const m = clone(PRESETS.find(x => x.key === key));
+  delete m.key; m.id = id;
+  return m;
+}
+
+const DEFAULT_SETTINGS = {name:'Shielding demo', runMode:'fixed source', particles:10000, batches:10, inactive:0, seed:12345,
+  maxTracks:50, track:'', photon:false, worldShape:'box', worldR:100, worldBC:'vacuum', worldFill:'void'};
+
+function newSource(id, name, particle = 'neutron') {
+  return {id, name, particle, strength:1, space:'point', x:0, y:0, z:0, rin:0, r:5, h:10,
+    x0:-5, y0:-5, z0:-5, x1:5, y1:5, z1:5, angle:'isotropic', u:0, v:0, w:1,
+    energy:'lines', lines: particle === 'photon' ? '0.662:1' : '14.1:1', wa:0.988, wb:2.249, theta:1.2895, emin:0.1, emax:2};
+}
+function newPart(id, name, shape) {
+  return {id, name, shape, x:0, y:0, z:0, r:10, h:20, axis:'z', sx:20, sy:20, sz:20, material:'void'};
+}
+function sampleModel() {
+  const part = (id, name, shape, o) => Object.assign(newPart(id, name, shape), o);
+  return {
+    materials:[presetMat('poly','m1'), presetMat('lead','m2'), presetMat('he3','m3'), presetMat('concrete','m4')],
+    parts:[
+      part('p1', 'He-3 detector', 'cylinder', {x:60, r:2.5, h:20, material:'m3'}),
+      part('p2', 'Source cavity', 'sphere', {r:5}),
+      part('p3', 'Moderator', 'sphere', {r:25, material:'m1'}),
+      part('p4', 'Lead shield', 'sphere', {r:32, material:'m2'}),
+      part('p5', 'Floor slab', 'box', {z:-85, sx:200, sy:200, sz:30, material:'m4'})
+    ],
+    sources:[newSource('s1', 'D-T generator')],
+    tallies:[
+      {id:'t1', name:'Detector spectrum', kind:'cell', cells:['p1'], scores:['flux','(n,p)'], ebins:'0, 5e-7, 0.1, 20',
+        nx:100, ny:1, nz:100, lx:-100, ly:-5, lz:-100, ux:100, uy:5, uz:100},
+      {id:'t2', name:'Flux map (XZ)', kind:'mesh', cells:[], scores:['flux'], ebins:'',
+        nx:100, ny:1, nz:100, lx:-100, ly:-5, lz:-100, ux:100, uy:5, uz:100}
+    ],
+    settings:{...DEFAULT_SETTINGS}
+  };
+}
+
+const STORE_KEY = 'openmc-studio-v1';
+function validProject(o) {
+  return !!o && Array.isArray(o.materials) && Array.isArray(o.parts) && Array.isArray(o.sources) &&
+    Array.isArray(o.tallies) && !!o.settings && typeof o.settings === 'object';
+}
+function loadStored() {
+  try {
+    const o = JSON.parse(localStorage.getItem(STORE_KEY));
+    if (validProject(o)) { o.settings = {...DEFAULT_SETTINGS, ...o.settings}; return o; }
+  } catch (e) {}
+  return null;
+}
+function store() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) {} }
+
+let S = loadStored() || sampleModel();
+let sel = {kind:'source', id:(S.sources[0] || {}).id};
+const view = {plane:'xz', slice:0, zoom:1};
+
+/* ───────── Parsing helpers ───────── */
+const fin = Number.isFinite;
+const ESC = {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;'};
+const esc = s => String(s).replace(/[&<>"]/g, c => ESC[c]);
+const NUM = '([0-9]*\\.?[0-9]+(?:[eE][-+]?\\d+)?)';
+function parseComps(str) {
+  const out = [], errs = [];
+  const re = new RegExp('^([A-Z][a-z]?)(\\d{1,3}(?:_m\\d)?)?\\s*:\\s*' + NUM + '$');
+  String(str || '').split(',').map(s => s.trim()).filter(Boolean).forEach(tok => {
+    const m = tok.match(re);
+    if (!m) { errs.push(tok); return; }
+    out.push({sym:m[1] + (m[2] || ''), el:m[1], nuclide:!!m[2], amt:parseFloat(m[3])});
+  });
+  return {out, errs};
+}
+// "14.1:1, 2.45:0.5" -> line energies in MeV with relative intensities (MCNP SI L / SP D)
+function parseLines(str) {
+  const out = [], errs = [];
+  const re = new RegExp('^' + NUM + '\\s*(?::\\s*' + NUM + ')?$');
+  String(str || '').split(',').map(s => s.trim()).filter(Boolean).forEach(tok => {
+    const m = tok.match(re);
+    if (!m) { errs.push(tok); return; }
+    out.push({e:parseFloat(m[1]), p:m[2] === undefined ? 1 : parseFloat(m[2])});
+  });
+  return {out, errs};
+}
+function parseNums(str) {
+  const vals = String(str || '').split(',').map(s => s.trim()).filter(Boolean).map(Number);
+  return {vals, ok:vals.every(fin)};
+}
+function parseTrack(str) {
+  const out = [], errs = [];
+  String(str || '').split(';').map(s => s.trim()).filter(Boolean).forEach(tok => {
+    const m = tok.match(/^(\d+)\s*,\s*(\d+)\s*,\s*(\d+)$/);
+    if (m) out.push([+m[1], +m[2], +m[3]]); else errs.push(tok);
+  });
+  return {out, errs};
+}
+const FISSILE = ['U', 'Pu', 'U233', 'U235', 'Pu239', 'Pu241'];
+const isFissileMat = m => parseComps(m.comps).out.some(c => FISSILE.includes(c.sym));
+const matById = id => S.materials.find(m => m.id === id);
+const partById = id => S.parts.find(p => p.id === id);
+const partLabel = id => id === 'world' ? 'World' : ((partById(id) || {}).name || '?');
+
+/* ───────── Geometry math (mirrors the CSG that model.py builds) ───────── */
+function inShape(p, x, y, z) {
+  const dx = x - p.x, dy = y - p.y, dz = z - p.z;
+  if (p.shape === 'sphere') return dx*dx + dy*dy + dz*dz < p.r*p.r;
+  if (p.shape === 'cylinder') {
+    const h = p.h / 2, r2 = p.r * p.r;
+    if (p.axis === 'x') return dy*dy + dz*dz < r2 && Math.abs(dx) < h;
+    if (p.axis === 'y') return dx*dx + dz*dz < r2 && Math.abs(dy) < h;
+    return dx*dx + dy*dy < r2 && Math.abs(dz) < h;
+  }
+  return Math.abs(dx) < p.sx/2 && Math.abs(dy) < p.sy/2 && Math.abs(dz) < p.sz/2;
+}
+function inWorld(x, y, z) {
+  const R = S.settings.worldR;
+  return S.settings.worldShape === 'sphere' ? x*x + y*y + z*z < R*R : Math.abs(x) < R && Math.abs(y) < R && Math.abs(z) < R;
+}
+// -2 outside the world, -1 world fill, otherwise index into S.parts (first match wins)
+function cellIndexAt(x, y, z) {
+  if (!inWorld(x, y, z)) return -2;
+  for (let i = 0; i < S.parts.length; i++) if (inShape(S.parts[i], x, y, z)) return i;
+  return -1;
+}
+function partHalfExtents(p) {
+  if (p.shape === 'sphere') return [p.r, p.r, p.r];
+  if (p.shape === 'box') return [p.sx/2, p.sy/2, p.sz/2];
+  const h = p.h/2;
+  return p.axis === 'x' ? [h, p.r, p.r] : p.axis === 'y' ? [p.r, h, p.r] : [p.r, p.r, h];
+}
+function partLeavesWorld(p) {
+  const [hx, hy, hz] = partHalfExtents(p), R = S.settings.worldR, eps = 1e-9;
+  if (S.settings.worldShape === 'box') return Math.abs(p.x) + hx > R + eps || Math.abs(p.y) + hy > R + eps || Math.abs(p.z) + hz > R + eps;
+  if (p.shape === 'sphere') return Math.hypot(p.x, p.y, p.z) + p.r > R + eps;
+  return Math.hypot(Math.abs(p.x) + hx, Math.abs(p.y) + hy, Math.abs(p.z) + hz) > R + eps;
+}
+
+/* ───────── Problems ───────── */
+function problems() {
+  const P = [], st = S.settings, eig = st.runMode === 'eigenvalue';
+  const add = (sev, text, kind, id) => P.push({sev, text, sel:kind ? {kind, id} : null});
+  const pos = v => fin(v) && v > 0;
+
+  if (!pos(st.worldR)) add('error', 'World size must be a positive number of cm.', 'world');
+
+  const used = new Set(S.parts.map(p => p.material));
+  used.add(st.worldFill);
+  if (st.worldFill !== 'void' && !matById(st.worldFill)) add('error', 'World fill points at a deleted material. Pick another fill.', 'world');
+
+  S.materials.forEach(m => {
+    const {out, errs} = parseComps(m.comps);
+    if (!pos(m.density)) add('error', `${m.name}: density must be above 0 g/cm³.`, 'material', m.id);
+    if (errs.length) add('error', `${m.name}: can't read "${errs[0]}". Write Symbol:amount, like H:2 or U235:0.03.`, 'material', m.id);
+    else if (!out.length) add('error', `${m.name}: add at least one element or nuclide.`, 'material', m.id);
+    if (out.some(c => !(c.amt > 0))) add('error', `${m.name}: every amount must be above 0.`, 'material', m.id);
+    if (m.sab && !/^c_\w+$/.test(m.sab)) add('warn', `${m.name}: thermal scattering table names start with c_, like c_H_in_H2O.`, 'material', m.id);
+    if (!used.has(m.id)) add('info', `${m.name} isn't used by any part, so model.py leaves it out.`, 'material', m.id);
+  });
+
+  S.parts.forEach(p => {
+    const dims = p.shape === 'sphere' ? [p.r] : p.shape === 'cylinder' ? [p.r, p.h] : [p.sx, p.sy, p.sz];
+    if (![p.x, p.y, p.z].every(fin)) add('error', `${p.name}: center needs three numbers.`, 'part', p.id);
+    if (!dims.every(pos)) add('error', `${p.name}: sizes must be above 0 cm.`, 'part', p.id);
+    else if (partLeavesWorld(p)) add('warn', `${p.name} extends past the world boundary. Particles leave at the boundary, so the outer part is cut off.`, 'part', p.id);
+    if (p.material !== 'void' && !matById(p.material)) add('error', `${p.name}: its material was deleted. Pick a material or Void.`, 'part', p.id);
+  });
+
+  if (!S.sources.length) add('error', 'Add a source. OpenMC needs at least one.');
+  S.sources.forEach(s => {
+    const T = s.name;
+    if (s.space === 'box') {
+      if (!(s.x0 < s.x1 && s.y0 < s.y1 && s.z0 < s.z1)) add('error', `${T}: each lower corner value must be below the upper one.`, 'source', s.id);
+    } else {
+      if (![s.x, s.y, s.z].every(fin)) add('error', `${T}: center needs three numbers.`, 'source', s.id);
+      else if (!inWorld(s.x, s.y, s.z)) add('error', `${T} starts outside the world boundary, so no particle would be born.`, 'source', s.id);
+      if (s.space === 'sphere' && !(pos(s.r) && fin(s.rin) && s.rin >= 0 && s.rin < s.r)) add('error', `${T}: outer radius must be above 0 and above the inner radius.`, 'source', s.id);
+      if (s.space === 'cylinder' && !(pos(s.r) && pos(s.h) && fin(s.rin) && s.rin >= 0 && s.rin < s.r)) add('error', `${T}: radius and height must be above 0, with inner radius below outer.`, 'source', s.id);
+    }
+    if (s.angle === 'mono' && !(fin(s.u) && fin(s.v) && fin(s.w) && Math.hypot(s.u, s.v, s.w) > 0)) add('error', `${T}: beam direction can't be 0, 0, 0.`, 'source', s.id);
+    if (s.energy === 'lines') {
+      const {out, errs} = parseLines(s.lines);
+      if (errs.length) add('error', `${T}: can't read "${errs[0]}". Write MeV:intensity, like 14.1:1.`, 'source', s.id);
+      else if (!out.length) add('error', `${T}: add at least one energy line.`, 'source', s.id);
+      else if (out.some(l => !(l.e > 0) || !(l.p > 0))) add('error', `${T}: line energies and intensities must be above 0.`, 'source', s.id);
+      else if (s.particle === 'neutron' && out.some(l => l.e > 20)) add('warn', `${T}: lines above 20 MeV are past the top of most neutron data libraries.`, 'source', s.id);
+    }
+    if (s.energy === 'watt' && !(pos(s.wa) && pos(s.wb))) add('error', `${T}: Watt a and b must be above 0.`, 'source', s.id);
+    if (s.energy === 'maxwell' && !pos(s.theta)) add('error', `${T}: Maxwell temperature must be above 0.`, 'source', s.id);
+    if (s.energy === 'uniform' && !(fin(s.emin) && s.emin >= 0 && s.emax > s.emin)) add('error', `${T}: maximum energy must be above the minimum.`, 'source', s.id);
+    if (!pos(s.strength)) add('error', `${T}: strength must be above 0.`, 'source', s.id);
+    if (s.particle === 'photon' && !st.photon) add('warn', `${T} emits photons but photon transport is off in Settings.`, 'source', s.id);
+    if (eig && s.particle !== 'neutron') add('error', `${T}: eigenvalue runs only take neutron sources.`, 'source', s.id);
+  });
+
+  S.tallies.forEach(t => {
+    if (t.kind === 'cell') {
+      if (!t.cells.length) add('error', `${t.name}: tick at least one cell to tally.`, 'tally', t.id);
+      t.cells.filter(c => c !== 'world' && !partById(c)).forEach(() => add('error', `${t.name} lists a part that was deleted.`, 'tally', t.id));
+    } else {
+      if (![t.nx, t.ny, t.nz].every(n => Number.isInteger(n) && n >= 1)) add('error', `${t.name}: mesh bins must be whole numbers of 1 or more.`, 'tally', t.id);
+      if (!(t.lx < t.ux && t.ly < t.uy && t.lz < t.uz)) add('error', `${t.name}: each lower corner value must be below the upper one.`, 'tally', t.id);
+      else if (t.nx * t.ny * t.nz > 1e6) add('warn', `${t.name} has over a million voxels. Expect a large statepoint file.`, 'tally', t.id);
+    }
+    if (!t.scores.length) add('error', `${t.name}: tick at least one score.`, 'tally', t.id);
+    if (t.ebins.trim()) {
+      const {vals, ok} = parseNums(t.ebins);
+      if (!ok || vals.length < 2 || vals.some((v, i) => i && v <= vals[i-1]) || vals[0] < 0) add('error', `${t.name}: energy bin edges need 2 or more rising values in MeV, like 0, 1e-6, 1, 20.`, 'tally', t.id);
+    }
+    if (t.scores.some(s => s === 'fission' || s === 'nu-fission') && !S.materials.some(m => used.has(m.id) && isFissileMat(m))) add('info', `${t.name} scores fission, but no material in the model has U or Pu. Those scores will be 0.`, 'tally', t.id);
+  });
+
+  if (!(Number.isInteger(st.particles) && st.particles >= 1)) add('error', 'Particles per batch must be a whole number of 1 or more.', 'settings');
+  if (!(Number.isInteger(st.batches) && st.batches >= 1)) add('error', 'Batches must be a whole number of 1 or more.', 'settings');
+  if (eig) {
+    if (!(Number.isInteger(st.inactive) && st.inactive >= 0 && st.inactive < st.batches)) add('error', 'Inactive batches must be a whole number below the batch count.', 'settings');
+    if (!S.materials.some(m => used.has(m.id) && isFissileMat(m))) add('error', 'Eigenvalue runs need fissile material (U or Pu) in a part. Switch to fixed source or add fuel.', 'settings');
+  }
+  if (!(Number.isInteger(st.seed) && st.seed >= 1)) add('error', 'Seed must be a whole number of 1 or more.', 'settings');
+  if (!(Number.isInteger(st.maxTracks) && st.maxTracks >= 0)) add('error', 'Tracks to write must be a whole number (0 turns it off).', 'settings');
+  else if (st.maxTracks > 1000) add('warn', `Writing ${st.maxTracks} tracks makes tracks.h5 large. A few hundred is plenty to look at.`, 'settings');
+  const tr = parseTrack(st.track);
+  if (tr.errs.length) add('error', `Can't read track entry "${tr.errs[0]}". Write batch, generation, particle, like 1, 1, 42.`, 'settings');
+  if (tr.out.some(([b, g, p]) => b < 1 || b > st.batches || g < 1 || p < 1 || p > st.particles)) add('warn', 'A tracked particle is outside the batch or particle count, so it never runs.', 'settings');
+  if (tr.out.length && st.maxTracks > 0) add('info', `Track these is set, so Write first (${st.maxTracks}) is ignored. OpenMC can do one or the other.`, 'settings');
+  if (!eig && tr.out.some(([, g]) => g !== 1)) add('warn', 'Fixed-source runs have one generation per batch. Use generation 1.', 'settings');
+
+  const rank = {error:0, warn:1, info:2};
+  return P.sort((a, b) => rank[a.sev] - rank[b.sev]);
+}
+
+/* ───────── model.py generator ───────── */
+function num(v) {
+  if (!fin(v)) return 'nan';
+  if (v !== 0 && (Math.abs(v) >= 1e6 || Math.abs(v) < 1e-3)) return v.toExponential().replace('e+', 'e');
+  const s = String(+v.toPrecision(12));
+  return /[.e]/.test(s) ? s : s + '.0';
+}
+const int = v => fin(v) ? String(Math.round(v)) : 'nan';
+const pyStr = s => JSON.stringify(String(s));
+const vec3 = (a, b, c) => `(${num(a)}, ${num(b)}, ${num(c)})`;
+
+function makeNamer() {
+  const taken = new Set(['openmc', 'model', 'settings', 'geometry', 'materials', 'tallies', 'world', 'cell_world']);
+  return (prefix, name) => {
+    let base = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'item';
+    let id = `${prefix}_${base}`, i = 2;
+    while (taken.has(id)) id = `${prefix}_${base}_${i++}`;
+    taken.add(id);
+    return id;
+  };
+}
+
+function generate(probs) {
+  const st = S.settings, eig = st.runMode === 'eigenvalue', L = [], name = makeNamer();
+  const errors = probs.filter(p => p.sev === 'error').length;
+  const tracks = parseTrack(st.track).out;
+  // --track (tracks=True) writes every particle up to max_tracks and ignores settings.track,
+  // so a specific-particle list runs without it.
+  const wantAll = st.maxTracks > 0 && !tracks.length;
+  const usedIds = new Set(S.parts.map(p => p.material).concat(st.worldFill));
+  const mats = S.materials.filter(m => usedIds.has(m.id));
+  const mv = {}, sv = {}, cv = {};
+
+  L.push('"""', `${st.name} — model.py generated by OpenMC Studio`, '',
+    `${eig ? 'Eigenvalue' : 'Fixed-source'} run: ${S.parts.length + 1} cells, ${S.sources.length} source${S.sources.length === 1 ? '' : 's'}, ${S.tallies.length} tall${S.tallies.length === 1 ? 'y' : 'ies'}, seed ${st.seed}.`,
+    'Run it inside your OpenMC environment (OpenMC 0.14 or newer):', '    python model.py',
+    'OPENMC_CROSS_SECTIONS must point at a cross_sections.xml.', '"""');
+  if (errors) L.push(`# WARNING: the model has ${errors} problem${errors === 1 ? '' : 's'} (see the Problems panel). This script will not run until they are fixed.`);
+  L.push('import openmc', '');
+
+  L.push('# ── Materials ──────────────────────────────────────────────');
+  mats.forEach(m => {
+    const v = mv[m.id] = name('mat', m.name);
+    if (m.ref) L.push(`# ${m.ref}`);
+    L.push(`${v} = openmc.Material(name=${pyStr(m.name)})`, `${v}.set_density("g/cm3", ${num(m.density)})`);
+    parseComps(m.comps).out.forEach(c =>
+      L.push(`${v}.${c.nuclide ? 'add_nuclide' : 'add_element'}(${pyStr(c.sym)}, ${num(c.amt)}, ${pyStr(m.frac)})`));
+    if (m.sab) L.push(`${v}.add_s_alpha_beta(${pyStr(m.sab)})`);
+    L.push('');
+  });
+  L.push(`materials = openmc.Materials([${mats.map(m => mv[m.id]).join(', ')}])`, '');
+
+  L.push('# ── Geometry ───────────────────────────────────────────────',
+    '# Every surface is created once and shared, so faces that touch (or sit on the world',
+    '# boundary) are one surface and particles are never lost between them.',
+    '# Parts listed first win where shapes overlap (same order as the Explorer).');
+  const R = st.worldR, bc = `boundary_type=${pyStr(st.worldBC)}`, surfs = new Map();
+  const tag = v => (v < 0 ? 'm' : '') + num(Math.abs(v)).replace(/\.0$/, '').replace(/[^0-9a-z]/gi, 'p');
+  const surface = (key, prefix, label, ctor, isWorld) => {
+    if (!surfs.has(key)) {
+      const v = name(prefix, label);
+      surfs.set(key, v);
+      L.push(`${v} = ${ctor.slice(0, -1)}${isWorld ? (ctor.endsWith('()') ? bc : ', ' + bc) : ''})`);
+    }
+    return surfs.get(key);
+  };
+  const plane = (ax, v, isWorld) => surface(`P${ax}:${num(v)}`, `${ax}plane`, tag(v), `openmc.${ax.toUpperCase()}Plane(${num(v)})`, isWorld);
+  const sphere = (x, y, z, r, isWorld) => surface(`S:${[x, y, z, r].map(num)}`, 'sphere', `r${tag(r)}`,
+    x || y || z ? `openmc.Sphere(x0=${num(x)}, y0=${num(y)}, z0=${num(z)}, r=${num(r)})` : `openmc.Sphere(r=${num(r)})`, isWorld);
+  const slab = (ax, lo, hi, isWorld) => `+${plane(ax, lo, isWorld)} & -${plane(ax, hi, isWorld)}`;
+  if (st.worldShape === 'sphere') L.push(`world = -${sphere(0, 0, 0, R, true)}`);
+  else {
+    const w = ['x', 'y', 'z'].map(ax => slab(ax, -R, R, true));
+    L.push(`world = ${w.join(' & ')}`);
+  }
+  L.push('');
+  const shapeVar = {};
+  S.parts.forEach(p => {
+    let expr;
+    if (p.shape === 'sphere') expr = `-${sphere(p.x, p.y, p.z, p.r)}`;
+    else if (p.shape === 'box') expr = ['x', 'y', 'z'].map(ax => slab(ax, p[ax] - p['s' + ax] / 2, p[ax] + p['s' + ax] / 2)).join(' & ');
+    else {
+      const ax = p.axis, [a, b] = {x:['y', 'z'], y:['x', 'z'], z:['x', 'y']}[ax];
+      const cyl = surface(`C${ax}:${[p[a], p[b], p.r].map(num)}`, `${ax}cyl`, `r${tag(p.r)}`,
+        `openmc.${ax.toUpperCase()}Cylinder(${a}0=${num(p[a])}, ${b}0=${num(p[b])}, r=${num(p.r)})`);
+      expr = `-${cyl} & ${slab(ax, p[ax] - p.h / 2, p[ax] + p.h / 2)}`;
+    }
+    shapeVar[p.id] = name('shape', p.name);
+    L.push(`${shapeVar[p.id]} = ${expr}`);
+  });
+  if (S.parts.length) L.push('');
+  const fill = id => id === 'void' || !mv[id] ? 'None' : mv[id];
+  S.parts.forEach((p, i) => {
+    const v = cv[p.id] = name('cell', p.name);
+    const earlier = S.parts.slice(0, i).map(q => shapeVar[q.id]);
+    const region = `${shapeVar[p.id]} & world` + (earlier.length ? ` & ~(${earlier.join(' | ')})` : '');
+    L.push(`${v} = openmc.Cell(name=${pyStr(p.name)}, fill=${fill(p.material)}, region=${region})`);
+  });
+  cv.world = 'cell_world';
+  const all = S.parts.map(q => shapeVar[q.id]);
+  L.push(`cell_world = openmc.Cell(name="World", fill=${fill(st.worldFill)}, region=world${all.length ? ` & ~(${all.join(' | ')})` : ''})`);
+  L.push(`geometry = openmc.Geometry([${S.parts.map(p => cv[p.id]).concat('cell_world').join(', ')}])`, '');
+
+  L.push('# ── Sources ────────────────────────────────────────────────');
+  const srcVars = S.sources.map(s => {
+    const v = name('src', s.name);
+    L.push(`${v} = openmc.IndependentSource()`, `${v}.particle = ${pyStr(s.particle)}`);
+    if (s.space === 'point') L.push(`${v}.space = openmc.stats.Point(${vec3(s.x, s.y, s.z)})`);
+    else if (s.space === 'box') L.push(`${v}.space = openmc.stats.Box(${vec3(s.x0, s.y0, s.z0)}, ${vec3(s.x1, s.y1, s.z1)})`);
+    else if (s.space === 'sphere') L.push(`${v}.space = openmc.stats.spherical_uniform(r_outer=${num(s.r)}, r_inner=${num(s.rin)}, origin=${vec3(s.x, s.y, s.z)})`);
+    else L.push(`${v}.space = openmc.stats.CylindricalIndependent(`,
+      `    r=openmc.stats.PowerLaw(${num(s.rin)}, ${num(s.r)}, 1),  # uniform in volume`,
+      `    phi=openmc.stats.Uniform(0.0, 6.283185307179586),`,
+      `    z=openmc.stats.Uniform(${num(-s.h/2)}, ${num(s.h/2)}),`,
+      `    origin=${vec3(s.x, s.y, s.z)})`);
+    if (s.angle === 'isotropic') L.push(`${v}.angle = openmc.stats.Isotropic()`);
+    else { const n = Math.hypot(s.u, s.v, s.w) || 1; L.push(`${v}.angle = openmc.stats.Monodirectional(${vec3(s.u/n, s.v/n, s.w/n)})`); }
+    if (s.energy === 'lines') {
+      const ls = parseLines(s.lines).out;
+      L.push(`${v}.energy = openmc.stats.Discrete([${ls.map(l => num(l.e * 1e6)).join(', ')}], [${ls.map(l => num(l.p)).join(', ')}])  # eV`);
+    } else if (s.energy === 'watt') L.push(`${v}.energy = openmc.stats.Watt(a=${num(s.wa * 1e6)}, b=${num(s.wb / 1e6)})  # a in eV, b in 1/eV`);
+    else if (s.energy === 'maxwell') L.push(`${v}.energy = openmc.stats.Maxwell(theta=${num(s.theta * 1e6)})  # eV`);
+    else L.push(`${v}.energy = openmc.stats.Uniform(${num(s.emin * 1e6)}, ${num(s.emax * 1e6)})  # eV`);
+    L.push(`${v}.strength = ${num(s.strength)}`, '');
+    return v;
+  });
+
+  L.push('# ── Tallies ────────────────────────────────────────────────');
+  const talVars = S.tallies.map(t => {
+    const v = name('tally', t.name), filters = [];
+    if (t.kind === 'mesh') {
+      const m = name('mesh', t.name);
+      L.push(`${m} = openmc.RegularMesh(name=${pyStr(t.name)})`, `${m}.dimension = [${int(t.nx)}, ${int(t.ny)}, ${int(t.nz)}]`,
+        `${m}.lower_left = [${num(t.lx)}, ${num(t.ly)}, ${num(t.lz)}]`, `${m}.upper_right = [${num(t.ux)}, ${num(t.uy)}, ${num(t.uz)}]`);
+      filters.push(`openmc.MeshFilter(${m})`);
+    } else filters.push(`openmc.CellFilter([${t.cells.filter(c => cv[c]).map(c => cv[c]).join(', ')}])`);
+    if (t.ebins.trim()) filters.push(`openmc.EnergyFilter([${parseNums(t.ebins).vals.map(e => num(e * 1e6)).join(', ')}])`);
+    L.push(`${v} = openmc.Tally(name=${pyStr(t.name)})`, `${v}.filters = [${filters.join(', ')}]`,
+      `${v}.scores = [${t.scores.map(pyStr).join(', ')}]`, '');
+    return v;
+  });
+  L.push(`tallies = openmc.Tallies([${talVars.join(', ')}])`, '');
+
+  L.push('# ── Settings ───────────────────────────────────────────────', 'settings = openmc.Settings()',
+    `settings.run_mode = ${pyStr(st.runMode)}`, `settings.particles = ${int(st.particles)}`, `settings.batches = ${int(st.batches)}`);
+  if (eig) L.push(`settings.inactive = ${int(st.inactive)}`);
+  L.push(`settings.seed = ${int(st.seed)}  # same seed + same model = the same particle histories`,
+    `settings.source = [${srcVars.join(', ')}]`);
+  if (st.photon) L.push('settings.photon_transport = True');
+  if (wantAll) L.push(`settings.max_tracks = ${int(st.maxTracks)}`);
+  if (tracks.length) L.push(`settings.track = [${tracks.map(t => `(${t.join(', ')})`).join(', ')}]  # (batch, generation, particle)`);
+  L.push('', 'model = openmc.Model(geometry=geometry, materials=materials, settings=settings, tallies=tallies)', '',
+    'if __name__ == "__main__":',
+    `    statepoint = model.run(${wantAll ? 'tracks=True' : ''})`,
+    '    print(f"Finished: {statepoint}")');
+  if (wantAll || tracks.length) L.push('    print("Particle tracks written to tracks.h5 (open with openmc.Tracks)")');
+  return L.join('\n') + '\n';
+}
+
+/* ───────── MCNP equivalents (NE403 lab notation) shown beside sources and tallies ───────── */
+const mcnpNum = v => fin(v) ? String(+v.toPrecision(6)) : '?';
+function mcnpSource(s) {
+  const parts = [`SDEF PAR=${s.particle === 'photon' ? 2 : 1}`], cards = [];
+  let d = 1;
+  const dist = (si, sp) => { const n = d++; cards.push(`SI${n} ${si}`, `SP${n} ${sp}`); return `D${n}`; };
+  if (s.space === 'point') parts.push(`POS=${[s.x, s.y, s.z].map(mcnpNum).join(' ')}`);
+  else if (s.space === 'box') parts.push(`X=${dist(`H ${mcnpNum(s.x0)} ${mcnpNum(s.x1)}`, '0 1')}`, `Y=${dist(`H ${mcnpNum(s.y0)} ${mcnpNum(s.y1)}`, '0 1')}`, `Z=${dist(`H ${mcnpNum(s.z0)} ${mcnpNum(s.z1)}`, '0 1')}`);
+  else if (s.space === 'sphere') parts.push(`POS=${[s.x, s.y, s.z].map(mcnpNum).join(' ')}`, `RAD=${dist(`${mcnpNum(s.rin)} ${mcnpNum(s.r)}`, '-21 2')}`);
+  else parts.push(`POS=${[s.x, s.y, s.z].map(mcnpNum).join(' ')}`, 'AXS=0 0 1', `RAD=${dist(`${mcnpNum(s.rin)} ${mcnpNum(s.r)}`, '-21 1')}`, `EXT=${dist(`${mcnpNum(-s.h/2)} ${mcnpNum(s.h/2)}`, '-21 0')}`);
+  if (s.angle === 'mono') parts.push(`VEC=${[s.u, s.v, s.w].map(mcnpNum).join(' ')} DIR=1`);
+  if (s.energy === 'lines') {
+    const ls = parseLines(s.lines).out;
+    if (ls.length === 1) parts.push(`ERG=${mcnpNum(ls[0].e)}`);
+    else if (ls.length > 1) parts.push(`ERG=${dist(`L ${ls.map(l => mcnpNum(l.e)).join(' ')}`, `D ${ls.map(l => mcnpNum(l.p)).join(' ')}`)}`);
+  } else if (s.energy === 'watt') parts.push(`ERG=${dist('', `-3 ${mcnpNum(s.wa)} ${mcnpNum(s.wb)}`)}`);
+  else if (s.energy === 'maxwell') parts.push(`ERG=${dist('', `-2 ${mcnpNum(s.theta)}`)}`);
+  else parts.push(`ERG=${dist(`H ${mcnpNum(s.emin)} ${mcnpNum(s.emax)}`, '0 1')}`);
+  if (s.strength !== 1) parts.push(`WGT=${mcnpNum(s.strength)}`);
+  return [parts.join(' '), ...cards.map(c => c.replace(/^(SI\d+) $/, '$1'))].filter(c => !/^SI\d+$/.test(c)).join('\n');
+}
+const MT = {total:'-1', absorption:'-2', fission:'-6', 'nu-fission':'-6 -7', scatter:'2', '(n,gamma)':'102', '(n,p)':'103', '(n,a)':'107'};
+function mcnpTally(t, i) {
+  const n = 10 * i + 4, p = 'N', out = [];
+  const cellNo = c => c === 'world' ? 99 : S.parts.findIndex(q => q.id === c) + 1;
+  if (t.kind === 'cell') out.push(`F${n}:${p} ${t.cells.map(cellNo).join(' ')}`);
+  else out.push(`FMESH${n}:${p} GEOM=XYZ ORIGIN=${[t.lx, t.ly, t.lz].map(mcnpNum).join(' ')}`,
+    `     IMESH=${mcnpNum(t.ux)} IINTS=${t.nx} JMESH=${mcnpNum(t.uy)} JINTS=${t.ny} KMESH=${mcnpNum(t.uz)} KINTS=${t.nz}`);
+  if (t.ebins.trim()) out.push(`E${n} ${parseNums(t.ebins).vals.slice(1).map(mcnpNum).join(' ')}`);
+  const rx = t.scores.filter(s => MT[s]);
+  if (rx.length && t.kind === 'cell') {
+    const mats = [...new Set(t.cells.map(c => c === 'world' ? S.settings.worldFill : (partById(c) || {}).material))];
+    const mNo = mats.length === 1 && mats[0] !== 'void' ? S.materials.findIndex(m => m.id === mats[0]) + 1 : null;
+    out.push(mNo ? `FM${n} ${rx.map(s => `(-1 ${mNo} ${MT[s]})`).join(' ')}` : `c FM${n} needs one material across the tallied cells`);
+  }
+  if (t.scores.includes('heating')) out.push(`c heating: use an F6 tally instead of F4`);
+  return out.join('\n');
+}
+
+/* ───────── Actions ───────── */
+const $ = s => document.querySelector(s);
+const LISTS = {material:'materials', part:'parts', source:'sources', tally:'tallies'};
+function getSel() {
+  if (sel.kind === 'settings') return S.settings;
+  if (sel.kind === 'world') return S.settings;
+  const list = S[LISTS[sel.kind]];
+  return list ? list.find(x => x.id === sel.id) || null : null;
+}
+function select(kind, id) { sel = {kind, id}; renderProps(); schedule(); }
+
+function addPart(shape) {
+  const label = {sphere:'Sphere', cylinder:'Cylinder', box:'Box'}[shape];
+  const p = newPart(newId('p'), uniqueName(S.parts, label), shape);
+  S.parts.unshift(p);
+  log('info', `Added ${p.name} at the top of Geometry, so it wins where it overlaps other parts.`);
+  select('part', p.id);
+}
+function addMaterial(key) {
+  const m = key === 'custom' ? {...clone(CUSTOM_MAT), id:newId('m')} : presetMat(key, newId('m'));
+  m.name = uniqueName(S.materials, m.name);
+  S.materials.push(m);
+  if (sel.kind === 'part') { const p = getSel(); if (p && p.material === 'void') { p.material = m.id; log('info', `Added ${m.name} and assigned it to ${p.name}.`); } }
+  select('material', m.id);
+}
+function addSource(particle) {
+  const s = newSource(newId('s'), uniqueName(S.sources, particle === 'photon' ? 'Photon source' : 'Neutron source'), particle);
+  if (particle === 'photon') S.settings.photon = true;
+  S.sources.push(s);
+  select('source', s.id);
+}
+function addTally(kind) {
+  const R = S.settings.worldR, flat = {xy:'z', xz:'y', yz:'x'}[view.plane];
+  const t = {id:newId('t'), name:uniqueName(S.tallies, kind === 'mesh' ? 'Mesh tally' : 'Cell tally'), kind,
+    cells: kind === 'cell' && sel.kind === 'part' && sel.id ? [sel.id] : [], scores:['flux'], ebins:'',
+    nx:50, ny:50, nz:50, lx:-R, ly:-R, lz:-R, ux:R, uy:R, uz:R};
+  if (kind === 'mesh') { t['n' + flat] = 1; t['l' + flat] = view.slice - 1; t['u' + flat] = view.slice + 1; }
+  S.tallies.push(t);
+  select('tally', t.id);
+}
+function removeSelected() {
+  const list = S[LISTS[sel.kind]];
+  if (!list) return;
+  const i = list.findIndex(x => x.id === sel.id);
+  if (i < 0) return;
+  const [gone] = list.splice(i, 1);
+  if (sel.kind === 'material') {
+    S.parts.forEach(p => { if (p.material === gone.id) p.material = 'void'; });
+    if (S.settings.worldFill === gone.id) S.settings.worldFill = 'void';
+  }
+  if (sel.kind === 'part') S.tallies.forEach(t => { t.cells = t.cells.filter(c => c !== gone.id); });
+  log('info', `Deleted ${gone.name}.`);
+  const next = list[Math.min(i, list.length - 1)];
+  next ? select(sel.kind, next.id) : select('settings');
+}
+function duplicateSelected() {
+  const list = S[LISTS[sel.kind]];
+  const obj = getSel();
+  if (!list || !obj) return;
+  const copy = {...clone(obj), id:newId(sel.kind[0]), name:uniqueName(list, obj.name + ' copy')};
+  list.splice(list.indexOf(obj), 0, copy); // copy sits just above, so it takes priority like a fresh part
+  select(sel.kind, copy.id);
+}
+function moveSelected(dir) {
+  const list = S[LISTS[sel.kind]], obj = getSel();
+  if (!list || !obj) return;
+  const i = list.indexOf(obj), j = i + dir;
+  if (j < 0 || j >= list.length) return;
+  [list[i], list[j]] = [list[j], list[i]];
+  renderProps(); schedule();
+}
+function moveTo(kind, id, slot) { // slot = gap index 0..n in the current list
+  const list = S[LISTS[kind]], from = list.findIndex(x => x.id === id);
+  if (from < 0 || slot === undefined) return;
+  const to = slot > from ? slot - 1 : slot;
+  if (to === from) return;
+  const [it] = list.splice(from, 1);
+  list.splice(to, 0, it);
+  if (kind === 'part') log('info', `Moved ${esc(it.name)} to priority ${to + 1} of ${list.length}.`);
+  select(kind, id);
+}
+function newSeed() {
+  S.settings.seed = 1 + Math.floor(Math.random() * 2147483646);
+  log('info', `New seed ${S.settings.seed}. Every particle history changes; rerunning with this seed repeats them exactly.`);
+  if (sel.kind === 'settings') renderProps();
+  schedule();
+}
+function resetSample() {
+  S = sampleModel(); sel = {kind:'source', id:'s1'}; view.plane = 'xz'; view.slice = 0; view.zoom = 1;
+  log('info', 'Loaded the shielding demo: a D-T source inside polyethylene and lead, a He-3 detector and a concrete floor.');
+  renderAll();
+}
+
+/* ───────── Export ───────── */
+let downloads = null;
+const IN_ARTIFACT = !!(window.claude && typeof window.claude.use === 'function');
+if (!IN_ARTIFACT && /^https?:$/.test(location.protocol)) {
+  downloads = {save: async ({filename, data}) => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([data], {type: 'application/octet-stream'}));
+    a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }};
+}
+if (IN_ARTIFACT) {
+  window.claude.use('downloads').then(d => { downloads = d; renderRibbon(); updateExportButtons(); }).catch(() => {});
+}
+function updateExportButtons() {
+  $('#saveCode').disabled = !downloads;
+  $('#saveCode').title = downloads ? '' : 'Saving files is not available in this view. Use Copy.';
+}
+async function saveFile(filename, data, note) {
+  if (!downloads) { log('warn', 'Saving files is not available in this view. Use Copy instead.'); return; }
+  try { await downloads.save({filename, data}); log('ok', `Saved ${filename}.${note ? ' ' + note : ''}`); }
+  catch (e) {
+    if (e && e.code === 'declined') log('info', 'Save cancelled.');
+    else log('error', `Couldn't save ${filename}: ${(e && e.message) || 'the viewer refused the file'}.`);
+  }
+}
+async function copyScript() {
+  const text = generate(problems());
+  try { await navigator.clipboard.writeText(text); log('ok', `Copied model.py (${text.split('\n').length} lines).`); return; } catch (e) {}
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+  ta.remove();
+  log(ok ? 'ok' : 'warn', ok ? 'Copied model.py.' : 'Copy was blocked here. Open the model.py tab, select the text and press Ctrl+C.');
+}
+const saveScript = () => IN_ARTIFACT ? saveFile('model.py.txt', generate(problems()), 'Rename it to model.py before running.') : saveFile('model.py', generate(problems()));
+const saveProject = () => saveFile(`${(S.settings.name || 'project').replace(/[^\w-]+/g, '_')}.openmc-studio.json`, JSON.stringify(S, null, 2));
+function openProject(file) {
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const o = JSON.parse(r.result);
+      if (!validProject(o)) throw new Error('missing materials, parts, sources, tallies or settings');
+      o.settings = {...DEFAULT_SETTINGS, ...o.settings};
+      S = o; sel = {kind:'settings'};
+      log('ok', `Opened ${file.name}.`); renderAll();
+    } catch (e) { log('error', `${file.name} isn't an OpenMC Studio project: ${e.message}.`); }
+  };
+  r.readAsText(file);
+}
+function runModel() {
+  if (LOCAL.on) return localRun();
+  const errs = problems().filter(p => p.sev === 'error');
+  setOutTab('log');
+  if (errs.length) { log('error', `Not run: fix ${errs.length} problem${errs.length === 1 ? '' : 's'} first (see Problems).`); return; }
+  log('info', 'Nothing ran: no local OpenMC runner is connected yet. Copy or save model.py and run <code>python model.py</code> in your OpenMC environment. Live runs come with the local server in step 2.');
+}
+
+/* ───────── Log ───────── */
+const LOG = [];
+function log(sev, html) {
+  LOG.push({sev, html, t:new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})});
+  const l = LOG[LOG.length - 1], ul = $('#log');
+  ul.insertAdjacentHTML('beforeend', `<li><span class="otime">${l.t}</span><span class="sev ${l.sev}">${l.sev === 'ok' ? 'done' : l.sev}</span><span class="omsg">${l.html}</span></li>`);
+  ul.scrollTop = ul.scrollHeight;
+}
+function setOutTab(which) {
+  [['problems', '#otProblems'], ['log', '#otLog'], ['results', '#otResults'], ['runs', '#otRuns']].forEach(([k, tab]) => {
+    $(tab).setAttribute('aria-selected', which === k);
+    $('#' + k).hidden = which !== k;
+  });
+}
+
+/* ───────── Ribbon ───────── */
+const RIBBON = {
+  Home:[
+    {label:'Edit', btns:[['duplicate', 'Duplicate', duplicateSelected, () => !!LISTS[sel.kind]], ['del', 'Delete', removeSelected, () => !!LISTS[sel.kind]]]},
+    {label:'Order', btns:[['up', 'Raise', () => moveSelected(-1), () => !!LISTS[sel.kind]], ['down', 'Lower', () => moveSelected(1), () => !!LISTS[sel.kind]]]},
+    {label:'Project', btns:[['reset', 'Demo model', resetSample]]}
+  ],
+  Model:[
+    {label:'Parts', btns:[['sphere', 'Sphere', () => addPart('sphere')], ['cylinder', 'Cylinder', () => addPart('cylinder')], ['box', 'Box', () => addPart('box')]]},
+    {label:'Materials', btns:[['material', 'Material ▾', e => openMatMenu(e.currentTarget)]]},
+    {label:'Boundary', btns:[['world', 'World', () => select('world')]]}
+  ],
+  Physics:[
+    {label:'Sources', btns:[['source', 'Neutron', () => addSource('neutron')], ['source', 'Photon', () => addSource('photon')]]},
+    {label:'Tallies', btns:[['cellTally', 'Cell', () => addTally('cell')], ['meshTally', 'Mesh', () => addTally('mesh')]]},
+    {label:'Random numbers', btns:[['dice', 'New seed', newSeed], ['settings', 'Settings', () => select('settings')]]}
+  ],
+  Export:[
+    {label:'Script', btns:[['copy', 'Copy model.py', copyScript], ['save', 'Save model.py', saveScript, () => !!downloads]]},
+    {label:'Project', btns:[['save', 'Save project', saveProject, () => !!downloads], ['open', 'Open project', () => $('#openFile').click()]]}
+  ]
+};
+let ribbonTab = 'Model';
+function renderRibbon() {
+  $('#rtabs').innerHTML = Object.keys(RIBBON).map(k => `<button class="rtab" role="tab" type="button" aria-selected="${k === ribbonTab}" data-tab="${k}">${k}</button>`).join('');
+  const body = $('#rbody');
+  body.innerHTML = '';
+  RIBBON[ribbonTab].forEach(g => {
+    const grp = document.createElement('div'); grp.className = 'rgroup';
+    const row = document.createElement('div'); row.className = 'rbtns';
+    g.btns.forEach(([icon, label, fn, enabled]) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'rbtn'; b.innerHTML = ic(icon) + `<span>${label}</span>`;
+      if (enabled && !enabled()) { b.disabled = true; if (!downloads && /Save/.test(label)) b.title = 'Saving files is not available in this view.'; }
+      b.addEventListener('click', fn);
+      row.appendChild(b);
+    });
+    grp.appendChild(row);
+    grp.insertAdjacentHTML('beforeend', `<div class="rlabel">${g.label}</div>`);
+    body.appendChild(grp);
+  });
+}
+function openMatMenu(btn) {
+  const menu = $('#matMenu');
+  if (!menu.hidden) { menu.hidden = true; return; }
+  const item = p => `<button type="button" role="menuitem" data-key="${p.key}"><span class="swatch" style="background:${p.color}"></span>${esc(p.name)}<small>${p.density < 0.01 ? p.density.toExponential(2) : +p.density.toFixed(3)} g/cm³</small></button>`;
+  menu.innerHTML = '<h4>PNNL-15870 Rev. 1 compendium</h4>' + PRESETS.filter(p => p.ref.startsWith('PNNL')).map(item).join('') +
+    '<h4>Detector fill</h4>' + PRESETS.filter(p => !p.ref.startsWith('PNNL')).map(item).join('') +
+    '<h4>Other</h4><button type="button" role="menuitem" data-key="custom"><span class="swatch" style="background:#b48ead"></span>Custom material</button>';
+  const r = btn.getBoundingClientRect();
+  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 270)) + 'px';
+  menu.style.top = (r.bottom + 4) + 'px';
+  menu.hidden = false;
+  menu.querySelector('button').focus();
+}
+
+/* ───────── Explorer tree ───────── */
+const collapsed = {};
+function shapeMeta(p) {
+  if (p.shape === 'sphere') return `r ${p.r}`;
+  if (p.shape === 'cylinder') return `r ${p.r} · ${p.h}`;
+  return `${p.sx}×${p.sy}×${p.sz}`;
+}
+function energyMeta(s) {
+  if (s.energy === 'lines') { const ls = parseLines(s.lines).out; return ls.length === 1 ? `${ls[0].e} MeV` : `${ls.length} lines`; }
+  return {watt:'Watt', maxwell:'Maxwell', uniform:'uniform'}[s.energy];
+}
+function renderTree() {
+  const item = (kind, id, glyph, label, meta) =>
+    `<button type="button" class="titem${sel.kind === kind && (id === undefined || sel.id === id) ? ' is-sel' : ''}" data-kind="${kind}" data-id="${id || ''}"` +
+    (LISTS[kind] ? ` title="Drag to reorder · Alt+↑/↓">` + `<span class="grip" aria-hidden="true"><svg width="8" height="12" viewBox="0 0 8 12" fill="currentColor"><circle cx="2" cy="2" r="1"/><circle cx="6" cy="2" r="1"/><circle cx="2" cy="6" r="1"/><circle cx="6" cy="6" r="1"/><circle cx="2" cy="10" r="1"/><circle cx="6" cy="10" r="1"/></svg></span>` : '>') +
+    `<span class="glyph">${glyph}</span><span class="tname">${esc(label)}</span><span class="tmeta">${esc(meta || '')}</span></button>`;
+  const group = (key, title, count, addTitle, body) => {
+    const open = !collapsed[key];
+    return `<div class="tgroup"><div class="thead"><button type="button" class="ttoggle" data-group="${key}" aria-expanded="${open}">` +
+      `<svg class="caret" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>${title} <span class="count">${count}</span></button>` +
+      (addTitle ? `<button type="button" class="tadd" data-add="${key}" title="${addTitle}" aria-label="${addTitle}">+</button>` : '') +
+      `</div><div ${open ? '' : 'hidden'}>${body}</div></div>`;
+  };
+  const empty = t => `<div class="tempty">${t}</div>`;
+  const matName = id => id === 'void' ? 'void' : ((matById(id) || {}).name || 'missing');
+  let h = '';
+  h += group('materials', 'Materials', S.materials.length, 'Add material',
+    S.materials.map(m => item('material', m.id, `<span class="swatch" style="background:${esc(m.color)}"></span>`, m.name, `${m.density < 0.01 ? m.density.toExponential(1) : m.density}`)).join('') || empty('No materials yet'));
+  h += group('parts', 'Geometry', S.parts.length + 1, 'Add sphere',
+    S.parts.map(p => item('part', p.id, ic(p.shape, 14), p.name, matName(p.material))).join('') +
+    item('world', undefined, ic('world', 14), 'World boundary', `${S.settings.worldShape} ${S.settings.worldR}`));
+  h += group('sources', 'Sources', S.sources.length, 'Add neutron source',
+    S.sources.map(s => item('source', s.id, ic('source', 14), s.name, energyMeta(s))).join('') || empty('Add a source to run'));
+  h += group('tallies', 'Tallies', S.tallies.length, 'Add cell tally',
+    S.tallies.map(t => item('tally', t.id, ic(t.kind === 'mesh' ? 'meshTally' : 'cellTally', 14), t.name, t.kind === 'mesh' ? `${t.nx}×${t.ny}×${t.nz}` : `${t.cells.length} cell${t.cells.length === 1 ? '' : 's'}`)).join('') || empty('No tallies'));
+  h += group('settings', 'Run', 1, null, item('settings', undefined, ic('settings', 14), 'Settings', `seed ${S.settings.seed}`));
+  $('#tree').innerHTML = h;
+}
+
+/* ───────── Properties ───────── */
+const F = (type, key, label, o = {}) => ({type, key, label, ...o});
+const note = html => ({type:'note', html});
+const matOptions = () => [['void', 'Void (empty)'], ...S.materials.map(m => [m.id, m.name])];
+function specFor(kind, o) {
+  const st = S.settings;
+  if (kind === 'material') {
+    const users = S.parts.filter(p => p.material === o.id).map(p => p.name).concat(st.worldFill === o.id ? ['World'] : []);
+    return [
+      {title:'Material', fields:[F('text', 'name', 'Name'), F('color', 'color', 'View color'),
+        note(users.length ? `Used by ${users.map(esc).join(', ')}.` : 'Not used by any part yet.')]},
+      {title:'Composition', fields:[
+        F('num', 'density', 'Density', {unit:'g/cm³'}),
+        F('select', 'frac', 'Fractions', {options:() => [['wo', 'Weight (MCNP negative)'], ['ao', 'Atom (MCNP positive)']]}),
+        F('text', 'comps', 'Components', {wide:true, hint:'Element or nuclide : amount, comma separated. H:2 adds natural hydrogen; U235:0.03 adds one nuclide. Amounts are normalized.'}),
+        F('text', 'sab', 'S(α,β)', {placeholder:'none', hint:'Thermal scattering table for moderators, like c_H_in_H2O. Same role as the MT card in MCNP.'}),
+        note(o.ref ? `Source: <code>${esc(o.ref)}</code>${o.ref.startsWith('PNNL') ? ' — PNNL-15870 Rev. 1.' : ''}` : 'Custom material.')
+      ]}
+    ];
+  }
+  if (kind === 'part') {
+    const i = S.parts.indexOf(o), cyl = () => o.shape === 'cylinder', sph = () => o.shape === 'sphere', box = () => o.shape === 'box';
+    return [
+      {title:'Part', fields:[F('text', 'name', 'Name'), F('select', 'material', 'Material', {options:matOptions}),
+        note(`Priority ${i + 1} of ${S.parts.length}. Parts higher in the Explorer win where shapes overlap. Drag it in the Explorer, or press Alt+↑/↓. MCNP cell ${i + 1}.`)]},
+      {title:'Shape', fields:[
+        F('select', 'shape', 'Shape', {options:() => [['sphere', 'Sphere (SPH)'], ['cylinder', 'Cylinder (RCC)'], ['box', 'Box (RPP)']]}),
+        F('vec', null, 'Center', {keys:['x', 'y', 'z'], unit:'cm'}),
+        F('num', 'r', 'Radius', {unit:'cm', show:() => sph() || cyl()}),
+        F('num', 'h', 'Height', {unit:'cm', show:cyl}),
+        F('select', 'axis', 'Axis', {options:() => [['x', 'x'], ['y', 'y'], ['z', 'z']], show:cyl}),
+        F('vec', null, 'Size', {keys:['sx', 'sy', 'sz'], unit:'cm', show:box})
+      ]}
+    ];
+  }
+  if (kind === 'source') {
+    const sp = v => () => o.space === v, en = v => () => o.energy === v;
+    return [
+      {title:'Source', fields:[F('text', 'name', 'Name'),
+        F('select', 'particle', 'Particle', {options:() => [['neutron', 'Neutron (PAR=1)'], ['photon', 'Photon (PAR=2)']]}),
+        F('num', 'strength', 'Strength', {hint:'Relative weight when there is more than one source.'})]},
+      {title:'Position', fields:[
+        F('select', 'space', 'Shape', {options:() => [['point', 'Point'], ['box', 'Box volume'], ['sphere', 'Sphere volume'], ['cylinder', 'Cylinder volume (z axis)']]}),
+        F('vec', null, 'Center', {keys:['x', 'y', 'z'], unit:'cm', show:() => o.space !== 'box'}),
+        F('num', 'rin', 'Inner radius', {unit:'cm', show:() => o.space === 'sphere' || o.space === 'cylinder'}),
+        F('num', 'r', 'Outer radius', {unit:'cm', show:() => o.space === 'sphere' || o.space === 'cylinder'}),
+        F('num', 'h', 'Height', {unit:'cm', show:sp('cylinder')}),
+        F('vec', null, 'Lower corner', {keys:['x0', 'y0', 'z0'], unit:'cm', show:sp('box')}),
+        F('vec', null, 'Upper corner', {keys:['x1', 'y1', 'z1'], unit:'cm', show:sp('box')})
+      ]},
+      {title:'Direction', fields:[
+        F('select', 'angle', 'Emission', {options:() => [['isotropic', 'Isotropic'], ['mono', 'Beam (one direction)']]}),
+        F('vec', null, 'Direction', {keys:['u', 'v', 'w'], show:() => o.angle === 'mono', hint:'Any length; it is normalized. Same as VEC with DIR=1.'})
+      ]},
+      {title:'Energy', fields:[
+        F('select', 'energy', 'Spectrum', {options:() => [['lines', 'Discrete lines'], ['watt', 'Watt fission'], ['maxwell', 'Maxwell fission'], ['uniform', 'Uniform']]}),
+        F('text', 'lines', 'Lines', {show:en('lines'), hint:'MeV:intensity, comma separated. 14.1:1 is D-T; 2.45:1 is D-D; 1.1732:1, 1.3325:1 is Co-60.'}),
+        F('num', 'wa', 'a', {unit:'MeV', show:en('watt')}), F('num', 'wb', 'b', {unit:'1/MeV', show:en('watt'), hint:'U-235 thermal fission: a = 0.988, b = 2.249.'}),
+        F('num', 'theta', 'Temperature', {unit:'MeV', show:en('maxwell')}),
+        F('num', 'emin', 'Minimum', {unit:'MeV', show:en('uniform')}), F('num', 'emax', 'Maximum', {unit:'MeV', show:en('uniform')})
+      ]},
+      {title:'MCNP equivalent', fields:[{type:'mcnp', text:() => mcnpSource(o)}]}
+    ];
+  }
+  if (kind === 'tally') {
+    const mesh = () => o.kind === 'mesh';
+    const cellOpts = () => S.parts.map(p => [p.id, p.name]).concat([['world', 'World']]);
+    return [
+      {title:'Tally', fields:[F('text', 'name', 'Name'),
+        F('select', 'kind', 'Filter', {options:() => [['cell', 'Cells (like F4)'], ['mesh', 'Regular mesh (like FMESH)']]}),
+        F('multi', 'cells', 'Cells', {options:cellOpts, show:() => !mesh()}),
+        F('vec', null, 'Bins', {keys:['nx', 'ny', 'nz'], int:true, show:mesh}),
+        F('vec', null, 'Lower corner', {keys:['lx', 'ly', 'lz'], unit:'cm', show:mesh}),
+        F('vec', null, 'Upper corner', {keys:['ux', 'uy', 'uz'], unit:'cm', show:mesh}),
+        F('multi', 'scores', 'Scores', {options:() => SCORES.map(s => [s, s])}),
+        F('text', 'ebins', 'Energy edges', {placeholder:'none', hint:'MeV, rising, including the lowest edge: 0, 5e-7, 0.1, 20 gives thermal, epithermal and fast bins.'})
+      ]},
+      {title:'MCNP equivalent', fields:[{type:'mcnp', text:() => mcnpTally(o, S.tallies.indexOf(o))}]}
+    ];
+  }
+  if (kind === 'world') {
+    return [{title:'World boundary', fields:[
+      F('select', 'worldShape', 'Shape', {options:() => [['box', 'Cube'], ['sphere', 'Sphere']]}),
+      F('num', 'worldR', st.worldShape === 'box' ? 'Half-width' : 'Radius', {unit:'cm'}),
+      F('select', 'worldBC', 'Boundary', {options:() => [['vacuum', 'Vacuum (particles escape)'], ['reflective', 'Reflective']]}),
+      F('select', 'worldFill', 'Fill', {options:matOptions, hint:'What fills the world outside every part. Vacuum boundary is the IMP:N=0 graveyard in MCNP.'})
+    ]}];
+  }
+  return [
+    {title:'Project', fields:[F('text', 'name', 'Name')]},
+    {title:'Run', fields:[
+      F('select', 'runMode', 'Mode', {options:() => [['fixed source', 'Fixed source (SDEF)'], ['eigenvalue', 'Eigenvalue (KCODE)']]}),
+      F('int', 'particles', 'Particles', {unit:'per batch'}),
+      F('int', 'batches', 'Batches'),
+      F('int', 'inactive', 'Inactive', {show:() => st.runMode === 'eigenvalue', hint:'Batches discarded while the fission source converges, like the skipped cycles in KCODE.'}),
+      F('check', 'photon', 'Photons', {text:'Transport photons'})
+    ]},
+    {title:'Random numbers', fields:[
+      F('seed', 'seed', 'Seed', {hint:'Same seed and same model give the same particle histories, so a run can be repeated exactly.'})
+    ]},
+    {title:'Particle tracks', fields:[
+      F('int', 'maxTracks', 'Write first', {unit:'tracks', hint:'Saves the paths of N particles to tracks.h5. Which N depends on thread timing, but each one is still reproducible. 0 turns it off.'}),
+      F('text', 'track', 'Track these', {placeholder:'1, 1, 42; 3, 1, 7', hint:'batch, generation, particle — separated by semicolons. Saves exactly these neutrons; the same seed gives the same paths every run.'})
+    ]}
+  ];
+}
+
+function fieldEl(f, obj) {
+  const row = document.createElement('div');
+  row.className = 'prow';
+  row.dataset.label = (f.label || '').toLowerCase();
+  if (f.type === 'note') { row.classList.add('note'); row.innerHTML = `<p>${f.html}</p>`; return row; }
+  if (f.type === 'mcnp') { row.classList.add('note'); row.dataset.label = 'mcnp'; row.innerHTML = `<pre class="mcnp">${esc(f.text())}</pre>`; return row; }
+  const fid = `f-${sel.kind}-${f.key || f.keys.join('')}`;
+  const lab = document.createElement('label');
+  lab.textContent = f.label; lab.htmlFor = fid;
+  const ctl = document.createElement('div'); ctl.className = 'pctl';
+  row.append(lab, ctl);
+  const numIn = (id, key, isInt, aria) => {
+    const i = document.createElement('input');
+    i.type = 'number'; i.id = id; i.step = isInt ? '1' : 'any';
+    i.value = fin(obj[key]) ? obj[key] : '';
+    if (aria) i.setAttribute('aria-label', aria);
+    i.addEventListener('input', () => { obj[key] = i.value === '' ? NaN : (isInt ? Number(i.value) : parseFloat(i.value)); schedule(); });
+    return i;
+  };
+  const unit = () => { if (f.unit) ctl.insertAdjacentHTML('beforeend', `<span class="unit">${f.unit}</span>`); };
+  switch (f.type) {
+    case 'text': {
+      const i = document.createElement('input');
+      i.type = 'text'; i.id = fid; i.value = obj[f.key] ?? ''; i.spellcheck = false;
+      if (f.placeholder) i.placeholder = f.placeholder;
+      i.addEventListener('input', () => { obj[f.key] = i.value; schedule(); });
+      i.addEventListener('change', () => { if (sel.kind === 'source' || sel.kind === 'tally') refreshMcnp(); });
+      ctl.appendChild(i); break;
+    }
+    case 'num': case 'int': ctl.appendChild(numIn(fid, f.key, f.type === 'int')); unit(); break;
+    case 'vec': {
+      ctl.classList.add('vec');
+      f.keys.forEach((k, j) => {
+        const w = document.createElement('span'); w.className = 'vcell';
+        w.innerHTML = `<span>${f.int ? 'xyz'[j] : (f.keys[0] === 'u' ? 'uvw' : 'xyz')[j]}</span>`;
+        w.appendChild(numIn(j ? `${fid}-${j}` : fid, k, f.int, `${f.label} ${'xyz'[j]}`));
+        ctl.appendChild(w);
+      });
+      if (f.unit) row.querySelector('label').textContent = `${f.label} (${f.unit})`;
+      break;
+    }
+    case 'select': {
+      const s = document.createElement('select'); s.id = fid;
+      f.options().forEach(([v, t]) => s.add(new Option(t, v, false, String(obj[f.key]) === String(v))));
+      s.addEventListener('change', () => { obj[f.key] = s.value; renderProps(); schedule(); const again = document.getElementById(fid); if (again) again.focus(); });
+      ctl.appendChild(s); break;
+    }
+    case 'color': {
+      const i = document.createElement('input'); i.type = 'color'; i.id = fid; i.value = obj[f.key];
+      i.addEventListener('input', () => { obj[f.key] = i.value; schedule(); });
+      ctl.appendChild(i); break;
+    }
+    case 'check': {
+      const w = document.createElement('label'); w.className = 'chk';
+      const c = document.createElement('input'); c.type = 'checkbox'; c.id = fid; c.checked = !!obj[f.key];
+      c.addEventListener('change', () => { obj[f.key] = c.checked; schedule(); });
+      w.append(c, document.createTextNode(f.text || ''));
+      ctl.appendChild(w); break;
+    }
+    case 'multi': {
+      ctl.classList.add('multi');
+      const opts = f.options();
+      if (!opts.length) ctl.innerHTML = '<span class="unit">Nothing to pick yet</span>';
+      opts.forEach(([v, t], j) => {
+        const w = document.createElement('label'); w.className = 'chk';
+        const c = document.createElement('input'); c.type = 'checkbox'; c.id = j ? `${fid}-${j}` : fid; c.checked = obj[f.key].includes(v);
+        c.addEventListener('change', () => {
+          const set = new Set(obj[f.key]); c.checked ? set.add(v) : set.delete(v);
+          obj[f.key] = opts.map(o => o[0]).filter(x => set.has(x));
+          refreshMcnp(); schedule();
+        });
+        w.append(c, document.createTextNode(t));
+        ctl.appendChild(w);
+      });
+      break;
+    }
+    case 'seed': {
+      ctl.appendChild(numIn(fid, f.key, true));
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'tbtn'; b.innerHTML = ic('dice', 14) + 'New';
+      b.addEventListener('click', newSeed);
+      ctl.appendChild(b); break;
+    }
+  }
+  if (f.hint) row.insertAdjacentHTML('beforeend', `<p class="hint">${esc(f.hint)}</p>`);
+  return row;
+}
+function renderProps() {
+  const box = $('#props'), obj = getSel();
+  if (!obj) { box.innerHTML = '<p class="empty">Select something in the Explorer or click the viewport.</p>'; $('#propsTitle').textContent = ''; return; }
+  box.innerHTML = '';
+  specFor(sel.kind, obj).forEach(sec => {
+    const s = document.createElement('section'); s.className = 'psec';
+    s.innerHTML = `<h3>${esc(sec.title)}</h3>`;
+    sec.fields.forEach(f => { if (!f.show || f.show()) s.appendChild(fieldEl(f, obj)); });
+    box.appendChild(s);
+  });
+  renderPropsTitle(); applyPropFilter();
+}
+function refreshMcnp() {
+  const obj = getSel(); if (!obj) return;
+  const pre = $('#props .mcnp');
+  if (pre) pre.textContent = sel.kind === 'source' ? mcnpSource(obj) : mcnpTally(obj, S.tallies.indexOf(obj));
+}
+function renderPropsTitle() {
+  const obj = getSel();
+  const t = sel.kind === 'world' ? 'World boundary' : sel.kind === 'settings' ? 'Settings' : obj ? obj.name : '';
+  $('#propsTitle').textContent = t ? `— ${t}` : '';
+}
+function applyPropFilter() {
+  const q = $('#propFilter').value.trim().toLowerCase();
+  document.querySelectorAll('#props .psec').forEach(sec => {
+    let any = false;
+    sec.querySelectorAll('.prow').forEach(r => { const hit = !q || r.dataset.label.includes(q); r.hidden = !hit; any = any || hit; });
+    sec.hidden = !any;
+  });
+}
+
+
+/* ───────── Local runner (active only when a Studio server serves this page) ───────── */
+const LOCAL = {on:false, token:'', run:null, es:null, results:null, resultsRun:null, mesh:0, selTrack:null};
+(function initToken() {
+  if (IN_ARTIFACT || !/^https?:$/.test(location.protocol)) return;
+  const q = new URLSearchParams(location.search);
+  let t = q.get('token');
+  try { if (t) sessionStorage.setItem('studio-token', t); else t = sessionStorage.getItem('studio-token'); } catch (e) {}
+  if (q.has('token')) history.replaceState(null, '', location.pathname); // keep the token out of history and screenshots
+  LOCAL.token = t || '';
+})();
+async function api(path, opts = {}) {
+  const res = await fetch(path, {...opts, headers:{'X-Studio-Token':LOCAL.token, 'Content-Type':'application/json', ...(opts.headers || {})}});
+  const body = res.headers.get('content-type')?.includes('json') ? await res.json() : await res.text();
+  if (!res.ok) throw new Error((body && body.error) || `HTTP ${res.status}`);
+  return body;
+}
+async function localInit() {
+  if (!LOCAL.token) return;
+  let h;
+  try { h = await api('/api/health'); } catch (e) {
+    log('error', `Can't reach the Studio server: ${esc(e.message)}. Start Studio from its launcher.`);
+    return;
+  }
+  LOCAL.on = true;
+  $('#otResults').hidden = false; $('#otRuns').hidden = false;
+  log(h.cross_sections_found ? 'ok' : 'warn',
+    `Connected to the local runner: OpenMC ${esc(h.openmc)}, Python ${esc(h.python)}. Runs are saved in <code>${esc(h.runs_dir)}</code>.` +
+    (h.cross_sections_found ? '' : ' <b>OPENMC_CROSS_SECTIONS is not set or the file is missing</b>, so runs will fail. Run point_conda_env_here.sh.'));
+  $('#runChip').dataset.local = `OpenMC ${h.openmc}`;
+  renderResults(); refreshRuns();
+}
+function setRunning(on) {
+  const b = $('#runBtn');
+  b.classList.toggle('stop', on);
+  b.innerHTML = on ? '<svg width="12" height="12" viewBox="0 0 18 18" aria-hidden="true"><rect x="4" y="4" width="10" height="10" fill="currentColor"/></svg>Stop'
+                   : '<svg width="12" height="12" viewBox="0 0 18 18" aria-hidden="true"><path d="M5 3l10 6-10 6z" fill="currentColor"/></svg>Run';
+}
+async function localRun() {
+  if (LOCAL.run) { // Run button doubles as Stop
+    try { await api(`/api/runs/${LOCAL.run}/stop`, {method:'POST', body:'{}'}); log('warn', 'Stopping the run…'); } catch (e) { log('error', esc(e.message)); }
+    return;
+  }
+  const P = problems(), errs = P.filter(p => p.sev === 'error');
+  setOutTab('log');
+  if (errs.length) { log('error', `Not run: fix ${errs.length} problem${errs.length === 1 ? '' : 's'} first (see Problems).`); return; }
+  let meta;
+  try { meta = await api('/api/run', {method:'POST', body:JSON.stringify({script:generate(P), project:S, name:S.settings.name})}); }
+  catch (e) { log('error', `Couldn't start the run: ${esc(e.message)}`); return; }
+  LOCAL.run = meta.id; setRunning(true);
+  log('info', `Run <code>${esc(meta.id)}</code> started with seed ${S.settings.seed}.`);
+  streamRun(meta.id);
+  refreshRuns();
+}
+function streamRun(id) {
+  const ul = $('#log');
+  let shown = 0;
+  const es = new EventSource(`/api/runs/${encodeURIComponent(id)}/stream?token=${encodeURIComponent(LOCAL.token)}`);
+  LOCAL.es = es;
+  es.addEventListener('line', ev => {
+    const {text} = JSON.parse(ev.data);
+    const li = document.createElement('li'); li.className = 'raw'; li.textContent = text;
+    ul.appendChild(li);
+    if (++shown > 3000) ul.querySelector('li.raw')?.remove();
+    ul.scrollTop = ul.scrollHeight;
+  });
+  es.addEventListener('end', async ev => {
+    es.close(); LOCAL.es = null; LOCAL.run = null; setRunning(false);
+    const m = JSON.parse(ev.data);
+    const secs = m.ended && m.started ? ` in ${(m.ended - m.started).toFixed(1)} s` : '';
+    if (m.status === 'done') { log('ok', `Run finished${secs}. Loading results…`); await loadResults(id, true); }
+    else if (m.status === 'stopped') log('warn', 'Run stopped.');
+    else log('error', `Run ${esc(m.status)} (exit code ${m.returncode}). Read the output above for the OpenMC error.`);
+    refreshRuns();
+  });
+  es.onerror = () => { if (es.readyState === EventSource.CLOSED && LOCAL.run === id) { LOCAL.run = null; setRunning(false); log('error', 'Lost the connection to the Studio server.'); } };
+}
+async function loadResults(id, switchTab) {
+  try { LOCAL.results = await api(`/api/runs/${encodeURIComponent(id)}/results`); LOCAL.resultsRun = id; }
+  catch (e) { log('error', `Couldn't load results for ${esc(id)}: ${esc(e.message)}`); return; }
+  LOCAL.selTrack = null; LOCAL.mesh = 0;
+  renderResults();
+  if (switchTab) setOutTab('results');
+  schedule();
+}
+const relClass = r => r === null ? '' : r < 0.1 ? 'rel-ok' : r < 0.5 ? 'rel-q' : 'rel-bad';
+const sci = v => v === 0 ? '0' : Math.abs(v) >= 1e-2 && Math.abs(v) < 1e4 ? (+v.toPrecision(4)).toString() : v.toExponential(3);
+function renderResults() {
+  const box = $('#results'), R = LOCAL.results;
+  if (!R) { box.innerHTML = '<p class="envline">Run the model to see tallies here. Past runs are under Runs.</p>'; $('#layers').hidden = true; return; }
+  const s = R.summary || {};
+  let h = `<h4>Run ${esc(LOCAL.resultsRun)}</h4><p class="envline">${esc(s.run_mode || '')} · ${s.particles?.toLocaleString?.() ?? '?'} × ${s.batches ?? '?'} batches · seed ${s.seed ?? '?'} · ${s.runtime_s ? s.runtime_s.toFixed(1) + ' s' : ''}` +
+    (s.keff ? ` · k-eff ${s.keff[0].toFixed(5)} ± ${s.keff[1].toFixed(5)}` : '') + `</p>`;
+  R.tallies.forEach(t => {
+    if (t.kind === 'table') {
+      const nl = t.rows[0]?.labels.length || 0;
+      h += `<h4>${esc(t.name)}</h4><div style="overflow-x:auto"><table class="rtable"><thead><tr>${t.filters.map(f => `<th>${esc(f.replace('Filter', ''))}</th>`).join('')}<th>Score</th><th class="num">Mean</th><th class="num">Rel. error</th></tr></thead><tbody>` +
+        t.rows.map(r => `<tr>${r.labels.map(l => `<td>${esc(l)}</td>`).join('')}${nl ? '' : ''}<td>${esc(r.score)}</td><td class="num">${sci(r.mean)}</td><td class="num ${relClass(r.rel_err)}">${r.rel_err === null ? '—' : (100 * r.rel_err).toFixed(1) + '%'}</td></tr>`).join('') +
+        '</tbody></table></div>';
+    } else {
+      const v = t.values[t.scores[0]], nz = v.filter(x => x > 0);
+      h += `<h4>${esc(t.name)}</h4><p class="envline">${t.dims.join(' × ')} mesh · ${esc(t.scores[0])} ${nz.length ? `${sci(Math.min(...nz))} to ${sci(Math.max(...nz))}` : 'all zero'} · shown on the viewport</p>`;
+    }
+  });
+  if (R.tracks.length) h += `<h4>Tracks</h4><p class="envline">${R.tracks.length} particle${R.tracks.length === 1 ? '' : 's'} drawn on the viewport, colored by energy. Click one to select it, then Replay neutron.${R.tracks_truncated ? ' Long tracks are thinned for drawing.' : ''}</p>`;
+  h += '<p class="envline">Relative error: <span class="rel-ok">under 10% generally reliable</span>, <span class="rel-q">10–50% questionable</span>, <span class="rel-bad">over 50% not meaningful</span>.</p>';
+  box.innerHTML = h;
+  const meshes = R.tallies.filter(t => t.kind === 'mesh');
+  $('#meshPick').innerHTML = meshes.map((t, i) => `<option value="${i}">${esc(t.name)}</option>`).join('');
+  $('#meshPick').hidden = meshes.length < 2;
+  $('#showMesh').parentElement.hidden = !meshes.length;
+  $('#showTracks').parentElement.hidden = !R.tracks.length;
+  $('#replayBtn').hidden = !LOCAL.selTrack;
+  $('#layers').hidden = !meshes.length && !R.tracks.length;
+}
+async function refreshRuns() {
+  if (!LOCAL.on) return;
+  let list;
+  try { list = (await api('/api/runs')).runs; } catch (e) { return; }
+  const when = t => t ? new Date(t * 1000).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
+  $('#runs').innerHTML = list.length ? list.map(r =>
+    `<div class="runrow"><span class="statusdot ${esc(r.status)}" title="${esc(r.status)}"></span><span class="rname">${esc(r.name)} <span class="rmeta">${esc(r.id)}</span></span>` +
+    `<span class="rmeta">${esc(r.status)} · ${when(r.started)}</span>` +
+    `<button class="tbtn" type="button" data-results="${esc(r.id)}" ${r.status === 'done' ? '' : 'disabled'}>Results</button>` +
+    `<button class="tbtn" type="button" data-load="${esc(r.id)}">Open model</button></div>`).join('')
+    : '<p class="envline">No runs yet.</p>';
+}
+$('#runs').addEventListener('click', async e => {
+  const r = e.target.closest('[data-results]'), l = e.target.closest('[data-load]');
+  if (r) loadResults(r.dataset.results, true);
+  if (l) {
+    try {
+      const o = await api(`/api/runs/${encodeURIComponent(l.dataset.load)}/project`);
+      if (!validProject(o)) throw new Error('project file is incomplete');
+      o.settings = {...DEFAULT_SETTINGS, ...o.settings};
+      S = o; sel = {kind:'settings'};
+      log('ok', `Opened the model from run ${esc(l.dataset.load)}.`); renderAll();
+    } catch (err) { log('error', `Couldn't open that model: ${esc(err.message)}`); }
+  }
+});
+
+/* overlays */
+const VIRIDIS = [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]];
+const ENERGY = [[90, 130, 255], [70, 215, 205], [250, 205, 80], [255, 95, 70]];
+function ramp(stops, t) {
+  t = Math.max(0, Math.min(1, t)) * (stops.length - 1);
+  const i = Math.min(Math.floor(t), stops.length - 2), f = t - i, a = stops[i], b = stops[i + 1];
+  return [0, 1, 2].map(k => Math.round(a[k] + (b[k] - a[k]) * f));
+}
+const energyColor = E => { const [r, g, b] = ramp(ENERGY, (Math.log10(Math.max(E, 1e-3)) + 3) / 10.3); return `rgb(${r},${g},${b})`; };
+function drawMeshOverlay(ctx, cx, cy, scale, W, H) {
+  const R = LOCAL.results;
+  if (!R || !$('#showMesh').checked) return;
+  const t = R.tallies.filter(x => x.kind === 'mesh')[+($('#meshPick').value || 0)];
+  if (!t) return;
+  const [nx, ny, nz] = t.dims, lo = t.lower, hi = t.upper, v = t.values[t.scores[0]];
+  const ax = {xy:[0, 1, 2], xz:[0, 2, 1], yz:[1, 2, 0]}[view.plane], n = [nx, ny, nz];
+  const kIdx = Math.floor((view.slice - lo[ax[2]]) / (hi[ax[2]] - lo[ax[2]]) * n[ax[2]]);
+  if (kIdx < 0 || kIdx >= n[ax[2]]) return;
+  const at = (a, b) => { const ijk = [0, 0, 0]; ijk[ax[0]] = a; ijk[ax[1]] = b; ijk[ax[2]] = kIdx; return v[ijk[0] + nx * (ijk[1] + ny * ijk[2])]; };
+  let mn = Infinity, mx = 0;
+  for (let a = 0; a < n[ax[0]]; a++) for (let b = 0; b < n[ax[1]]; b++) { const x = at(a, b); if (x > 0) { mn = Math.min(mn, x); mx = Math.max(mx, x); } }
+  if (!(mx > 0)) return;
+  const lmn = Math.log10(mn), span = Math.max(Math.log10(mx) - lmn, 1e-9);
+  const du = (hi[ax[0]] - lo[ax[0]]) / n[ax[0]] * scale, dv = (hi[ax[1]] - lo[ax[1]]) / n[ax[1]] * scale;
+  ctx.globalAlpha = 0.8;
+  for (let a = 0; a < n[ax[0]]; a++) for (let b = 0; b < n[ax[1]]; b++) {
+    const x = at(a, b); if (!(x > 0)) continue;
+    const [r, g, bl] = ramp(VIRIDIS, (Math.log10(x) - lmn) / span);
+    ctx.fillStyle = `rgb(${r},${g},${bl})`;
+    ctx.fillRect(cx + (lo[ax[0]] * scale) + a * du, cy - (lo[ax[1]] * scale) - (b + 1) * dv, Math.ceil(du) + .5, Math.ceil(dv) + .5);
+  }
+  ctx.globalAlpha = 1;
+  // colorbar
+  const bx = W - 180, by = 12, bw = 150, bh = 8;
+  for (let i = 0; i < bw; i++) { const [r, g, bl] = ramp(VIRIDIS, i / bw); ctx.fillStyle = `rgb(${r},${g},${bl})`; ctx.fillRect(bx + i, by, 1, bh); }
+  ctx.fillStyle = 'rgba(216,221,227,.8)'; ctx.font = '10.5px "JetBrains Mono", Consolas, monospace';
+  ctx.textAlign = 'left'; ctx.fillText(sci(mn), bx, by + bh + 12);
+  ctx.textAlign = 'right'; ctx.fillText(sci(mx), bx + bw, by + bh + 12);
+  ctx.textAlign = 'center'; ctx.fillText(`${t.scores[0]} (log)`, bx + bw / 2, by + bh + 24);
+  ctx.textAlign = 'left';
+  return true;
+}
+function projUV(x, y, z) { return view.plane === 'xy' ? [x, y] : view.plane === 'xz' ? [x, z] : [y, z]; }
+function drawTracksOverlay(ctx, cx, cy, scale) {
+  const R = LOCAL.results;
+  if (!R || !R.tracks.length || !$('#showTracks').checked) return;
+  const sel = LOCAL.selTrack;
+  R.tracks.forEach(tr => {
+    const isSel = sel && tr.id.join() === sel.join();
+    tr.tracks.forEach(pt => {
+      const p = pt.xyz, n = p.length / 3;
+      if (n < 2) return;
+      ctx.lineWidth = isSel ? 2.4 : 1.1;
+      ctx.globalAlpha = sel && !isSel ? 0.25 : 0.9;
+      ctx.setLineDash(pt.particle === 'neutron' ? [] : [3, 3]);
+      for (let i = 1; i < n; i++) {
+        const [u0, v0] = projUV(p[3 * i - 3], p[3 * i - 2], p[3 * i - 1]), [u1, v1] = projUV(p[3 * i], p[3 * i + 1], p[3 * i + 2]);
+        ctx.strokeStyle = pt.particle === 'neutron' ? energyColor(pt.E[i - 1]) : 'rgb(255,214,102)';
+        ctx.beginPath(); ctx.moveTo(cx + u0 * scale, cy - v0 * scale); ctx.lineTo(cx + u1 * scale, cy - v1 * scale); ctx.stroke();
+      }
+    });
+  });
+  ctx.globalAlpha = 1; ctx.setLineDash([]);
+}
+function pickTrack(evt) {
+  const R = LOCAL.results;
+  if (!R || !R.tracks.length || !$('#showTracks').checked || !vpGeom) return false;
+  const rect = $('#vp').getBoundingClientRect(), mx = evt.clientX - rect.left, my = evt.clientY - rect.top;
+  const {cx, cy, scale} = vpGeom;
+  let best = null, bestD = 6;
+  R.tracks.forEach(tr => tr.tracks.forEach(pt => {
+    const p = pt.xyz;
+    for (let i = 1; i < p.length / 3; i++) {
+      const [u0, v0] = projUV(p[3 * i - 3], p[3 * i - 2], p[3 * i - 1]), [u1, v1] = projUV(p[3 * i], p[3 * i + 1], p[3 * i + 2]);
+      const ax = cx + u0 * scale, ay = cy - v0 * scale, bx = cx + u1 * scale, by = cy - v1 * scale;
+      const L2 = (bx - ax) ** 2 + (by - ay) ** 2, t = L2 ? Math.max(0, Math.min(1, ((mx - ax) * (bx - ax) + (my - ay) * (by - ay)) / L2)) : 0;
+      const d = Math.hypot(mx - (ax + t * (bx - ax)), my - (ay + t * (by - ay)));
+      if (d < bestD) { bestD = d; best = tr; }
+    }
+  }));
+  if (!best) { if (LOCAL.selTrack) { LOCAL.selTrack = null; $('#replayBtn').hidden = true; schedule(); } return false; }
+  LOCAL.selTrack = best.id;
+  const main = best.tracks[0], E = main.E;
+  const fmtE = e => e >= 1e6 ? `${(e / 1e6).toPrecision(3)} MeV` : e >= 1e3 ? `${(e / 1e3).toPrecision(3)} keV` : `${e.toPrecision(3)} eV`;
+  log('info', `Selected neutron (batch ${best.id[0]}, generation ${best.id[1]}, particle ${best.id[2]}): ${fmtE(E[0])} → ${fmtE(E[E.length - 1])}` +
+    `${best.tracks.length > 1 ? `, ${best.tracks.length - 1} secondary track${best.tracks.length > 2 ? 's' : ''}` : ''}. Replay neutron reruns just this one.`);
+  $('#replayBtn').hidden = false;
+  schedule();
+  return true;
+}
+$('#showMesh').addEventListener('change', schedule);
+$('#showTracks').addEventListener('change', schedule);
+$('#meshPick').addEventListener('change', schedule);
+$('#replayBtn').addEventListener('click', () => {
+  if (!LOCAL.selTrack) return;
+  S.settings.track = LOCAL.selTrack.join(', ');
+  log('info', `Set Track these to ${LOCAL.selTrack.join(', ')}. Same seed (${S.settings.seed}), so this run repeats that neutron exactly.`);
+  if (sel.kind === 'settings') renderProps();
+  schedule();
+  localRun();
+});
+
+/* ───────── Viewport: a 2D slice through the CSG, sampled per pixel ───────── */
+const AX = {xy:['x', 'y', 'z'], xz:['x', 'z', 'y'], yz:['y', 'z', 'x']};
+const hexRgb = h => { const n = parseInt(String(h).slice(1), 16); return fin(n) ? [n >> 16 & 255, n >> 8 & 255, n & 255] : [180, 142, 173]; };
+function toWorld(u, v) {
+  const s = view.slice;
+  return view.plane === 'xy' ? [u, v, s] : view.plane === 'xz' ? [u, s, v] : [s, u, v];
+}
+function project(x, y, z) { // world point -> [u, v, distance from slice]
+  return view.plane === 'xy' ? [x, y, z - view.slice] : view.plane === 'xz' ? [x, z, y - view.slice] : [y, z, x - view.slice];
+}
+let vpGeom = null;
+function drawViewport() {
+  const cv = $('#vp'), wrap = $('#vpwrap');
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  if (!W || !H || !$('#docView').offsetParent) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const ctx = cv.getContext('2d');
+  const R = fin(S.settings.worldR) && S.settings.worldR > 0 ? S.settings.worldR : 100;
+  const scale = Math.min(W, H) / (2 * R * 1.14) * view.zoom, cx = W / 2, cy = H / 2;
+  vpGeom = {W, H, scale, cx, cy};
+
+  const img = new ImageData(W, H), px = img.data, idx = new Int16Array(W * H);
+  const edges = new ImageData(W, H), ex = edges.data; // outlines only, redrawn above result overlays
+  const colors = S.parts.map(p => { const m = matById(p.material); return m ? hexRgb(m.color) : [34, 39, 45]; });
+  const fillM = matById(S.settings.worldFill), worldRgb = fillM ? hexRgb(fillM.color) : [30, 34, 39], outside = [14, 16, 19];
+  for (let j = 0; j < H; j++) {
+    const v = (cy - j - 0.5) / scale;
+    for (let i = 0; i < W; i++) {
+      const [x, y, z] = toWorld((i + 0.5 - cx) / scale, v);
+      idx[j * W + i] = cellIndexAt(x, y, z);
+    }
+  }
+  const selPart = sel.kind === 'part' ? S.parts.findIndex(p => p.id === sel.id) : sel.kind === 'world' ? -1 : -99;
+  for (let k = 0; k < W * H; k++) {
+    const c = idx[k], col = c >= 0 ? colors[c] : c === -1 ? worldRgb : outside, o = k * 4;
+    let r = col[0], g = col[1], b = col[2];
+    const i = k % W, right = i < W - 1 ? idx[k + 1] : c, down = k + W < W * H ? idx[k + W] : c;
+    const left = i > 0 ? idx[k - 1] : c, up = k >= W ? idx[k - W] : c;
+    const edge = c !== right || c !== down;
+    if (selPart !== -99 && c === selPart && (c !== right || c !== down || c !== left || c !== up)) { r = 82; g = 184; b = 255; ex[o] = r; ex[o + 1] = g; ex[o + 2] = b; ex[o + 3] = 255; }
+    else if (edge) { r = r * .35 + 235 * .65; g = g * .35 + 238 * .65; b = b * .35 + 242 * .65; ex[o] = 225; ex[o + 1] = 230; ex[o + 2] = 236; ex[o + 3] = 170; }
+    else if (c >= 0 && S.parts[c].material === 'void') { const stripe = ((i + Math.floor(k / W)) % 7) === 0; if (stripe) { r += 14; g += 16; b += 18; } }
+    px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = 255;
+  }
+  const off = document.createElement('canvas'); off.width = W; off.height = H;
+  off.getContext('2d').putImageData(img, 0, 0);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(off, 0, 0);
+  if (drawMeshOverlay(ctx, cx, cy, scale, W, H)) {
+    const eoff = document.createElement('canvas'); eoff.width = W; eoff.height = H;
+    eoff.getContext('2d').putImageData(edges, 0, 0);
+    ctx.drawImage(eoff, 0, 0);
+  }
+
+  const U = u => cx + u * scale, V = v => cy - v * scale;
+  ctx.font = '11px "JetBrains Mono", Consolas, monospace';
+
+  drawTracksOverlay(ctx, cx, cy, scale);
+  // mesh tallies
+  S.tallies.filter(t => t.kind === 'mesh').forEach(t => {
+    const [u0, v0] = project(t.lx, t.ly, t.lz), [u1, v1] = project(t.ux, t.uy, t.uz);
+    if (![u0, v0, u1, v1].every(fin)) return;
+    const on = sel.kind === 'tally' && sel.id === t.id;
+    ctx.setLineDash([5, 4]); ctx.lineWidth = on ? 2 : 1;
+    ctx.strokeStyle = on ? '#c89df2' : 'rgba(200,157,242,.55)';
+    ctx.strokeRect(U(Math.min(u0, u1)), V(Math.max(v0, v1)), Math.abs(u1 - u0) * scale, Math.abs(v1 - v0) * scale);
+    ctx.setLineDash([]);
+    if (on) { ctx.fillStyle = '#c89df2'; ctx.fillText(`${t.name}`, U(Math.min(u0, u1)) + 4, V(Math.max(v0, v1)) + 13); }
+  });
+
+  // sources
+  vpGeom.sources = [];
+  S.sources.forEach(s => {
+    const on = sel.kind === 'source' && sel.id === s.id;
+    const c = s.space === 'box' ? [(s.x0 + s.x1) / 2, (s.y0 + s.y1) / 2, (s.z0 + s.z1) / 2] : [s.x, s.y, s.z];
+    if (!c.every(fin)) return;
+    const [u, v, d] = project(...c), X = U(u), Y = V(v);
+    const col = s.particle === 'photon' ? '255,214,102' : '82,184,255';
+    ctx.lineWidth = on ? 2 : 1.25;
+    ctx.strokeStyle = `rgba(${col},${on ? 1 : .8})`;
+    ctx.setLineDash([4, 3]);
+    if (s.space === 'box') {
+      const [a0, b0] = project(s.x0, s.y0, s.z0), [a1, b1] = project(s.x1, s.y1, s.z1);
+      ctx.strokeRect(U(Math.min(a0, a1)), V(Math.max(b0, b1)), Math.abs(a1 - a0) * scale, Math.abs(b1 - b0) * scale);
+    } else if (s.space === 'sphere') {
+      ctx.beginPath(); ctx.arc(X, Y, s.r * scale, 0, 2 * Math.PI); ctx.stroke();
+    } else if (s.space === 'cylinder') {
+      if (view.plane === 'xy') { ctx.beginPath(); ctx.arc(X, Y, s.r * scale, 0, 2 * Math.PI); ctx.stroke(); }
+      else ctx.strokeRect(X - s.r * scale, Y - s.h / 2 * scale, 2 * s.r * scale, s.h * scale);
+    }
+    ctx.setLineDash([]);
+    const glow = ctx.createRadialGradient(X, Y, 0, X, Y, 16);
+    glow.addColorStop(0, `rgba(${col},.55)`); glow.addColorStop(1, `rgba(${col},0)`);
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(X, Y, 16, 0, 2 * Math.PI); ctx.fill();
+    ctx.beginPath(); ctx.arc(X, Y, 4.5, 0, 2 * Math.PI);
+    if (Math.abs(d) < 1e-6 || s.space !== 'point') { ctx.fillStyle = `rgb(${col})`; ctx.fill(); }
+    else { ctx.strokeStyle = `rgb(${col})`; ctx.lineWidth = 1.5; ctx.stroke(); }
+    if (on) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(X, Y, 8, 0, 2 * Math.PI); ctx.stroke(); }
+    if (s.angle === 'mono') {
+      const [du, dv] = project(s.u + (view.plane === 'yz' ? view.slice : 0), s.v + (view.plane === 'xz' ? view.slice : 0), s.w + (view.plane === 'xy' ? view.slice : 0));
+      const len = Math.hypot(du, dv);
+      if (len > 1e-6) {
+        const ex = X + du / len * 38, ey = Y - dv / len * 38, ang = Math.atan2(ey - Y, ex - X);
+        ctx.strokeStyle = `rgb(${col})`; ctx.lineWidth = 1.75;
+        ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(ex, ey);
+        ctx.lineTo(ex - 7 * Math.cos(ang - .45), ey - 7 * Math.sin(ang - .45));
+        ctx.moveTo(ex, ey); ctx.lineTo(ex - 7 * Math.cos(ang + .45), ey - 7 * Math.sin(ang + .45)); ctx.stroke();
+      }
+    }
+    if (on || S.sources.length > 1) { ctx.fillStyle = '#e8edf2'; ctx.fillText(s.name, X + 11, Y - 9); }
+    vpGeom.sources.push({id:s.id, X, Y});
+  });
+
+  // axis ticks
+  const [ha, va] = AX[view.plane];
+  const span = W / scale, raw = span / 8, p10 = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 5, 10].map(m => m * p10).find(s => s >= raw) || 10 * p10;
+  ctx.fillStyle = 'rgba(216,221,227,.62)'; ctx.strokeStyle = 'rgba(216,221,227,.35)'; ctx.lineWidth = 1;
+  ctx.textAlign = 'center';
+  for (let u = Math.ceil(-cx / scale / step) * step; U(u) < W; u += step) {
+    ctx.beginPath(); ctx.moveTo(U(u), H); ctx.lineTo(U(u), H - 5); ctx.stroke();
+    if (U(u) > 30 && U(u) < W - 30) ctx.fillText(+u.toPrecision(6), U(u), H - 8);
+  }
+  ctx.textAlign = 'left';
+  for (let v = Math.ceil(-(H - cy) / scale / step) * step; V(v) > 0; v += step) {
+    ctx.beginPath(); ctx.moveTo(0, V(v)); ctx.lineTo(5, V(v)); ctx.stroke();
+    if (V(v) > 44 && V(v) < H - 24) ctx.fillText(+v.toPrecision(6), 8, V(v) + 4);
+  }
+  ctx.fillStyle = '#d8dde3';
+  ctx.fillText(`${view.plane.toUpperCase()} slice at ${AX[view.plane][2]} = ${view.slice} cm`, 10, 16);
+  ctx.fillStyle = 'rgba(216,221,227,.62)';
+  ctx.fillText(`→ ${ha} (cm)   ↑ ${va} (cm)`, 10, 31);
+}
+function hitAt(evt) {
+  if (!vpGeom) return null;
+  const r = $('#vp').getBoundingClientRect(), mx = evt.clientX - r.left, my = evt.clientY - r.top;
+  const u = (mx - vpGeom.cx) / vpGeom.scale, v = (vpGeom.cy - my) / vpGeom.scale;
+  const [x, y, z] = toWorld(u, v);
+  const src = (vpGeom.sources || []).find(s => Math.hypot(s.X - mx, s.Y - my) < 10);
+  return {x, y, z, src, cell:cellIndexAt(x, y, z)};
+}
+
+/* ───────── Script, problems, legend, title ───────── */
+const PY_RE = /("""[\s\S]*?""")|(#[^\n]*)|("(?:[^"\\\n]|\\.)*")|\b(import|from|if|else|for|in|and|or|not|def|return|True|False|None)\b|\b(openmc(?:\.[A-Za-z_]\w*)*)|\b(\d+(?:\.\d+)?(?:e[-+]?\d+)?)\b/g;
+function highlight(src) {
+  const lines = [''];
+  const push = (cls, text) => text.split('\n').forEach((part, i) => {
+    if (i) lines.push('');
+    if (part) lines[lines.length - 1] += cls ? `<span class="t-${cls}">${esc(part)}</span>` : esc(part);
+  });
+  let last = 0, m;
+  PY_RE.lastIndex = 0;
+  while ((m = PY_RE.exec(src))) {
+    if (m.index > last) push(null, src.slice(last, m.index));
+    push(m[1] ? 'doc' : m[2] ? 'com' : m[3] ? 'str' : m[4] ? 'kw' : m[5] ? 'mod' : 'num', m[0]);
+    last = PY_RE.lastIndex;
+  }
+  push(null, src.slice(last));
+  if (lines[lines.length - 1] === '') lines.pop();
+  return lines.map(l => `<span class="ln">${l || ' '}</span>`).join('');
+}
+function renderProblems(P) {
+  const e = P.filter(p => p.sev === 'error').length, w = P.filter(p => p.sev === 'warn').length;
+  const badge = $('#probBadge');
+  badge.textContent = e ? e : w ? w : P.length;
+  badge.className = 'badge' + (e ? ' err' : w ? ' warn' : '');
+  $('#problems').innerHTML = P.length
+    ? P.map((p, i) => `<li class="${p.sel ? 'click' : ''}" data-i="${i}"><span class="sev ${p.sev}">${p.sev}</span><span class="omsg">${esc(p.text)}</span></li>`).join('')
+    : '<li><span class="sev ok">ok</span><span class="omsg">No problems. model.py is ready to run.</span></li>';
+  lastProblems = P;
+}
+let lastProblems = [];
+function renderLegend() {
+  const ids = [...new Set(S.parts.map(p => p.material).concat(S.settings.worldFill))];
+  const rows = ids.map(id => { const m = matById(id); return m ? `<div><span class="swatch" style="background:${esc(m.color)}"></span>${esc(m.name)}</div>` : ''; }).join('');
+  $('#legend').innerHTML = rows + '<div><span class="swatch" style="background:#22272d"></span>Void</div>' +
+    (S.sources.length ? '<div><span class="swatch" style="background:#52b8ff;border-radius:50%"></span>Source</div>' : '') +
+    (S.tallies.some(t => t.kind === 'mesh') ? '<div><span class="swatch" style="background:none;box-shadow:inset 0 0 0 1px #c89df2"></span>Mesh tally</div>' : '');
+}
+function renderTitle(P) {
+  const st = S.settings, e = P.filter(p => p.sev === 'error').length;
+  $('#projName').textContent = st.name;
+  $('#runChip').textContent = `${st.runMode === 'eigenvalue' ? 'eigenvalue' : 'fixed source'} · ${fin(st.particles) ? st.particles.toLocaleString() : '?'} × ${st.batches} · seed ${st.seed}` + (e ? ` · ${e} to fix` : '');
+}
+
+/* ───────── Render loop ───────── */
+let pending = false;
+function schedule() {
+  if (pending) return;
+  pending = true;
+  // rAF pauses in background tabs and thumbnail captures, so a timer backs it up.
+  const flush = () => {
+    if (!pending) return;
+    pending = false;
+    const P = problems();
+    renderTree(); renderTitle(P); renderProblems(P); renderLegend(); renderPropsTitle();
+    if (sel.kind === 'source' || sel.kind === 'tally') refreshMcnp();
+    if (!$('#docCode').hidden) $('#code').innerHTML = highlight(generate(P));
+    drawViewport();
+    renderRibbonState();
+    store();
+  };
+  requestAnimationFrame(flush);
+  setTimeout(flush, 60);
+}
+function renderRibbonState() {
+  const key = `${sel.kind}|${!!downloads}`;
+  if (renderRibbonState.last !== key) { renderRibbonState.last = key; renderRibbon(); }
+}
+function renderAll() { renderRibbon(); renderProps(); syncViewControls(); schedule(); }
+function syncViewControls() {
+  document.querySelectorAll('[data-plane]').forEach(b => b.setAttribute('aria-pressed', b.dataset.plane === view.plane));
+  $('#sliceAxis').textContent = `at ${AX[view.plane][2]} =`;
+  $('#sliceIn').value = view.slice;
+}
+function setDocTab(code) {
+  $('#tabView').setAttribute('aria-selected', !code);
+  $('#tabCode').setAttribute('aria-selected', code);
+  $('#docView').hidden = code; $('#docCode').hidden = !code;
+  schedule();
+}
+
+/* ───────── Events ───────── */
+$('#rtabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) { ribbonTab = b.dataset.tab; renderRibbon(); } });
+$('#matMenu').addEventListener('click', e => { const b = e.target.closest('[data-key]'); if (b) { $('#matMenu').hidden = true; addMaterial(b.dataset.key); } });
+document.addEventListener('mousedown', e => { const m = $('#matMenu'); if (!m.hidden && !m.contains(e.target) && !e.target.closest('.rbtn')) m.hidden = true; });
+let drag = null, justDragged = false;
+$('#tree').addEventListener('click', e => {
+  if (justDragged) { justDragged = false; return; }
+  const t = e.target.closest('[data-group]');
+  if (t) { collapsed[t.dataset.group] = !collapsed[t.dataset.group]; renderTree(); return; }
+  const a = e.target.closest('[data-add]');
+  if (a) { ({materials:() => addMaterial('custom'), parts:() => addPart('sphere'), sources:() => addSource('neutron'), tallies:() => addTally('cell')})[a.dataset.add](); return; }
+  const it = e.target.closest('.titem');
+  if (it) select(it.dataset.kind, it.dataset.id || undefined);
+});
+$('#tree').addEventListener('pointerdown', e => {
+  const it = e.target.closest('.titem');
+  if (!it || e.button !== 0 || !LISTS[it.dataset.kind]) return;
+  if (e.pointerType !== 'mouse' && !e.target.closest('.grip')) return; // touch drags from the grip so the tree still scrolls
+  drag = {it, kind:it.dataset.kind, id:it.dataset.id, x:e.clientX, y:e.clientY, active:false, slot:undefined};
+});
+function dragMove(e) {
+  if (!drag) return;
+  if (!drag.active) {
+    if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 5) return;
+    drag.active = true;
+    drag.it.classList.add('dragging');
+    document.body.classList.add('is-dragging');
+  }
+  e.preventDefault();
+  const tree = $('#tree'), tr = tree.getBoundingClientRect();
+  const items = [...tree.querySelectorAll(`.titem[data-kind="${drag.kind}"]`)];
+  if (!items.length) return;
+  let slot = items.length;
+  for (let i = 0; i < items.length; i++) { const r = items[i].getBoundingClientRect(); if (e.clientY < r.top + r.height / 2) { slot = i; break; } }
+  drag.slot = slot;
+  const ref = items[Math.min(slot, items.length - 1)].getBoundingClientRect();
+  const line = $('#dropLine');
+  line.style.top = ((slot < items.length ? ref.top : ref.bottom) - 1) + 'px';
+  line.style.left = (tr.left + 22) + 'px';
+  line.style.width = (tr.width - 30) + 'px';
+  line.hidden = false;
+  if (e.clientY < tr.top + 28) tree.scrollTop -= 10;
+  else if (e.clientY > tr.bottom - 28) tree.scrollTop += 10;
+}
+function dragEnd(e) {
+  if (!drag) return;
+  const d = drag;
+  drag = null;
+  $('#dropLine').hidden = true;
+  document.body.classList.remove('is-dragging');
+  d.it.classList.remove('dragging');
+  if (!d.active) return;
+  justDragged = true;
+  setTimeout(() => { justDragged = false; }, 0);
+  if (e.type === 'pointerup') moveTo(d.kind, d.id, d.slot);
+}
+document.addEventListener('pointermove', dragMove, {passive:false});
+document.addEventListener('pointerup', dragEnd);
+document.addEventListener('pointercancel', dragEnd);
+$('#problems').addEventListener('click', e => {
+  const li = e.target.closest('li[data-i]'); if (!li) return;
+  const p = lastProblems[+li.dataset.i]; if (p && p.sel) select(p.sel.kind, p.sel.id);
+});
+$('#otProblems').addEventListener('click', () => setOutTab('problems'));
+$('#otLog').addEventListener('click', () => setOutTab('log'));
+$('#tabView').addEventListener('click', () => setDocTab(false));
+$('#tabCode').addEventListener('click', () => setDocTab(true));
+$('#copyCode').addEventListener('click', copyScript);
+$('#saveCode').addEventListener('click', saveScript);
+$('#runBtn').addEventListener('click', runModel);
+$('#propFilter').addEventListener('input', applyPropFilter);
+$('#openFile').addEventListener('change', e => { const f = e.target.files[0]; if (f) openProject(f); e.target.value = ''; });
+document.querySelectorAll('[data-plane]').forEach(b => b.addEventListener('click', () => { view.plane = b.dataset.plane; view.slice = 0; syncViewControls(); schedule(); }));
+$('#sliceIn').addEventListener('input', e => { const v = parseFloat(e.target.value); if (fin(v)) { view.slice = v; schedule(); } });
+$('#zoomIn').addEventListener('click', () => { view.zoom = Math.min(view.zoom * 1.4, 20); schedule(); });
+$('#zoomOut').addEventListener('click', () => { view.zoom = Math.max(view.zoom / 1.4, .25); schedule(); });
+$('#zoomFit').addEventListener('click', () => { view.zoom = 1; schedule(); });
+$('#vp').addEventListener('wheel', e => { e.preventDefault(); view.zoom = Math.min(20, Math.max(.25, view.zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15))); schedule(); }, {passive:false});
+$('#vp').addEventListener('mousemove', e => {
+  const h = hitAt(e); if (!h) return;
+  const what = h.src ? S.sources.find(s => s.id === h.src.id).name
+    : h.cell === -2 ? 'outside the world' : h.cell === -1 ? `World (${(matById(S.settings.worldFill) || {name:'void'}).name})`
+    : `${S.parts[h.cell].name} (${(matById(S.parts[h.cell].material) || {name:'void'}).name})`;
+  $('#readout').textContent = `x ${h.x.toFixed(1)}  y ${h.y.toFixed(1)}  z ${h.z.toFixed(1)} cm · ${what}`;
+});
+$('#vp').addEventListener('click', e => {
+  const h = hitAt(e); if (!h) return;
+  if (pickTrack(e)) return;
+  if (h.src) select('source', h.src.id);
+  else if (h.cell >= 0) select('part', S.parts[h.cell].id);
+  else if (h.cell === -1) select('world');
+});
+document.addEventListener('keydown', e => {
+  if (e.target.closest('input, select, textarea')) return;
+  if ((e.key === 'Delete') && LISTS[sel.kind]) { e.preventDefault(); removeSelected(); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && LISTS[sel.kind]) { e.preventDefault(); duplicateSelected(); }
+  if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && LISTS[sel.kind]) {
+    e.preventDefault();
+    const fromTree = !!e.target.closest('#tree');
+    moveSelected(e.key === 'ArrowUp' ? -1 : 1);
+    if (fromTree) setTimeout(() => { const b = document.querySelector('#tree .titem.is-sel'); if (b) b.focus(); }, 90);
+  }
+  if (e.key === 'Escape') { $('#matMenu').hidden = true; if (drag) dragEnd({type:'pointercancel'}); }
+});
+new ResizeObserver(() => schedule()).observe($('#vpwrap'));
+
+log('info', loadStored() ? 'Restored your last model from this browser.' : 'Loaded the shielding demo: a 14.1 MeV D-T source inside polyethylene and lead, a He-3 detector and a concrete floor. Materials come from PNNL-15870 Rev. 1.');
+updateExportButtons();
+renderAll();
+localInit();
+</script>

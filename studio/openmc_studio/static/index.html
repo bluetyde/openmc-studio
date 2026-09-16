@@ -212,6 +212,7 @@ input[type=checkbox]{accent-color:var(--accent)}
       <div class="dtabs" role="tablist">
         <button class="dtab" role="tab" id="tabView" aria-selected="true" type="button">Viewport</button>
         <button class="dtab" role="tab" id="tabCode" aria-selected="false" type="button">model.py</button>
+        <button class="dtab" role="tab" id="tabMcnp" aria-selected="false" type="button" hidden>model.mcnp</button>
       </div>
 
       <div class="doc" id="docView">
@@ -245,6 +246,16 @@ input[type=checkbox]{accent-color:var(--accent)}
           <button class="tbtn" type="button" id="saveCode">Save model.py</button>
         </div>
         <div class="codewrap"><pre class="code" id="code"></pre></div>
+      </div>
+
+      <div class="doc" id="docMcnp" hidden>
+        <div class="toolbar">
+          <span class="tlabel" id="mcnpStatus">MCNP input exported by openmc-mcnp-project.</span>
+          <span class="spacer"></span>
+          <button class="tbtn" type="button" id="copyMcnp">Copy</button>
+          <button class="tbtn" type="button" id="saveMcnp">Save .mcnp</button>
+        </div>
+        <div class="codewrap"><pre class="code" id="mcnpCode"></pre></div>
       </div>
 
       <div class="output">
@@ -718,6 +729,10 @@ function generate(probs) {
   if (tracks.length) L.push(`settings.track = [${tracks.map(t => `(${t.join(', ')})`).join(', ')}]  # (batch, generation, particle)`);
   L.push('', 'model = openmc.Model(geometry=geometry, materials=materials, settings=settings, tallies=tallies)', '',
     'if __name__ == "__main__":',
+    '    import sys',
+    '    if "--export-xml" in sys.argv:  # OpenMC Studio exports model.xml this way for MCNP translation',
+    '        model.export_to_model_xml()',
+    '        raise SystemExit(0)',
     `    statepoint = model.run(${wantAll ? 'tracks=True' : ''})`,
     '    print(f"Finished: {statepoint}")');
   if (wantAll || tracks.length) L.push('    print("Particle tracks written to tracks.h5 (open with openmc.Tracks)")');
@@ -742,24 +757,42 @@ function mcnpSource(s) {
   } else if (s.energy === 'watt') parts.push(`ERG=${dist('', `-3 ${mcnpNum(s.wa)} ${mcnpNum(s.wb)}`)}`);
   else if (s.energy === 'maxwell') parts.push(`ERG=${dist('', `-2 ${mcnpNum(s.theta)}`)}`);
   else parts.push(`ERG=${dist(`H ${mcnpNum(s.emin)} ${mcnpNum(s.emax)}`, '0 1')}`);
-  if (s.strength !== 1) parts.push(`WGT=${mcnpNum(s.strength)}`);
   return [parts.join(' '), ...cards.map(c => c.replace(/^(SI\d+) $/, '$1'))].filter(c => !/^SI\d+$/.test(c)).join('\n');
 }
-const MT = {total:'-1', absorption:'-2', fission:'-6', 'nu-fission':'-6 -7', scatter:'2', '(n,gamma)':'102', '(n,p)':'103', '(n,a)':'107'};
-function mcnpTally(t, i) {
-  const n = 10 * i + 4, p = 'N', out = [];
-  const cellNo = c => c === 'world' ? 99 : S.parts.findIndex(q => q.id === c) + 1;
-  if (t.kind === 'cell') out.push(`F${n}:${p} ${t.cells.map(cellNo).join(' ')}`);
-  else out.push(`FMESH${n}:${p} GEOM=XYZ ORIGIN=${[t.lx, t.ly, t.lz].map(mcnpNum).join(' ')}`,
-    `     IMESH=${mcnpNum(t.ux)} IINTS=${t.nx} JMESH=${mcnpNum(t.uy)} JINTS=${t.ny} KMESH=${mcnpNum(t.uz)} KINTS=${t.nz}`);
-  if (t.ebins.trim()) out.push(`E${n} ${parseNums(t.ebins).vals.slice(1).map(mcnpNum).join(' ')}`);
-  const rx = t.scores.filter(s => MT[s]);
-  if (rx.length && t.kind === 'cell') {
-    const mats = [...new Set(t.cells.map(c => c === 'world' ? S.settings.worldFill : (partById(c) || {}).material))];
-    const mNo = mats.length === 1 && mats[0] !== 'void' ? S.materials.findIndex(m => m.id === mats[0]) + 1 : null;
-    out.push(mNo ? `FM${n} ${rx.map(s => `(-1 ${mNo} ${MT[s]})`).join(' ')}` : `c FM${n} needs one material across the tallied cells`);
-  }
-  if (t.scores.includes('heating')) out.push(`c heating: use an F6 tally instead of F4`);
+// Mirrors src/mcnp_cards.py in openmc-mcnp-project: one MCNP tally per score, numbered 4, 14, 24… across all
+// tallies, cell/material numbers = the OpenMC IDs model.py creates (used materials in order; parts, then World).
+const MT = {total:'-1', absorption:'-2', fission:'-6', 'nu-fission':'-6 -7', elastic:'2', '(n,2n)':'16', '(n,gamma)':'102', '(n,p)':'103', '(n,a)':'107'};
+function mcnpIds() {
+  const used = new Set(S.parts.map(p => p.material).concat(S.settings.worldFill));
+  const mats = S.materials.filter(m => used.has(m.id));
+  return {cell: c => c === 'world' ? S.parts.length + 1 : S.parts.findIndex(q => q.id === c) + 1,
+          mat: id => mats.findIndex(m => m.id === id) + 1};
+}
+function mcnpTally(t) {
+  const ids = mcnpIds(), out = [];
+  const k0 = S.tallies.slice(0, S.tallies.indexOf(t)).reduce((a, x) => a + x.scores.length, 0);
+  const eb = t.ebins.trim() ? parseNums(t.ebins).vals : null;
+  t.scores.forEach((score, j) => {
+    const n = 10 * (k0 + j) + 4;
+    if (t.kind === 'cell') {
+      out.push(`F${n}:N ${t.cells.map(ids.cell).join(' ')}`);
+      if (score !== 'flux') {
+        const mats = [...new Set(t.cells.map(c => c === 'world' ? S.settings.worldFill : (partById(c) || {}).material))];
+        if (!MT[score]) out.push(`c ${score}: not exportable to MCNP`);
+        else if (score === 'absorption' && mats.length === 1 && matById(mats[0]) && isFissileMat(matById(mats[0]))) out.push(`c absorption in fuel: not exportable (MCNP -2 excludes fission)`);
+        else if (mats.length !== 1 || mats[0] === 'void') out.push(`c ${score}: tallied cells must share one material`);
+        else out.push(`FM${n} (-1 ${ids.mat(mats[0])} ${MT[score]})`);
+      }
+      if (eb) out.push(`E${n} ${eb.slice(1).map(mcnpNum).join(' ')}`);
+      out.push(`SD${n} ${t.cells.map(() => '1').join(' ')}`);
+    } else if (score !== 'flux') {
+      out.push(`c ${score}: mesh tallies export flux only`);
+    } else {
+      out.push(`FMESH${n}:N GEOM=XYZ ORIGIN=${[t.lx, t.ly, t.lz].map(mcnpNum).join(' ')}`,
+        `     IMESH=${mcnpNum(t.ux)} IINTS=${t.nx} JMESH=${mcnpNum(t.uy)} JINTS=${t.ny} KMESH=${mcnpNum(t.uz)} KINTS=${t.nz}`);
+      if (eb) out.push(`     EMESH=${eb.slice(1).map(mcnpNum).join(' ')}`);
+    }
+  });
   return out.join('\n');
 }
 
@@ -950,6 +983,7 @@ const RIBBON = {
   ],
   Export:[
     {label:'Script', btns:[['copy', 'Copy model.py', copyScript], ['save', 'Save model.py', saveScript, () => !!downloads]]},
+    {label:'MCNP', btns:[['save', 'MCNP input', () => exportMcnp(), () => LOCAL.on]]},
     {label:'Project', btns:[['save', 'Save project', saveProject, () => !!downloads], ['open', 'Open project', () => $('#openFile').click()]]}
   ]
 };
@@ -1103,7 +1137,7 @@ function specFor(kind, o) {
         F('multi', 'scores', 'Scores', {options:() => SCORES.map(s => [s, s])}),
         F('text', 'ebins', 'Energy edges', {placeholder:'none', hint:'MeV, rising, including the lowest edge: 0, 5e-7, 0.1, 20 gives thermal, epithermal and fast bins.'})
       ]},
-      {title:'MCNP equivalent', fields:[{type:'mcnp', text:() => mcnpTally(o, S.tallies.indexOf(o))}]}
+      {title:'MCNP equivalent', fields:[{type:'mcnp', text:() => mcnpTally(o)}]}
     ];
   }
   if (kind === 'world') {
@@ -1234,7 +1268,7 @@ function renderProps() {
 function refreshMcnp() {
   const obj = getSel(); if (!obj) return;
   const pre = $('#props .mcnp');
-  if (pre) pre.textContent = sel.kind === 'source' ? mcnpSource(obj) : mcnpTally(obj, S.tallies.indexOf(obj));
+  if (pre) pre.textContent = sel.kind === 'source' ? mcnpSource(obj) : mcnpTally(obj);
 }
 function renderPropsTitle() {
   const obj = getSel();
@@ -1280,7 +1314,7 @@ async function localInit() {
     `Connected to the local runner: OpenMC ${esc(h.openmc)}, Python ${esc(h.python)}. Runs are saved in <code>${esc(h.runs_dir)}</code>.` +
     (h.cross_sections_found ? '' : ' <b>OPENMC_CROSS_SECTIONS is not set or the file is missing</b>, so runs will fail. Run point_conda_env_here.sh.'));
   $('#runChip').dataset.local = `OpenMC ${h.openmc}`;
-  renderResults(); refreshRuns();
+  renderResults(); refreshRuns(); renderRibbon();
 }
 function setRunning(on) {
   const b = $('#runBtn');
@@ -1390,6 +1424,41 @@ $('#runs').addEventListener('click', async e => {
     } catch (err) { log('error', `Couldn't open that model: ${esc(err.message)}`); }
   }
 });
+
+/* MCNP export (runs openmc-mcnp-project's export_mcnp.py through the local server) */
+let mcnpDeck = null;
+async function exportMcnp() {
+  if (!LOCAL.on) { log('warn', 'MCNP export needs the local Studio server (start Studio from its launcher).'); return; }
+  const P = problems(), errs = P.filter(p => p.sev === 'error');
+  setOutTab('log');
+  if (errs.length) { log('error', `Not exported: fix ${errs.length} problem${errs.length === 1 ? '' : 's'} first (see Problems).`); return; }
+  log('info', 'Exporting MCNP input: translating with MCNPy, remediating, validating (about 10 s)…');
+  let r;
+  try { r = await api('/api/export-mcnp', {method:'POST', body:JSON.stringify({script:generate(P), project:S, name:S.settings.name})}); }
+  catch (e) { log('error', `MCNP export failed: ${esc(e.message)}`); return; }
+  if (r.error) {
+    log('error', `MCNP export: ${esc(r.error)}`);
+    if (r.validation) r.validation.trim().split('\n').forEach(l => log(/FAIL|ERROR/.test(l) ? 'error' : 'info', esc(l)));
+    if (!r.deck) return;
+  }
+  (r.added || []).forEach(a => log('info', `+ ${esc(a)}`));
+  (r.notes || []).forEach(n => log('warn', esc(n)));
+  if (r.validation) r.validation.trim().split('\n').filter(l => !l.startsWith('---')).forEach(l =>
+    log(/FAILED|\[ERROR\]/.test(l) ? 'error' : /PASSED|\[OK\]/.test(l) ? 'ok' : 'info', esc(l.trim())));
+  if (r.deck) {
+    mcnpDeck = {name: r.name, text: r.deck, ok: r.ok};
+    $('#mcnpCode').innerHTML = r.deck.split('\n').map(l => `<span class="ln">${esc(l) || ' '}</span>`).join('');
+    $('#mcnpStatus').textContent = r.ok ? `Validated. Folder: ${r.folder}` : `Written but NOT validated — see Log. Folder: ${r.folder}`;
+    $('#tabMcnp').hidden = false;
+    setDocTab('mcnp');
+    log(r.ok ? 'ok' : 'error', r.ok ? `MCNP input ready: <code>${esc(r.folder)}/${esc(r.name)}_runnable.mcnp</code>.` : 'The MCNP input did not validate; don\u2019t run it until the errors above are fixed.');
+  }
+}
+$('#copyMcnp').addEventListener('click', async () => {
+  if (!mcnpDeck) return;
+  try { await navigator.clipboard.writeText(mcnpDeck.text); log('ok', 'Copied the MCNP input.'); } catch (e) { log('warn', 'Copy was blocked. Select the text and press Ctrl+C.'); }
+});
+$('#saveMcnp').addEventListener('click', () => { if (mcnpDeck) saveFile(`${mcnpDeck.name}.mcnp`, mcnpDeck.text); });
 
 /* overlays */
 const VIRIDIS = [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]];
@@ -1710,10 +1779,11 @@ function syncViewControls() {
   $('#sliceAxis').textContent = `at ${AX[view.plane][2]} =`;
   $('#sliceIn').value = view.slice;
 }
-function setDocTab(code) {
-  $('#tabView').setAttribute('aria-selected', !code);
-  $('#tabCode').setAttribute('aria-selected', code);
-  $('#docView').hidden = code; $('#docCode').hidden = !code;
+function setDocTab(which) { // 'view' | 'code' | 'mcnp'
+  [['view', '#tabView', '#docView'], ['code', '#tabCode', '#docCode'], ['mcnp', '#tabMcnp', '#docMcnp']].forEach(([k, tab, doc]) => {
+    $(tab).setAttribute('aria-selected', which === k);
+    $(doc).hidden = which !== k;
+  });
   schedule();
 }
 
@@ -1782,8 +1852,9 @@ $('#problems').addEventListener('click', e => {
 });
 $('#otProblems').addEventListener('click', () => setOutTab('problems'));
 $('#otLog').addEventListener('click', () => setOutTab('log'));
-$('#tabView').addEventListener('click', () => setDocTab(false));
-$('#tabCode').addEventListener('click', () => setDocTab(true));
+$('#tabView').addEventListener('click', () => setDocTab('view'));
+$('#tabCode').addEventListener('click', () => setDocTab('code'));
+$('#tabMcnp').addEventListener('click', () => setDocTab('mcnp'));
 $('#copyCode').addEventListener('click', copyScript);
 $('#saveCode').addEventListener('click', saveScript);
 $('#runBtn').addEventListener('click', runModel);

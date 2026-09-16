@@ -96,6 +96,39 @@ class Studio:
                 run.add(line)
         run.finish(run.proc.wait())
 
+    def export_mcnp(self, script, project, name):
+        """Write model.py, export model.xml, and run openmc-mcnp-project's export_mcnp.py on it."""
+        proj = Path(os.environ.get("OPENMC_MCNP_PROJECT", "~/openmc-mcnp-project")).expanduser()
+        exporter = proj / "src" / "export_mcnp.py"
+        if not exporter.exists():
+            return {"ok": False, "error": f"Can't find {exporter}. Clone openmc-mcnp-project to ~/openmc-mcnp-project "
+                                          f"or set OPENMC_MCNP_PROJECT to its folder."}
+        slug = re.sub(r"[^a-z0-9]+", "-", (name or "model").lower()).strip("-")[:40] or "model"
+        folder = self.root / "mcnp-exports" / (time.strftime("%Y%m%d-%H%M%S") + "-" + slug)
+        folder.mkdir(parents=True, exist_ok=False)
+        (folder / "model.py").write_text(script, encoding="utf-8")
+        (folder / "project.json").write_text(json.dumps(project, indent=2), encoding="utf-8")
+        env = dict(os.environ, PYTHONUNBUFFERED="1")
+        xml = subprocess.run([sys.executable, "model.py", "--export-xml"], cwd=folder, env=env,
+                             capture_output=True, text=True, timeout=120)
+        if xml.returncode != 0 or not (folder / "model.xml").exists():
+            return {"ok": False, "folder": str(folder), "error": "model.py couldn't export model.xml: " + (xml.stderr or xml.stdout)[-2000:]}
+        try:
+            run = subprocess.run([sys.executable, str(exporter), "model.xml", "--name", slug, "--report", "report.json"],
+                                 cwd=folder, env=env, capture_output=True, text=True, timeout=600)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "folder": str(folder), "error": "The MCNP export took longer than 10 minutes and was stopped."}
+        (folder / "export.log").write_text(run.stdout + run.stderr, encoding="utf-8")
+        try:
+            report = json.loads((folder / "report.json").read_text())
+        except (OSError, ValueError):
+            return {"ok": False, "folder": str(folder), "error": "The exporter didn't write a report: " + (run.stderr or run.stdout)[-2000:]}
+        deck_path = folder / f"{slug}_runnable.mcnp"
+        report.update(folder=str(folder), name=slug,
+                      deck=deck_path.read_text() if deck_path.exists() else None)
+        report.pop("traceback", None)
+        return report
+
     def stop(self, rid):
         run = self.runs.get(rid)
         if not run or run.status != "running":
@@ -230,6 +263,11 @@ class Handler(BaseHTTPRequestHandler):
             except RuntimeError as e:
                 return self._error(409, str(e))
             return self._send(200, run.meta())
+        if url.path == "/api/export-mcnp":
+            script = body.get("script")
+            if not isinstance(script, str) or not script.strip():
+                return self._error(400, "No script to export.")
+            return self._send(200, self.studio.export_mcnp(script, body.get("project") or {}, str(body.get("name") or "model")))
         m = re.match(r"^/api/runs/([^/]+)/stop$", url.path)
         if m:
             return self._send(200, {"stopped": self.studio.stop(m.group(1))})

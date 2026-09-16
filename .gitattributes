@@ -1,0 +1,12 @@
+# Same bytes on Windows and Mac: shell scripts must stay LF, the Windows launcher CRLF.
+* text=auto eol=lf
+*.sh      text eol=lf
+*.command text eol=lf
+*.py      text eol=lf
+*.html    text eol=lf
+*.md      text eol=lf
+*.cmd     text eol=crlf
+*.bat     text eol=crlf
+
+*.h5 binary
+*.xz binary

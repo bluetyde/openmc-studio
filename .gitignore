@@ -1,0 +1,47 @@
+# ── Nuclear data: 13 GB, re-downloadable (see README; checksum kept in SHA256SUMS) ──
+nuclear_data/endfb-viii.0-hdf5/
+nuclear_data/archives/*.tar.xz
+nuclear_data/archives/*.xz
+
+# ── OpenMC run outputs, if a model is ever run inside this folder ──
+OpenMC-runs/
+statepoint.*.h5
+summary.h5
+tracks.h5
+particle_*.h5
+source.*.h5
+tallies.out
+model.xml
+materials.xml
+geometry.xml
+settings.xml
+tallies.xml
+plots.xml
+*.ppm
+run.log
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+
+# ── macOS clutter on exFAT drives ──
+.DS_Store
+._*
+.Spotlight-V100/
+.fseventsd/
+.Trashes/
+.TemporaryItems/
+
+# ── Windows ──
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+System Volume Information/
+
+# ── Editors and local tool config ──
+.vscode/
+.idea/
+.claude/
+*.swp

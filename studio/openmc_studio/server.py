@@ -286,6 +286,11 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             return self._send(200, (STATIC / "index.html").read_bytes(), "text/html; charset=utf-8",
                               {"Referrer-Policy": "no-referrer"})
+        if path == "/materials.jsonl":  # the material library (no token: it's the same public data as the page)
+            lib = STATIC / "materials.jsonl"
+            if not lib.is_file():
+                return self._error(404, "No material library")
+            return self._send(200, lib.read_bytes(), "application/jsonl; charset=utf-8")
         if path == "/api/ping":
             return self._send(200, {"ok": True, "app": "openmc-studio"})
         if not path.startswith("/api/"):

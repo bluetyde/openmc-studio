@@ -36,14 +36,19 @@ Select a part, pick a tool, and drag its handles in the slice view or the 3D vie
   along the part's own (possibly rotated) axes. On a cylinder the side balls change the
   radius and the end balls change the height; a sphere has radius balls.
 - **Rotate**: drag a ring to turn the part about that axis (boxes and cylinders).
+  In 3D the angle follows the pointer around the ring from any viewing angle.
   Rotation is also in Properties as degrees about x, then y, then z.
 - **Snap** (Home tab): click to cycle the move/scale step (off, 0.1–10 cm) and the
   rotation step (off, 1–90°). Esc cancels a drag in progress.
+- **Undo / Redo**: **Ctrl+Z** and **Ctrl+Y** (or Ctrl+Shift+Z; Cmd on the Mac), or the
+  buttons on the Home tab. Each drag, code-tab edit or burst of typing is one step
+  (the last 100 are kept). In a text box, Ctrl+Z undoes the typing instead.
 
 Rotations in 90° steps are written as ordinary planes and cylinders. Other angles are
 written as tilted planes (MCNP `P`) and general quadrics (MCNP `GQ`); the MCNP export
-and its geometry check handle both. Those tilted surfaces' numbers are read-only in the
-code tabs; change the rotation instead.
+and its geometry check handle both. In the code tabs a tilted plane's position (`d=`
+in model.py, the last number on a `P` card) can be edited like any other plane; the
+normal and the `GQ` coefficients are read-only, so change the rotation for those.
 
 ## 3D view
 
@@ -55,7 +60,11 @@ neutron tracks and the world boundary.
   selection, **Fit** to reset. Click a part to select it.
 - **Cutaway** cuts the model open at the slice plane (XY / XZ / YZ and the position box),
   removing the half facing you, so cross-sections show their materials.
-- The first 32 parts are drawn in 3D.
+- After a run, the **Flux map** is painted on the slice plane and **Tracks** are drawn
+  bright where nothing is in front of them and faint behind geometry. Turn on Cutaway
+  to see the flux map across the whole cut.
+- Up to 128 parts are drawn in 3D (fewer on graphics cards with a low shader limit;
+  the view says so). The slice view and the exports always use every part.
 
 ## Editing in the code tabs
 
@@ -81,6 +90,42 @@ model.py or model.mcnp on the right.
   editable; change their source in Properties.
 - While model.mcnp is refreshing it's dimmed and not editable, so an edit never
   lands on an out-of-date line.
+
+## Material library
+
+**Model ▸ Material ▾** opens a searchable list. **Common** is the 18 built-in materials. Below it,
+the library in `studio/openmc_studio/static/materials.jsonl` is grouped by category (click a
+category to open it). Type to search by name, category or PNNL number (`#354`), press **Enter** to
+add the first match, or use the arrow keys. Without the file, only the common materials are listed.
+
+The file has one material per line:
+
+```json
+{"num": 354, "name": "Water, Liquid", "density": 0.998207, "category": "Water and liquids", "comps": "H:0.111894, O:0.888106"}
+```
+
+- `num` is the PNNL-15870 Rev. 1 entry number. Leave it out for a material of your own.
+- `comps` is `Symbol:weight fraction`. `O` is natural oxygen; `U235` or `H2` is a single nuclide.
+- Optional: `"frac": "ao"` for atom fractions, `"sab"`, `"color"`, `"ref"`. Water, heavy water,
+  polyethylene, paraffin, graphite and beryllium get their thermal scattering table automatically.
+- Elements with no natural isotopes (Tc, Pm, Po, At, Rn, Fr, Ra, Ac, Np, Pu, Am, Cm, Bk, Cf) must be
+  written as nuclides, like `Pu239`. Studio shows an error for a material that doesn't.
+
+Check the file, or add a batch to it (a batch can be pasted as one long line):
+
+```
+python studio/tools/check_materials.py
+python studio/tools/check_materials.py --add batch.txt
+```
+
+The checker compares every numbered entry with the PDF text (`studio/tools/pnnl-15870-rev1.txt`, kept
+on the SSD but not in git): name, density, components and each weight fraction. `--add` merges only
+if the batch has no errors and doesn't repeat numbers already in the library (`--replace` overwrites
+them). In WSL or on the Mac inside the `openmc-mcnp` environment, add `--nuclear-data` to also check
+that OpenMC can build each material from the installed ENDF/B-VIII.0 data.
+
+The library has 371 of the 372 entries. #155 Inconel-625 is left out on purpose: the PDF prints
+Concrete, Rocky Flats' composition and density under that name.
 
 ## What's here
 

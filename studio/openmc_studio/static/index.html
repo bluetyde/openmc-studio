@@ -50,6 +50,15 @@ button,input,select{font:inherit;color:inherit}
 .menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;border-radius:4px;padding:5px 8px;cursor:pointer}
 .menu button:hover,.menu button:focus-visible{background:var(--sel)}
 .menu small{margin-left:auto;color:var(--muted);font:11px var(--mono)}
+#matMenu{width:340px;max-width:calc(100vw - 16px);box-sizing:border-box;padding-top:0}
+.msearch{position:sticky;top:0;z-index:1;margin:0 -4px 4px;padding:6px;background:var(--panel2);border-bottom:1px solid var(--line)}
+.menu button.mcat{font-weight:500;color:var(--text)}
+.menu button.mcat small{font-family:var(--mono)}
+.mcat .caret{width:10px;flex:none;color:var(--faint);transition:transform .12s}
+.mcat[aria-expanded="false"] .caret{transform:rotate(-90deg)}
+.menu button.mitem{padding-left:22px}
+.menu button.mitem span.mname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mnote{padding:6px 8px 4px;color:var(--faint);font-size:11.5px}
 
 /* Main three-column body */
 .main{display:grid;grid-template-columns:236px minmax(0,1fr) 308px;min-height:0}
@@ -329,6 +338,8 @@ const ICON = {
   source:'<circle cx="9" cy="9" r="2" fill="currentColor"/><path d="M9 1.5v3M9 13.5v3M1.5 9h3M13.5 9h3M3.7 3.7l2.1 2.1M12.2 12.2l2.1 2.1M3.7 14.3l2.1-2.1M12.2 5.8l2.1-2.1"/>',
   cellTally:'<circle cx="9" cy="9" r="6.5"/><circle cx="9" cy="9" r="3"/><circle cx="9" cy="9" r=".8" fill="currentColor"/>',
   meshTally:'<rect x="2.5" y="2.5" width="13" height="13" rx="1"/><path d="M6.8 2.5v13M11.2 2.5v13M2.5 6.8h13M2.5 11.2h13"/>',
+  undo:'<path d="M6.5 4.5L3 8l3.5 3.5"/><path d="M3.5 8H11a4 4 0 0 1 0 8H8"/>',
+  redo:'<path d="M11.5 4.5L15 8l-3.5 3.5"/><path d="M14.5 8H7a4 4 0 0 0 0 8h3"/>',
   duplicate:'<rect x="6" y="6" width="9.5" height="9.5" rx="1.5"/><path d="M12 6V3.5a1 1 0 0 0-1-1H3.5a1 1 0 0 0-1 1V11a1 1 0 0 0 1 1H6"/>',
   del:'<path d="M3 5h12M7 5V3h4v2M4.5 5l.8 10.5h7.4L13.5 5"/>',
   up:'<path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/>',
@@ -376,6 +387,67 @@ const PRESETS = [
 ];
 const CUSTOM_MAT = {name:'New material', color:'#b48ead', density:1, frac:'ao', comps:'H:2, O:1', sab:'', ref:''};
 
+/* Material library: static/materials.jsonl, one material per line (PNNL-15870 Rev. 1 entries plus your own),
+   loaded at startup. studio/tools/check_materials.py documents the format, checks the file against the PDF
+   and merges new batches. Without the file (the page opened from disk, or before it loads) the menu lists
+   the built-in PRESETS only. */
+const MAT_CATEGORIES = [ // name, hue for materials without their own color
+  ['Gases', 195], ['Water and liquids', 210], ['Plastics and polymers', 48], ['Concrete and building materials', 36],
+  ['Metals and alloys', 220], ['Steels', 205], ['Nuclear fuel', 50], ['Neutron absorbers and shielding', 95],
+  ['Tissue and dosimetry', 350], ['Minerals, rocks and soils', 25], ['Detectors and scintillators', 160], ['Other compounds', 280]];
+// Elements OpenMC has no natural abundances for (openmc.data.NATURAL_ABUNDANCE): they must be given as nuclides.
+const NO_NATURAL = ['Tc', 'Pm', 'Po', 'At', 'Rn', 'Fr', 'Ra', 'Ac', 'Np', 'Pu', 'Am', 'Cm', 'Bk', 'Cf'];
+const LIBRARY = {items:[], state:'loading', skipped:[]};
+function hslHex(h, s, l) {
+  const f = n => { const k = (n + h / 30) % 12, a = s * Math.min(l, 1 - l); return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))).toString(16).padStart(2, '0'); };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+// The thermal scattering table a library material gets when its line doesn't name one.
+function sabFor(name) {
+  const n = name.toLowerCase();
+  if (/^water, liquid/.test(n)) return 'c_H_in_H2O';
+  if (/^water, heavy/.test(n)) return 'c_D_in_D2O';
+  if (/^polyethylene(, (non-)?borated)?$|^polyethylene, borated \(|^wax, paraffin|paraffin wax/.test(n)) return 'c_H_in_CH2'; // not PET
+  if (/graphite/.test(n)) return 'c_Graphite';
+  if (n === 'beryllium') return 'c_Be';
+  return '';
+}
+function parseLibrary(text) {
+  const items = [], skipped = [];
+  String(text).replace(/^\uFEFF/, '').split('\n').forEach((line, i) => {
+    if (!line.trim()) return;
+    let o;
+    try { o = JSON.parse(line); } catch (e) { skipped.push(i + 1); return; }
+    const parsed = parseComps(o && o.comps), errs = parsed.errs, out = parsed.out.filter(c => c.amt !== 0); // PNNL lists some 0 fractions
+    const frac = o && o.frac === 'ao' ? 'ao' : 'wo';
+    if (!o || typeof o.name !== 'string' || !o.name.trim() || !(o.density > 0) || errs.length || !out.length || out.some(c => !(c.amt > 0))) { skipped.push(i + 1); return; }
+    const cat = MAT_CATEGORIES.find(c => c[0] === o.category) || MAT_CATEGORIES[MAT_CATEGORIES.length - 1];
+    const num = Number.isInteger(o.num) ? o.num : null;
+    const seedv = num !== null ? num : i + 1;
+    items.push({
+      key:num !== null ? `pnnl${num}` : `lib${i + 1}`, num, category:cat[0],
+      ref:num !== null ? `PNNL #${num}` : (typeof o.ref === 'string' ? o.ref : 'materials.jsonl'),
+      name:o.name.trim().replace(/\s+/g, ' '), density:+o.density, frac,
+      comps:out.length === parsed.out.length ? String(o.comps) : out.map(c => `${c.sym}:${c.amt}`).join(', '),
+      color:/^#[0-9a-f]{6}$/i.test(o.color || '') ? o.color : hslHex(cat[1] + (seedv * 37 % 29) - 14, 0.32, 0.48 + (seedv * 53 % 17) / 100),
+      sab:typeof o.sab === 'string' ? o.sab : sabFor(o.name)
+    });
+  });
+  return {items, skipped};
+}
+async function loadLibrary() {
+  if (!/^https?:$/.test(location.protocol)) { LIBRARY.state = 'missing'; return; }
+  try {
+    const res = await fetch('materials.jsonl', {cache:'no-store'});
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    Object.assign(LIBRARY, parseLibrary(await res.text()), {state:'ok'});
+    if (LIBRARY.skipped.length) log('warn', `materials.jsonl: skipped unreadable line${LIBRARY.skipped.length === 1 ? '' : 's'} ${LIBRARY.skipped.slice(0, 12).join(', ')}${LIBRARY.skipped.length > 12 ? '…' : ''}. Run studio/tools/check_materials.py to see why.`);
+  } catch (e) {
+    LIBRARY.state = 'missing';
+  }
+  if (!$('#matMenu').hidden && $('#matSearch')) renderMatList($('#matSearch').value);
+}
+
 const SCORES = ['flux','total','absorption','fission','nu-fission','scatter','(n,gamma)','(n,p)','(n,a)','heating'];
 
 /* ───────── State ───────── */
@@ -389,8 +461,8 @@ function uniqueName(list, base) {
   return n;
 }
 function presetMat(key, id) {
-  const m = clone(PRESETS.find(x => x.key === key));
-  delete m.key; m.id = id;
+  const m = clone(PRESETS.find(x => x.key === key) || LIBRARY.items.find(x => x.key === key));
+  delete m.key; delete m.num; delete m.category; m.id = id;
   return m;
 }
 
@@ -444,7 +516,44 @@ function loadStored() {
   } catch (e) {}
   return null;
 }
-function store() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) {} }
+function store() {
+  const json = JSON.stringify(S);
+  historyTrack(json);
+  try { localStorage.setItem(STORE_KEY, json); } catch (e) {}
+}
+/* Undo history: whole-model snapshots. Changes less than 0.7 s apart (typing, a drag) merge into one step,
+   and a drag or an edit in the code tabs always starts a new step. */
+const HISTORY = {undo:[], redo:[], current:null, last:0, boundary:true, limit:100};
+function historyTrack(json) {
+  if (HISTORY.current === null) { HISTORY.current = json; return; }
+  if (json === HISTORY.current) return;
+  const now = Date.now(), dragging = typeof TDRAG !== 'undefined' && TDRAG;
+  if (HISTORY.boundary || (!dragging && now - HISTORY.last > 700)) {
+    HISTORY.undo.push(HISTORY.current);
+    if (HISTORY.undo.length > HISTORY.limit) HISTORY.undo.shift();
+    HISTORY.redo = [];
+    HISTORY.boundary = false;
+  }
+  HISTORY.current = json; HISTORY.last = now;
+}
+function historyRestore(json, label) {
+  const o = normalizeProject(JSON.parse(json));
+  S = o;
+  if (!getSel()) sel = {kind:'settings'};
+  HISTORY.current = JSON.stringify(S); HISTORY.boundary = true;
+  renderAll();
+  log('info', `${label}. ${HISTORY.undo.length} undo step${HISTORY.undo.length === 1 ? '' : 's'} left, ${HISTORY.redo.length} redo.`);
+}
+function undo() {
+  if (!HISTORY.undo.length) { log('info', 'Nothing to undo.'); return; }
+  HISTORY.redo.push(JSON.stringify(S));
+  historyRestore(HISTORY.undo.pop(), 'Undone');
+}
+function redo() {
+  if (!HISTORY.redo.length) { log('info', 'Nothing to redo.'); return; }
+  HISTORY.undo.push(JSON.stringify(S));
+  historyRestore(HISTORY.redo.pop(), 'Redone');
+}
 
 let S = loadStored() || sampleModel();
 let sel = {kind:'source', id:(S.sources[0] || {}).id};
@@ -575,6 +684,8 @@ function problems() {
     if (errs.length) add('error', `${m.name}: can't read "${errs[0]}". Write Symbol:amount, like H:2 or U235:0.03.`, 'material', m.id);
     else if (!out.length) add('error', `${m.name}: add at least one element or nuclide.`, 'material', m.id);
     if (out.some(c => !(c.amt > 0))) add('error', `${m.name}: every amount must be above 0.`, 'material', m.id);
+    const noNat = [...new Set(out.filter(c => !c.nuclide && NO_NATURAL.includes(c.el)).map(c => c.el))];
+    if (noNat.length && used.has(m.id)) add('error', `${m.name}: ${noNat.join(', ')} ${noNat.length === 1 ? 'has' : 'have'} no natural isotopes, so OpenMC can't add ${noNat.length === 1 ? 'it' : 'them'} as an element. List nuclides instead, like ${noNat[0]}${noNat[0] === 'Pu' ? '239' : noNat[0] === 'Ra' ? '226' : noNat[0] === 'Am' ? '241' : '…'}:1.`, 'material', m.id);
     if (m.sab && !/^c_\w+$/.test(m.sab)) add('warn', `${m.name}: thermal scattering table names start with c_, like c_H_in_H2O.`, 'material', m.id);
     if (!used.has(m.id)) add('info', `${m.name} isn't used by any part, so model.py leaves it out.`, 'material', m.id);
   });
@@ -751,7 +862,7 @@ function buildScript(probs, mark) {
     if (nn[k] === 1 && nn.every((v, i) => i === k || v === 0)) // axis-aligned normal: share the ordinary X/Y/ZPlane
       return `${(sense === '+') !== flip ? '+' : '-'}${plane('xyz'[k], dd)}`;
     const v = surface(`G:${[...nn, dd].map(num)}`, 'plane', 'tilted',
-      () => `openmc.Plane(a=${num(nn[0])}, b=${num(nn[1])}, c=${num(nn[2])}, d=${num(dd)})`, {kind:'gplane'});
+      () => `openmc.Plane(a=${num(nn[0])}, b=${num(nn[1])}, c=${num(nn[2])}, d=${E(num(dd), {t:'gplane', n:nn, value:dd})})`, {kind:'gplane', n:nn, value:dd});
     return `${(sense === '+') !== flip ? '+' : '-'}${v}`;
   };
   const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -1113,7 +1224,7 @@ const RIBBON = {
   Home:[
     {label:'Tools', btns:toolButtons()},
     {label:'Snap', btns:snapButtons()},
-    {label:'Edit', btns:[['duplicate', 'Duplicate', duplicateSelected, () => !!LISTS[sel.kind]], ['del', 'Delete', removeSelected, () => !!LISTS[sel.kind]]]},
+    {label:'Edit', btns:[['undo', 'Undo', undo, () => HISTORY.undo.length > 0], ['redo', 'Redo', redo, () => HISTORY.redo.length > 0], ['duplicate', 'Duplicate', duplicateSelected, () => !!LISTS[sel.kind]], ['del', 'Delete', removeSelected, () => !!LISTS[sel.kind]]]},
     {label:'Order', btns:[['up', 'Raise', () => moveSelected(-1), () => !!LISTS[sel.kind]], ['down', 'Lower', () => moveSelected(1), () => !!LISTS[sel.kind]]]},
     {label:'Project', btns:[['reset', 'Demo model', resetSample]]}
   ],
@@ -1156,18 +1267,56 @@ function renderRibbon() {
     body.appendChild(grp);
   });
 }
+const MATMENU = {open:new Set()}; // expanded categories while not searching
 function openMatMenu(btn) {
   const menu = $('#matMenu');
   if (!menu.hidden) { menu.hidden = true; return; }
-  const item = p => `<button type="button" role="menuitem" data-key="${p.key}"><span class="swatch" style="background:${p.color}"></span>${esc(p.name)}<small>${p.density < 0.01 ? p.density.toExponential(2) : +p.density.toFixed(3)} g/cm³</small></button>`;
-  menu.innerHTML = '<h4>PNNL-15870 Rev. 1 compendium</h4>' + PRESETS.filter(p => p.ref.startsWith('PNNL')).map(item).join('') +
-    '<h4>Detector fill</h4>' + PRESETS.filter(p => !p.ref.startsWith('PNNL')).map(item).join('') +
-    '<h4>Other</h4><button type="button" role="menuitem" data-key="custom"><span class="swatch" style="background:#b48ead"></span>Custom material</button>';
+  menu.innerHTML = '<div class="msearch"><input type="text" id="matSearch" placeholder="Search materials" aria-label="Search materials" spellcheck="false" autocomplete="off"></div><div id="matList"></div>';
   const r = btn.getBoundingClientRect();
-  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 270)) + 'px';
+  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 348)) + 'px';
   menu.style.top = (r.bottom + 4) + 'px';
   menu.hidden = false;
-  menu.querySelector('button').focus();
+  MATMENU.btn = btn;
+  renderMatList('');
+  const q = $('#matSearch');
+  q.addEventListener('input', () => { renderMatList(q.value); menu.scrollTop = 0; });
+  q.addEventListener('keydown', e => {
+    const first = $('#matList [data-key]');
+    if (e.key === 'Escape') { e.preventDefault(); menu.hidden = true; btn.focus(); }
+    else if (e.key === 'Enter' && first && q.value.trim()) { e.preventDefault(); first.click(); }
+    else if (e.key === 'ArrowDown') { const b = $('#matList button'); if (b) { e.preventDefault(); b.focus(); } }
+  });
+  q.focus();
+}
+function renderMatList(query) {
+  const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+  const dens = d => d < 0.01 ? d.toExponential(2) : +d.toFixed(3);
+  const item = p => `<button type="button" role="menuitem" class="mitem" data-key="${esc(p.key)}" title="${esc(p.ref)}${p.category ? ' · ' + esc(p.category) : ''}"><span class="swatch" style="background:${esc(p.color)}"></span><span class="mname">${esc(p.name)}</span><small>${dens(p.density)} g/cm³</small></button>`;
+  const custom = '<button type="button" role="menuitem" data-key="custom"><span class="swatch" style="background:#b48ead"></span>Custom material</button>';
+  const lib = LIBRARY.items, cats = MAT_CATEGORIES.map(c => c[0]);
+  const note = LIBRARY.state === 'ok' ? `${lib.length} materials from materials.jsonl (PNNL-15870 Rev. 1)${LIBRARY.skipped.length ? `, ${LIBRARY.skipped.length} unreadable line${LIBRARY.skipped.length === 1 ? '' : 's'} skipped` : ''}.`
+    : LIBRARY.state === 'loading' ? 'Loading the material library…'
+    : 'No material library (materials.jsonl) here, so only the common materials are listed.';
+  let h = '';
+  if (!words.length) {
+    h += '<h4>Common</h4>' + PRESETS.map(item).join('');
+    cats.forEach(c => {
+      const list = lib.filter(p => p.category === c);
+      if (!list.length) return;
+      const open = MATMENU.open.has(c);
+      h += `<button type="button" class="mcat" data-cat="${esc(c)}" aria-expanded="${open}"><svg class="caret" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>${esc(c)}<small>${list.length}</small></button>` +
+        (open ? list.map(item).join('') : '');
+    });
+    h += '<h4>Other</h4>' + custom;
+  } else {
+    const hit = p => { const hay = `${p.name} ${p.category || ''} ${p.ref}`.toLowerCase(); return words.every(w => hay.includes(w)); };
+    const common = PRESETS.filter(hit);
+    if (common.length) h += '<h4>Common</h4>' + common.map(item).join('');
+    cats.forEach(c => { const list = lib.filter(p => p.category === c && hit(p)); if (list.length) h += `<h4>${esc(c)}</h4>` + list.map(item).join(''); });
+    if (!h) h += `<p class="mnote">No material matches “${esc(query.trim())}”.</p>`;
+    h += '<h4>Other</h4>' + custom;
+  }
+  $('#matList').innerHTML = h + `<p class="mnote">${note}</p>`;
 }
 
 /* ───────── Explorer tree ───────── */
@@ -1243,7 +1392,7 @@ function specFor(kind, o) {
         F('select', 'axis', 'Axis', {options:() => [['x', 'x'], ['y', 'y'], ['z', 'z']], show:cyl}),
         F('vec', null, 'Size', {keys:['sx', 'sy', 'sz'], unit:'cm', show:box}),
         F('vec', null, 'Rotation', {keys:['rx', 'ry', 'rz'], unit:'°', show:() => !sph(),
-          hint:'Degrees about x, then y, then z. 90° steps export as ordinary planes and cylinders; other angles as tilted planes and GQ quadrics (their numbers are read-only in the code tabs).'})
+          hint:'Degrees about x, then y, then z. 90° steps export as ordinary planes and cylinders; other angles as tilted planes (their positions are editable in the code tabs) and GQ quadrics (read-only).'})
       ]}
     ];
   }
@@ -1596,21 +1745,33 @@ function selectOwner(o) {
 }
 
 // Apply an edited number to the model field it came from. Returns an error message, or null.
-function moveFace(ax, old, nw) {
+const nearly = (a, b) => same(a, b) || Math.abs(a - b) <= 1e-9 * (1 + Math.abs(a));
+// Move every part face lying on the plane n·x = old to n·x = nw (the opposite face stays put).
+// Works for axis-aligned planes (n = unit axis) and tilted planes alike.
+function movePlaneFaces(n, old, nw) {
   const jobs = [];
   for (const p of S.parts) {
-    let key = null, lo, hi;
-    const fr = p.shape === 'sphere' ? null : partFrame(p);
-    if (!fr || !fr.aligned) continue;
-    if (p.shape === 'box') key = 's' + 'xyz'[fr.localOf['xyz'.indexOf(ax)]];
-    else if (fr.axis === ax) key = 'h';
-    if (key) { lo = p[ax] - p[key] / 2; hi = p[ax] + p[key] / 2; }
-    if (!key) continue;
-    let nlo = lo, nhi = hi;
-    if (same(lo, old)) nlo = nw; else if (same(hi, old)) nhi = nw; else continue;
-    if (!(nhi > nlo)) return `${p.name}: its ${ax} extent would be zero or negative.`;
-    jobs.push(() => { p[ax] = (nlo + nhi) / 2; p[key] = nhi - nlo; });
+    if (p.shape === 'sphere') continue;
+    const M = partFrame(p).M, c = [p.x, p.y, p.z];
+    for (let k = 0; k < 3; k++) {
+      if (p.shape === 'cylinder' && k < 2) continue; // a cylinder's flat faces are its ends only
+      const col = [M[0][k], M[1][k], M[2][k]], par = col[0] * n[0] + col[1] * n[1] + col[2] * n[2];
+      if (Math.abs(Math.abs(par) - 1) > 1e-9) continue;
+      const key = p.shape === 'box' ? ['sx', 'sy', 'sz'][k] : 'h';
+      const cn = n[0] * c[0] + n[1] * c[1] + n[2] * c[2], half = p[key] / 2;
+      let lo = cn - half, hi = cn + half, nlo = lo, nhi = hi;
+      if (nearly(hi, old)) nhi = nw; else if (nearly(lo, old)) nlo = nw; else continue;
+      if (!(nhi > nlo)) return `${p.name}: that face would pass its opposite face.`;
+      const shift = (nlo + nhi) / 2 - cn;
+      jobs.push(() => { p[key] = tidy(nhi - nlo); ['x', 'y', 'z'].forEach((a, i) => { p[a] = tidy(c[i] + n[i] * shift); }); });
+    }
   }
+  return jobs;
+}
+function moveFace(ax, old, nw) {
+  const n = [0, 0, 0]; n['xyz'.indexOf(ax)] = 1;
+  const jobs = movePlaneFaces(n, old, nw);
+  if (typeof jobs === 'string') return jobs;
   const st = S.settings;
   if (st.worldShape === 'box' && (same(old, st.worldR) || same(old, -st.worldR))) {
     if (!(Math.abs(nw) > 0)) return 'The world boundary needs a non-zero half-width.';
@@ -1656,6 +1817,13 @@ function applyEdit(ref, raw) {
       return null;
     case 'plane':
       return moveFace(ref.ax, ref.value, val);
+    case 'gplane': {
+      const jobs = movePlaneFaces(ref.n, ref.value, val);
+      if (typeof jobs === 'string') return jobs;
+      if (!jobs.length) return 'Nothing uses that plane any more; the view will refresh.';
+      jobs.forEach(j => j());
+      return null;
+    }
     case 'sphere': {
       let hit = 0;
       S.parts.forEach(p => {
@@ -1769,6 +1937,7 @@ function annotateMcnp(deck, ctx, editable) {
         const c = n - 2; // token 0 = surface number, 1 = type, 2… = constants
         const T = card.type;
         if (d.kind === 'plane') return (T === 'P' && c === 3) || (/^P[XYZ]$/.test(T) && c === 0) ? {t:'plane', ax:d.ax, value:d.value} : null;
+        if (d.kind === 'gplane') return T === 'P' && c === 3 ? {t:'gplane', n:d.n, value:d.value} : null;
         if (d.kind === 'sphere') {
           const which = T === 'SO' ? ['r'][c] : T === 'S' ? ['x', 'y', 'z', 'r'][c] : null;
           return which ? {t:'sphere', x:d.x, y:d.y, z:d.z, r:d.r, which} : null;
@@ -1941,6 +2110,7 @@ function startInlineEdit(span, ref, pane) {
   const finish = commit => {
     if (done) return;
     if (commit) {
+      HISTORY.boundary = true;
       const err = applyEdit(ref, input.value);
       if (err) { input.classList.add('bad'); input.title = err; log('warn', esc(err)); if (commit !== 'blur') return; }
       else log('ok', `Set ${esc(input.value.trim())}.`);
@@ -2033,20 +2203,36 @@ function ramp(stops, t) {
   return [0, 1, 2].map(k => Math.round(a[k] + (b[k] - a[k]) * f));
 }
 const energyColor = E => { const [r, g, b] = ramp(ENERGY, (Math.log10(Math.max(E, 1e-3)) + 3) / 10.3); return `rgb(${r},${g},${b})`; };
+// The mesh tally layer at the current slice: value lookup in plane coordinates and the log color range.
+function meshLayer(t) {
+  const [nx, ny, nz] = t.dims, lo = t.lower, hi = t.upper, v = t.values[t.scores[0]];
+  const ax = {xy:[0, 1, 2], xz:[0, 2, 1], yz:[1, 2, 0]}[view.plane], n = [nx, ny, nz];
+  const kIdx = Math.floor((view.slice - lo[ax[2]]) / (hi[ax[2]] - lo[ax[2]]) * n[ax[2]]);
+  if (kIdx < 0 || kIdx >= n[ax[2]]) return null;
+  const at = (a, b) => { const ijk = [0, 0, 0]; ijk[ax[0]] = a; ijk[ax[1]] = b; ijk[ax[2]] = kIdx; return v[ijk[0] + nx * (ijk[1] + ny * ijk[2])]; };
+  let mn = Infinity, mx = 0;
+  for (let a = 0; a < n[ax[0]]; a++) for (let b = 0; b < n[ax[1]]; b++) { const x = at(a, b); if (x > 0) { mn = Math.min(mn, x); mx = Math.max(mx, x); } }
+  if (!(mx > 0)) return null;
+  const lmn = Math.log10(mn);
+  return {ax, n, at, mn, mx, lmn, span:Math.max(Math.log10(mx) - lmn, 1e-9)};
+}
+function meshColorbar(ctx, W, t, M) {
+  const bx = W - 180, by = 12, bw = 150, bh = 8;
+  for (let i = 0; i < bw; i++) { const [r, g, bl] = ramp(VIRIDIS, i / bw); ctx.fillStyle = `rgb(${r},${g},${bl})`; ctx.fillRect(bx + i, by, 1, bh); }
+  ctx.fillStyle = 'rgba(216,221,227,.8)'; ctx.font = '10.5px "JetBrains Mono", Consolas, monospace';
+  ctx.textAlign = 'left'; ctx.fillText(sci(M.mn), bx, by + bh + 12);
+  ctx.textAlign = 'right'; ctx.fillText(sci(M.mx), bx + bw, by + bh + 12);
+  ctx.textAlign = 'center'; ctx.fillText(`${t.scores[0]} (log)`, bx + bw / 2, by + bh + 24);
+  ctx.textAlign = 'left';
+}
 function drawMeshOverlay(ctx, cx, cy, scale, W, H) {
   const R = LOCAL.results;
   if (!R || !$('#showMesh').checked) return;
   const t = R.tallies.filter(x => x.kind === 'mesh')[+($('#meshPick').value || 0)];
   if (!t) return;
-  const [nx, ny, nz] = t.dims, lo = t.lower, hi = t.upper, v = t.values[t.scores[0]];
-  const ax = {xy:[0, 1, 2], xz:[0, 2, 1], yz:[1, 2, 0]}[view.plane], n = [nx, ny, nz];
-  const kIdx = Math.floor((view.slice - lo[ax[2]]) / (hi[ax[2]] - lo[ax[2]]) * n[ax[2]]);
-  if (kIdx < 0 || kIdx >= n[ax[2]]) return;
-  const at = (a, b) => { const ijk = [0, 0, 0]; ijk[ax[0]] = a; ijk[ax[1]] = b; ijk[ax[2]] = kIdx; return v[ijk[0] + nx * (ijk[1] + ny * ijk[2])]; };
-  let mn = Infinity, mx = 0;
-  for (let a = 0; a < n[ax[0]]; a++) for (let b = 0; b < n[ax[1]]; b++) { const x = at(a, b); if (x > 0) { mn = Math.min(mn, x); mx = Math.max(mx, x); } }
-  if (!(mx > 0)) return;
-  const lmn = Math.log10(mn), span = Math.max(Math.log10(mx) - lmn, 1e-9);
+  const M = meshLayer(t);
+  if (!M) return;
+  const {ax, n, at, lmn, span} = M, lo = t.lower, hi = t.upper;
   const du = (hi[ax[0]] - lo[ax[0]]) / n[ax[0]] * scale, dv = (hi[ax[1]] - lo[ax[1]]) / n[ax[1]] * scale;
   ctx.globalAlpha = 0.8;
   for (let a = 0; a < n[ax[0]]; a++) for (let b = 0; b < n[ax[1]]; b++) {
@@ -2056,14 +2242,7 @@ function drawMeshOverlay(ctx, cx, cy, scale, W, H) {
     ctx.fillRect(cx + (lo[ax[0]] * scale) + a * du, cy - (lo[ax[1]] * scale) - (b + 1) * dv, Math.ceil(du) + .5, Math.ceil(dv) + .5);
   }
   ctx.globalAlpha = 1;
-  // colorbar
-  const bx = W - 180, by = 12, bw = 150, bh = 8;
-  for (let i = 0; i < bw; i++) { const [r, g, bl] = ramp(VIRIDIS, i / bw); ctx.fillStyle = `rgb(${r},${g},${bl})`; ctx.fillRect(bx + i, by, 1, bh); }
-  ctx.fillStyle = 'rgba(216,221,227,.8)'; ctx.font = '10.5px "JetBrains Mono", Consolas, monospace';
-  ctx.textAlign = 'left'; ctx.fillText(sci(mn), bx, by + bh + 12);
-  ctx.textAlign = 'right'; ctx.fillText(sci(mx), bx + bw, by + bh + 12);
-  ctx.textAlign = 'center'; ctx.fillText(`${t.scores[0]} (log)`, bx + bw / 2, by + bh + 24);
-  ctx.textAlign = 'left';
+  meshColorbar(ctx, W, t, M);
   return true;
 }
 function projUV(x, y, z) { return view.plane === 'xy' ? [x, y] : view.plane === 'xz' ? [x, z] : [y, z]; }
@@ -2225,7 +2404,9 @@ function hitHandle(H, mx, my) {
 }
 
 function beginTransform(h, t, mx, my, adapter) {
-  TDRAG = {h, t, mx, my, s0:clone(t.o), adapter, acc:0, last:Math.atan2(my - h.y, mx - h.x), readout:''};
+  HISTORY.boundary = true;
+  const a0 = h.type === 'ring' && adapter.ringAngle ? adapter.ringAngle(h.axis, targetCenter(t), mx, my) : null;
+  TDRAG = {h, t, mx, my, s0:clone(t.o), adapter, acc:0, last:a0 !== null ? a0 : Math.atan2(my - h.y, mx - h.x), plane:a0 !== null, readout:''};
 }
 function applyTransform(mx, my) {
   const {h, t, s0, adapter:A} = TDRAG, o = t.o, dx = mx - TDRAG.mx, dy = my - TDRAG.my, step = TOOL.moveSnap;
@@ -2260,12 +2441,15 @@ function applyTransform(mx, my) {
       TDRAG.readout = `r = ${fmtNum(o.r)} cm`;
     }
   } else if (h.type === 'ring') {
-    const a = Math.atan2(my - h.y, mx - h.x);
+    // 3D: angle of the point where the mouse ray meets the ring's plane (right-handed about the axis).
+    // 2D: angle around the ring's center on screen.
+    const a = TDRAG.plane ? A.ringAngle(h.axis, targetCenter(t), mx, my) : Math.atan2(my - h.y, mx - h.x);
+    if (a === null) return; // ray parallel to the ring's plane: keep the last angle
     let da = a - TDRAG.last;
     if (da > Math.PI) da -= 2 * Math.PI; else if (da < -Math.PI) da += 2 * Math.PI;
     TDRAG.acc += da; TDRAG.last = a;
-    // screen y points down, so a counter-clockwise drag is a negative atan2 change
-    const deg = snapStep(-TDRAG.acc / DEG * A.rotSign(h.axis), TOOL.rotSnap);
+    // on screen, y points down, so a counter-clockwise drag is a negative atan2 change
+    const deg = snapStep(TDRAG.plane ? TDRAG.acc / DEG : -TDRAG.acc / DEG * A.rotSign(h.axis), TOOL.rotSnap);
     const R = mat3mul(axisRotation(h.axis, deg), rotXYZ(s0.rx || 0, s0.ry || 0, s0.rz || 0));
     [o.rx, o.ry, o.rz] = eulerFrom(R);
     TDRAG.readout = `${fmtNum(deg)}° about ${'xyz'[h.axis]}`;
@@ -2280,6 +2464,7 @@ function endTransform(cancel) {
     log('ok', `${verb} ${esc(t.o.name)}: ${esc(TDRAG.readout)}.`);
   }
   TDRAG = null;
+  HISTORY.boundary = true;
   renderProps(); schedule();
 }
 
@@ -2351,9 +2536,9 @@ function snapButtons() {
    then walked front to back: the first stretch whose highest-priority part (Explorer order) has a
    material is what you see. Void parts and the world fill are see-through, like cavities. The
    optional cutaway removes everything beyond the slice plane, so cross-sections show their colors. */
-const MAXP3 = 32;
+const MAXP_BUCKETS = [32, 64, 128]; // shader sizes; the largest one the graphics card's uniform limit allows is the cap
 const CAM = {target:[0, 0, 0], yaw:-0.9, pitch:0.45, dist:0, fov:45 * DEG};
-const V3 = {gl:null, prog:null, loc:null, ok:null, err:'', geom:null, drag:null};
+const V3 = {gl:null, prog:null, loc:null, ok:null, err:'', geom:null, drag:null, maxp:32, buckets:[32], progs:{}, depth:null, depthBuf:null};
 
 const v3sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const v3add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -2375,9 +2560,9 @@ function project3(B, p) {
 }
 function rayFor(B, px, py) { return v3norm(v3add(B.f, v3add(v3mul(B.r, (px - B.W / 2) / B.focal), v3mul(B.u, -(py - B.H / 2) / B.focal)))); }
 
-const SHADER_FS = `
+const shaderFS = maxp => `
 precision highp float;
-#define MAXP ${MAXP3}
+#define MAXP ${maxp}
 uniform vec2 uRes; uniform vec3 uCam; uniform vec3 uR; uniform vec3 uU; uniform vec3 uF; uniform float uFocal;
 uniform int uN;
 uniform vec3 uC[MAXP]; uniform vec3 uM0[MAXP]; uniform vec3 uM1[MAXP]; uniform vec3 uM2[MAXP];
@@ -2385,7 +2570,11 @@ uniform vec3 uD[MAXP]; uniform vec4 uCol[MAXP]; uniform float uType[MAXP];
 uniform float uWorldR; uniform float uWorldSphere;
 uniform float uCut; uniform float uCutAxis; uniform float uCutAt; uniform float uCutSide;
 uniform float uSel;
+uniform float uDepth; uniform float uTMax;
 const float BIG = 1e9;
+
+// A ray that hits nothing: background, or 'no surface' (white) in the depth pass.
+vec4 miss(vec3 bg) { return uDepth > 0.5 ? vec4(1.0) : vec4(bg, 1.0); }
 
 // Values, not an index: WebGL 1 only guarantees uniform-array indexing with a loop index in fragment shaders.
 bool part(vec3 c, vec3 m0, vec3 m1, vec3 m2, vec3 d, float ty, vec3 ro, vec3 rd, out float t0, out float t1, out vec3 n0, out vec3 n1) {
@@ -2435,7 +2624,7 @@ void main() {
   float tA = 0.0, tB = BIG; vec3 nA = -rd; float srcA = 0.0; // 0 near, 1 world, 2 cut
   if (uWorldSphere > 0.5) {
     float b = dot(ro, rd), cc = dot(ro, ro) - uWorldR * uWorldR, disc = b * b - cc;
-    if (disc < 0.0) { gl_FragColor = vec4(bg, 1.0); return; }
+    if (disc < 0.0) { gl_FragColor = miss(bg); return; }
     float s = sqrt(disc);
     if (-b - s > tA) { tA = -b - s; nA = normalize(ro + rd * tA); srcA = 1.0; }
     tB = min(tB, -b + s);
@@ -2443,7 +2632,7 @@ void main() {
     vec3 inv = 1.0 / (rd + vec3(equal(rd, vec3(0.0))) * 1e-12);
     vec3 ta = (vec3(-uWorldR) - ro) * inv, tb = (vec3(uWorldR) - ro) * inv, tmn = min(ta, tb), tmx = max(ta, tb);
     float w0 = max(max(tmn.x, tmn.y), tmn.z), w1 = min(min(tmx.x, tmx.y), tmx.z);
-    if (w0 > w1) { gl_FragColor = vec4(bg, 1.0); return; }
+    if (w0 > w1) { gl_FragColor = miss(bg); return; }
     if (w0 > tA) { tA = w0; srcA = 1.0; nA = tmn.x >= tmn.y && tmn.x >= tmn.z ? vec3(-sign(rd.x), 0.0, 0.0) : (tmn.y >= tmn.z ? vec3(0.0, -sign(rd.y), 0.0) : vec3(0.0, 0.0, -sign(rd.z))); }
     tB = min(tB, w1);
   }
@@ -2452,14 +2641,14 @@ void main() {
     // remove the half on the camera's side of the plane (uCutSide = +1: coordinates above uCutAt are removed)
     float oc = ((ax == 0 ? ro.x : (ax == 1 ? ro.y : ro.z)) - uCutAt) * uCutSide, dc = (ax == 0 ? rd.x : (ax == 1 ? rd.y : rd.z)) * uCutSide;
     vec3 cn = (ax == 0 ? vec3(1.0, 0.0, 0.0) : (ax == 1 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0))) * uCutSide;
-    if (abs(dc) < 1e-12) { if (oc > 0.0) { gl_FragColor = vec4(bg, 1.0); return; } }
+    if (abs(dc) < 1e-12) { if (oc > 0.0) { gl_FragColor = miss(bg); return; } }
     else {
       float tc = -oc / dc;
       if (dc > 0.0) tB = min(tB, tc);
       else if (tc > tA) { tA = tc; nA = cn; srcA = 2.0; }
     }
   }
-  if (tA >= tB) { gl_FragColor = vec4(bg, 1.0); return; }
+  if (tA >= tB) { gl_FragColor = miss(bg); return; }
 
   float T0[MAXP]; float T1[MAXP]; vec3 N0[MAXP]; vec3 N1[MAXP];
   for (int i = 0; i < MAXP; i++) {
@@ -2484,6 +2673,11 @@ void main() {
       if (T0[i] < tm && tm < T1[i]) { own = i; ownCol = uCol[i]; break; }
     }
     if (own >= 0 && ownCol.a > 0.5) {
+      if (uDepth > 0.5) { // depth pass: distance to this visible surface as a 24-bit number
+        float v = floor(clamp(tc / uTMax, 0.0, 1.0) * 16777214.0);
+        gl_FragColor = vec4(floor(v / 65536.0), mod(floor(v / 256.0), 256.0), mod(v, 256.0), 255.0) / 255.0;
+        return;
+      }
       vec3 n = normalize(nc);
       if (dot(n, rd) > 0.0) n = -n;
       float lam = 0.30 + 0.70 * max(dot(n, -rd), 0.0);
@@ -2495,35 +2689,60 @@ void main() {
     }
     tc = tn; nc = nn; fromCut = 0.0;
   }
-  gl_FragColor = vec4(bg, 1.0);
+  gl_FragColor = miss(bg);
 }`;
 
 function v3init() {
   if (V3.ok !== null) return V3.ok;
-  const cv = $('#vp3');
-  const gl = cv.getContext('webgl', {antialias:false, preserveDrawingBuffer:true});
+  const gl = $('#vp3').getContext('webgl', {antialias:false, preserveDrawingBuffer:true});
   if (!gl) { V3.ok = false; V3.err = 'This browser has no WebGL, so the 3D view is unavailable.'; return false; }
-  const mk = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
-  try {
-    const prog = gl.createProgram();
-    gl.attachShader(prog, mk(gl.VERTEX_SHADER, 'attribute vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }'));
-    gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, SHADER_FS));
-    gl.linkProgram(prog);
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
-    gl.useProgram(prog);
-    const buf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
-    const pl = gl.getAttribLocation(prog, 'p');
-    gl.enableVertexAttribArray(pl); gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 0, 0);
-    const names = ['uRes', 'uCam', 'uR', 'uU', 'uF', 'uFocal', 'uN', 'uWorldR', 'uWorldSphere', 'uCut', 'uCutAxis', 'uCutAt', 'uCutSide', 'uSel'];
-    V3.loc = Object.fromEntries(names.map(n => [n, gl.getUniformLocation(prog, n)]));
-    ['uC', 'uM0', 'uM1', 'uM2', 'uD', 'uCol', 'uType'].forEach(n => { V3.loc[n] = gl.getUniformLocation(prog, n + '[0]'); });
-    Object.assign(V3, {gl, prog, ok:true});
-  } catch (e) {
-    V3.ok = false; V3.err = `The 3D view couldn't start: ${e.message}`;
-  }
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+  // each part uses 7 uniform vectors (center, 3 frame columns, sizes, color, type), plus about 24 for the camera and settings
+  const vecs = gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS) || 64;
+  V3.buckets = MAXP_BUCKETS.filter(b => 7 * b + 24 <= vecs);
+  if (!V3.buckets.length) V3.buckets = [Math.max(1, Math.floor((vecs - 24) / 7))];
+  Object.assign(V3, {gl, ok:true});
+  if (!v3program(V3.buckets[0])) V3.ok = false;
   return V3.ok;
+}
+// One program per part-count bucket, compiled when first needed, so small models keep short shader loops.
+function v3program(maxp) {
+  const gl = V3.gl;
+  if (V3.progs[maxp] === undefined) {
+    const mk = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+    try {
+      const prog = gl.createProgram();
+      gl.attachShader(prog, mk(gl.VERTEX_SHADER, 'attribute vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }'));
+      gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, shaderFS(maxp)));
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+      const names = ['uRes', 'uCam', 'uR', 'uU', 'uF', 'uFocal', 'uN', 'uWorldR', 'uWorldSphere', 'uCut', 'uCutAxis', 'uCutAt', 'uCutSide', 'uSel', 'uDepth', 'uTMax'];
+      const loc = Object.fromEntries(names.map(n => [n, gl.getUniformLocation(prog, n)]));
+      ['uC', 'uM0', 'uM1', 'uM2', 'uD', 'uCol', 'uType'].forEach(n => { loc[n] = gl.getUniformLocation(prog, n + '[0]'); });
+      V3.progs[maxp] = {prog, loc};
+    } catch (e) {
+      V3.progs[maxp] = null; V3.err = `The 3D view couldn't start: ${e.message}`;
+    }
+  }
+  const p = V3.progs[maxp];
+  if (!p) return false;
+  if (V3.prog !== p.prog) {
+    gl.useProgram(p.prog);
+    const pl = gl.getAttribLocation(p.prog, 'p');
+    gl.enableVertexAttribArray(pl); gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 0, 0);
+    Object.assign(V3, {prog:p.prog, loc:p.loc, maxp});
+  }
+  return true;
+}
+// The smallest bucket that holds every part; if a bucket won't compile on this card, the next smaller one.
+function v3fit(n) {
+  const b = V3.buckets;
+  let i = b.findIndex(x => x >= n);
+  if (i < 0) i = b.length - 1;
+  for (; i >= 0; i--) if (v3program(b[i])) return true;
+  return false;
 }
 
 function partUniform(p) { // center, frame columns, dimensions, type
@@ -2544,7 +2763,7 @@ function draw3D() {
   const ctx = ov.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  if (!v3init()) {
+  if (!v3init() || !v3fit(S.parts.length)) {
     ctx.fillStyle = '#d8dde3'; ctx.font = '13px "IBM Plex Sans", system-ui, sans-serif';
     ctx.fillText(V3.err, 16, 28);
     return;
@@ -2553,8 +2772,8 @@ function draw3D() {
   const scale = 1; // render at CSS-pixel resolution: the ray tracer does real work per pixel
   cv.width = Math.round(W * scale); cv.height = Math.round(H * scale);
   gl.viewport(0, 0, cv.width, cv.height);
-  const parts = S.parts.slice(0, MAXP3).map(partUniform);
-  const flat = (arr, fn) => new Float32Array(Array.from({length:MAXP3}, (_, i) => i < arr.length ? fn(arr[i], i) : [0, 0, 0]).flat());
+  const parts = S.parts.slice(0, V3.maxp).map(partUniform);
+  const flat = (arr, fn) => new Float32Array(Array.from({length:V3.maxp}, (_, i) => i < arr.length ? fn(arr[i], i) : [0, 0, 0]).flat());
   gl.uniform2f(L.uRes, cv.width, cv.height);
   gl.uniform3fv(L.uCam, B.pos); gl.uniform3fv(L.uR, B.r); gl.uniform3fv(L.uU, B.u); gl.uniform3fv(L.uF, B.f);
   gl.uniform1f(L.uFocal, B.focal * scale);
@@ -2562,13 +2781,13 @@ function draw3D() {
   gl.uniform3fv(L.uC, flat(parts, q => q.c));
   gl.uniform3fv(L.uM0, flat(parts, q => q.cols[0])); gl.uniform3fv(L.uM1, flat(parts, q => q.cols[1])); gl.uniform3fv(L.uM2, flat(parts, q => q.cols[2]));
   gl.uniform3fv(L.uD, flat(parts, q => q.dims));
-  gl.uniform4fv(L.uCol, new Float32Array(Array.from({length:MAXP3}, (_, i) => {
+  gl.uniform4fv(L.uCol, new Float32Array(Array.from({length:V3.maxp}, (_, i) => {
     const p = S.parts[i], m = p && matById(p.material);
     if (!m) return [0, 0, 0, 0];
     const [r, g, b] = hexRgb(m.color);
     return [r / 255, g / 255, b / 255, 1];
   }).flat()));
-  gl.uniform1fv(L.uType, new Float32Array(Array.from({length:MAXP3}, (_, i) => i < parts.length ? parts[i].type : 0)));
+  gl.uniform1fv(L.uType, new Float32Array(Array.from({length:V3.maxp}, (_, i) => i < parts.length ? parts[i].type : 0)));
   gl.uniform1f(L.uWorldR, S.settings.worldR || 100);
   gl.uniform1f(L.uWorldSphere, S.settings.worldShape === 'sphere' ? 1 : 0);
   const cut = $('#cutaway').checked;
@@ -2578,6 +2797,22 @@ function draw3D() {
   const cutAx = {xy:2, xz:1, yz:0}[view.plane], cutSide = B.pos[cutAx] >= view.slice ? 1 : -1;
   gl.uniform1f(L.uCutSide, cutSide);
   gl.uniform1f(L.uSel, sel.kind === 'part' ? S.parts.findIndex(p => p.id === sel.id) : -1);
+  // Depth pass, only when something is drawn over the geometry: distance to the visible surface per pixel.
+  const res = LOCAL.results;
+  const meshT = res && $('#showMesh').checked ? res.tallies.filter(x => x.kind === 'mesh')[+($('#meshPick').value || 0)] : null;
+  const showTr = !!(res && res.tracks.length && $('#showTracks').checked);
+  const tmax = Math.hypot(...B.pos) + 2 * Math.sqrt(3) * (S.settings.worldR || 100);
+  gl.uniform1f(L.uTMax, tmax);
+  V3.depth = null;
+  if (meshT || showTr) {
+    gl.uniform1f(L.uDepth, 1);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    const n = 4 * cv.width * cv.height;
+    if (!V3.depthBuf || V3.depthBuf.length !== n) V3.depthBuf = new Uint8Array(n);
+    gl.readPixels(0, 0, cv.width, cv.height, gl.RGBA, gl.UNSIGNED_BYTE, V3.depthBuf);
+    V3.depth = {buf:V3.depthBuf, w:cv.width, h:cv.height, tmax};
+  }
+  gl.uniform1f(L.uDepth, 0);
   gl.drawArrays(gl.TRIANGLES, 0, 6);
 
   const P = p => project3(B, p);
@@ -2594,21 +2829,9 @@ function draw3D() {
     for (const y of c) for (const z of c) line([-R, y, z], [R, y, z]);
   }
   ctx.setLineDash([]);
-  // tracks
-  const res = LOCAL.results;
-  if (res && res.tracks.length && $('#showTracks').checked) {
-    ctx.lineWidth = 1.1; ctx.globalAlpha = 0.85;
-    res.tracks.forEach(tr => tr.tracks.forEach(pt => {
-      const p = pt.xyz;
-      for (let i = 1; i < p.length / 3; i++) {
-        const a = P([p[3 * i - 3], p[3 * i - 2], p[3 * i - 1]]), b = P([p[3 * i], p[3 * i + 1], p[3 * i + 2]]);
-        if (!fin(a[0]) || !fin(b[0])) continue;
-        ctx.strokeStyle = pt.particle === 'neutron' ? energyColor(pt.E[i - 1]) : 'rgb(255,214,102)';
-        ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
-      }
-    }));
-    ctx.globalAlpha = 1;
-  }
+  // flux map on the slice plane, then tracks; both are hidden or dimmed where geometry is in front of them
+  if (meshT) drawMesh3D(ctx, B, meshT, W, H);
+  if (showTr) drawTracks3D(ctx, B, res);
   // sources
   V3.sources = [];
   S.sources.forEach(s => {
@@ -2633,11 +2856,98 @@ function draw3D() {
   ctx.fillStyle = 'rgba(216,221,227,.65)'; ctx.font = '11px "JetBrains Mono", Consolas, monospace';
   ctx.fillText(cut ? `3D · cut open at ${AX[view.plane][2]} = ${view.slice} cm (the half facing you is removed)` : '3D', 10, 16);
   ctx.fillText('drag to orbit · right-drag or Shift+drag to pan · wheel to zoom · F to focus', 10, 31);
-  if (S.parts.length > MAXP3) { ctx.fillStyle = '#e6b455'; ctx.fillText(`Only the first ${MAXP3} parts are drawn in 3D.`, 10, 46); }
+  if (S.parts.length > V3.maxp) { ctx.fillStyle = '#e6b455'; ctx.fillText(`3D shows the first ${V3.maxp} of ${S.parts.length} parts (2D and exports use all).`, 10, 46); }
   // gizmo
   const tt = toolTarget();
   V3.handles = tt ? buildHandles(tt, adapter3D()) : [];
   drawHandles(ctx, V3.handles);
+}
+
+// Distance (cm) from the camera to the first visible surface through CSS pixel (x, y); Infinity if the ray hits none.
+function depthAt(x, y) {
+  const D = V3.depth;
+  if (!D) return Infinity;
+  const px = Math.floor(x), py = Math.floor(y);
+  if (!(px >= 0 && py >= 0 && px < D.w && py < D.h)) return Infinity;
+  const i = 4 * ((D.h - 1 - py) * D.w + px), b = D.buf;
+  if (b[i] === 255 && b[i + 1] === 255 && b[i + 2] === 255) return Infinity;
+  return (b[i] * 65536 + b[i + 1] * 256 + b[i + 2]) / 16777214 * D.tmax;
+}
+const depthSlack = d => 0.5 + 0.004 * d; // surfaces are resolved to a pixel, so allow a little
+
+function drawTracks3D(ctx, B, res) {
+  const P = p => project3(B, p);
+  const seen = p => {
+    const q = P(p), d = Math.hypot(p[0] - B.pos[0], p[1] - B.pos[1], p[2] - B.pos[2]);
+    return d <= depthAt(q[0], q[1]) + depthSlack(d);
+  };
+  ctx.lineWidth = 1.1;
+  res.tracks.forEach(tr => tr.tracks.forEach(pt => {
+    const p = pt.xyz;
+    for (let i = 1; i < p.length / 3; i++) {
+      const a3 = [p[3 * i - 3], p[3 * i - 2], p[3 * i - 1]], b3 = [p[3 * i], p[3 * i + 1], p[3 * i + 2]], a = P(a3), b = P(b3);
+      if (!fin(a[0]) || !fin(b[0])) continue;
+      ctx.strokeStyle = pt.particle === 'neutron' ? energyColor(pt.E[i - 1]) : 'rgb(255,214,102)';
+      // pieces a few pixels long: bright where nothing is in front, faint behind geometry
+      const steps = Math.max(1, Math.min(200, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 3)));
+      const at = s => P(v3add(a3, v3mul(v3sub(b3, a3), s)));
+      let from = 0, vis = null;
+      for (let k = 0; k <= steps; k++) {
+        const v = k < steps ? seen(v3add(a3, v3mul(v3sub(b3, a3), (k + 0.5) / steps))) : null;
+        if (v === vis) continue;
+        if (vis !== null) {
+          const s0 = at(from / steps), s1 = at(k / steps);
+          ctx.globalAlpha = vis ? 0.85 : 0.14;
+          ctx.beginPath(); ctx.moveTo(s0[0], s0[1]); ctx.lineTo(s1[0], s1[1]); ctx.stroke();
+        }
+        from = k; vis = v;
+      }
+    }
+  }));
+  ctx.globalAlpha = 1;
+}
+
+// The mesh tally layer at the slice plane, painted onto that plane in 3D wherever it isn't behind geometry.
+function drawMesh3D(ctx, B, t, W, H) {
+  const M = meshLayer(t);
+  if (!M) return;
+  const [ua, va, wa] = M.ax, lo = t.lower, hi = t.upper, nu = M.n[ua], nv = M.n[va];
+  const cols = new Uint8ClampedArray(nu * nv * 4);
+  for (let a = 0; a < nu; a++) for (let b = 0; b < nv; b++) {
+    const x = M.at(a, b);
+    if (!(x > 0)) continue;
+    const k = 4 * (a + nu * b), c = ramp(VIRIDIS, (Math.log10(x) - M.lmn) / M.span);
+    cols[k] = c[0]; cols[k + 1] = c[1]; cols[k + 2] = c[2]; cols[k + 3] = 204;
+  }
+  const off = V3.meshCanvas || (V3.meshCanvas = document.createElement('canvas'));
+  off.width = W; off.height = H;
+  const octx = off.getContext('2d'), img = octx.createImageData(W, H), out = img.data;
+  const su = nu / (hi[ua] - lo[ua]), sv = nv / (hi[va] - lo[va]), pos = B.pos, D = V3.depth;
+  for (let y = 0; y < H; y++) {
+    const fy = -(y + 0.5 - H / 2) / B.focal;
+    for (let x = 0; x < W; x++) {
+      const fx = (x + 0.5 - W / 2) / B.focal;
+      const d0 = B.f[0] + B.r[0] * fx + B.u[0] * fy, d1 = B.f[1] + B.r[1] * fx + B.u[1] * fy, d2 = B.f[2] + B.r[2] * fx + B.u[2] * fy;
+      const dir = [d0, d1, d2], dn = dir[wa];
+      if (Math.abs(dn) < 1e-9) continue;
+      const tp = (view.slice - pos[wa]) / dn;
+      if (!(tp > 0)) continue;
+      const iu = Math.floor((pos[ua] + dir[ua] * tp - lo[ua]) * su), iv = Math.floor((pos[va] + dir[va] * tp - lo[va]) * sv);
+      if (iu < 0 || iv < 0 || iu >= nu || iv >= nv) continue;
+      const k = 4 * (iu + nu * iv);
+      if (!cols[k + 3]) continue;
+      if (D && x < D.w && y < D.h) {
+        const dist = tp * Math.hypot(d0, d1, d2), j = 4 * ((D.h - 1 - y) * D.w + x), b = D.buf;
+        if (!(b[j] === 255 && b[j + 1] === 255 && b[j + 2] === 255) &&
+            dist > (b[j] * 65536 + b[j + 1] * 256 + b[j + 2]) / 16777214 * D.tmax + depthSlack(dist)) continue;
+      }
+      const o = 4 * (y * W + x);
+      out[o] = cols[k]; out[o + 1] = cols[k + 1]; out[o + 2] = cols[k + 2]; out[o + 3] = cols[k + 3];
+    }
+  }
+  octx.putImageData(img, 0, 0);
+  ctx.drawImage(off, 0, 0, W, H);
+  meshColorbar(ctx, W, t, M);
 }
 
 function adapter3D() {
@@ -2647,6 +2957,14 @@ function adapter3D() {
     toScreen: p => project3(B, p).slice(0, 2),
     axesShown: [0, 1, 2], ringAxes: [0, 1, 2], pxPerCm, freeMove: false,
     rotSign: i => { const toCam = v3sub(B.pos, c); return toCam[i] >= 0 ? 1 : -1; },
+    ringAngle: (i, ctr, mx, my) => {
+      const rd = rayFor(B, mx, my);
+      if (Math.abs(rd[i]) < 1e-4) return null;
+      const t = (ctr[i] - B.pos[i]) / rd[i];
+      if (!(t > 0)) return null;
+      const p = v3add(B.pos, v3mul(rd, t)), e1 = (i + 1) % 3, e2 = (i + 2) % 3;
+      return Math.atan2(p[e2] - ctr[e2], p[e1] - ctr[e1]);
+    },
     ringEllipse: (i, ctr) => {
       const R = 64 / pxPerCm, e1 = [0, 1, 2].map(k => k === (i + 1) % 3 ? 1 : 0), e2 = [0, 1, 2].map(k => k === (i + 2) % 3 ? 1 : 0);
       const pts = Array.from({length:65}, (_, a) => { const t = a / 64 * 2 * Math.PI; return project3(B, v3add(ctr, v3add(v3mul(e1, R * Math.cos(t)), v3mul(e2, R * Math.sin(t))))); }).filter(q => fin(q[0]));
@@ -2680,7 +2998,7 @@ function pick3(px, py) {
     else { const tc = -oc / dc; if (dc > 0) tB = Math.min(tB, tc); else tA = Math.max(tA, tc); }
   }
   if (tA >= tB) return -1;
-  const iv = S.parts.slice(0, MAXP3).map(p => {
+  const iv = S.parts.slice(0, V3.maxp).map(p => {
     const q = partUniform(p), o = v3sub(ro, q.c), lo = q.cols.map(m => v3dot(o, m)), ld = q.cols.map(m => v3dot(rd, m)), d = q.dims;
     if (q.type === 0) { const b = v3dot(lo, ld), disc = b * b - (v3dot(lo, lo) - d[0] * d[0]); return disc < 0 ? null : [-b - Math.sqrt(disc), -b + Math.sqrt(disc)]; }
     if (q.type === 1) {
@@ -2945,7 +3263,7 @@ function schedule() {
   setTimeout(flush, 60);
 }
 function renderRibbonState() {
-  const key = `${sel.kind}|${!!downloads}`;
+  const key = `${sel.kind}|${!!downloads}|${HISTORY.undo.length > 0}|${HISTORY.redo.length > 0}`;
   if (renderRibbonState.last !== key) { renderRibbonState.last = key; renderRibbon(); }
 }
 function renderAll() { renderRibbon(); renderProps(); syncViewControls(); schedule(); }
@@ -2973,7 +3291,20 @@ function setDocTab(which) { // 'view' | 'code' | 'mcnp'; in split view the viewp
 
 /* ───────── Events ───────── */
 $('#rtabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) { ribbonTab = b.dataset.tab; renderRibbon(); } });
-$('#matMenu').addEventListener('click', e => { const b = e.target.closest('[data-key]'); if (b) { $('#matMenu').hidden = true; addMaterial(b.dataset.key); } });
+$('#matMenu').addEventListener('click', e => {
+  const c = e.target.closest('[data-cat]');
+  if (c) { const k = c.dataset.cat; MATMENU.open.has(k) ? MATMENU.open.delete(k) : MATMENU.open.add(k); renderMatList(''); const again = $(`#matList [data-cat="${CSS.escape(k)}"]`); if (again) again.focus(); return; }
+  const b = e.target.closest('[data-key]'); if (b) { $('#matMenu').hidden = true; addMaterial(b.dataset.key); }
+});
+$('#matMenu').addEventListener('keydown', e => { // arrow keys move through the list; typing goes back to the search box
+  if (!e.target.closest('#matList')) return;
+  const all = [...$('#matMenu').querySelectorAll('#matList button')], i = all.indexOf(e.target);
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const j = i + (e.key === 'ArrowDown' ? 1 : -1);
+    if (j < 0) $('#matSearch').focus(); else if (all[j]) all[j].focus();
+  } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && e.key !== ' ') { $('#matSearch').focus(); }
+});
 document.addEventListener('mousedown', e => { const m = $('#matMenu'); if (!m.hidden && !m.contains(e.target) && !e.target.closest('.rbtn')) m.hidden = true; });
 let drag = null, justDragged = false;
 $('#tree').addEventListener('click', e => {
@@ -3143,6 +3474,8 @@ document.addEventListener('keydown', e => {
   if (e.target.closest('input, select, textarea')) return;
   if ((e.key === 'Delete') && LISTS[sel.kind]) { e.preventDefault(); removeSelected(); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && LISTS[sel.kind]) { e.preventDefault(); duplicateSelected(); }
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
   if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && LISTS[sel.kind]) {
     e.preventDefault();
     const fromTree = !!e.target.closest('#tree');
@@ -3162,4 +3495,5 @@ view.mode = VIEWSTATE.mode === '3d' ? '3d' : 'slice';
 syncViewControls();
 setDocTab(VIEWSTATE.split ? VIEWSTATE.right : 'view');
 localInit();
+loadLibrary();
 </script>

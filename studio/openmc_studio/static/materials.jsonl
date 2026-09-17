@@ -1,0 +1,371 @@
+{"num": 1, "name": "A-150 Tissue-Equivalent Plastic (A150TEP)", "density": 1.127, "category": "Tissue and dosimetry", "comps": "H:0.101327, C:0.775501, N:0.035057, O:0.052316, F:0.017422, Ca:0.018378"}
+{"num": 2, "name": "Acetone", "density": 0.7899, "category": "Water and liquids", "comps": "H:0.104122, C:0.620405, O:0.275473"}
+{"num": 3, "name": "Acetylene", "density": 0.001097, "category": "Gases", "comps": "H:0.077418, C:0.922582"}
+{"num": 4, "name": "Air (Dry, Near Sea Level)", "density": 0.001205, "category": "Gases", "comps": "C:0.000124, N:0.755268, O:0.231781, Ar:0.012827"}
+{"num": 5, "name": "Alanine", "density": 1.42, "category": "Tissue and dosimetry", "comps": "H:0.079190, C:0.404439, N:0.157213, O:0.359159"}
+{"num": 6, "name": "Aluminum", "density": 2.6989, "category": "Metals and alloys", "comps": "Al:1.000000"}
+{"num": 7, "name": "Aluminum Oxide", "density": 3.97, "category": "Other compounds", "comps": "O:0.470749, Al:0.529251"}
+{"num": 8, "name": "Aluminum, Alloy 2024-O", "density": 2.78, "category": "Metals and alloys", "comps": "Mg:0.015000, Al:0.927000, Si:0.002830, Ti:0.000850, Cr:0.000570, Mn:0.006000, Fe:0.002830, Cu:0.043500, Zn:0.001420"}
+{"num": 9, "name": "Aluminum, Alloy 2090-T83", "density": 2.59, "category": "Metals and alloys", "comps": "Li:0.022500, Mg:0.001630, Al:0.944000, Si:0.000650, Ti:0.000980, Cr:0.000330, Mn:0.000330, Fe:0.000780, Cu:0.027000, Zn:0.000650, Zr:0.001150"}
+{"num": 10, "name": "Aluminum, Alloy 3003", "density": 2.73, "category": "Metals and alloys", "comps": "Al:0.978500, Si:0.003320, Mn:0.012500, Fe:0.003880, Cu:0.001250, Zn:0.000550"}
+{"num": 11, "name": "Aluminum, Alloy 4043-O", "density": 2.69, "category": "Metals and alloys", "comps": "Be:0.000005, Mg:0.000280, Al:0.939000, Si:0.052500, Ti:0.001130, Mn:0.000280, Fe:0.004530, Cu:0.001700, Zn:0.000570"}
+{"num": 12, "name": "Aluminum, Alloy 5086-O", "density": 2.66, "category": "Metals and alloys", "comps": "Mg:0.040000, Al:0.946500, Si:0.002140, Ti:0.000800, Cr:0.001500, Mn:0.004500, Fe:0.002680, Cu:0.000540, Zn:0.001340"}
+{"num": 13, "name": "Aluminum, Alloy 6061-O", "density": 2.7, "category": "Metals and alloys", "comps": "Mg:0.010000, Al:0.972000, Si:0.006000, Ti:0.000880, Cr:0.001950, Mn:0.000880, Fe:0.004090, Cu:0.002750, Zn:0.001460"}
+{"num": 14, "name": "Aluminum, Alloy 7075-O", "density": 2.81, "category": "Metals and alloys", "comps": "Mg:0.025000, Al:0.892500, Si:0.002340, Ti:0.001170, Cr:0.002300, Mn:0.001760, Fe:0.002930, Cu:0.016000, Zn:0.056000"}
+{"num": 15, "name": "Ammonia (Liquid at T= -79°C)", "density": 0.771, "category": "Water and liquids", "comps": "H:0.177547, N:0.822453"}
+{"num": 16, "name": "Anthracene", "density": 1.25, "category": "Detectors and scintillators", "comps": "H:0.056553, C:0.943447"}
+{"num": 17, "name": "Argon", "density": 0.001662, "category": "Gases", "comps": "Ar:1.000000"}
+{"num": 18, "name": "Asphalt", "density": 1.3, "category": "Concrete and building materials", "comps": "H:0.103725, C:0.848050, N:0.006050, O:0.004050, S:0.037700, V:0.000393, Ni:0.000034"}
+{"num": 19, "name": "Asphalt Pavement", "density": 2.5784, "category": "Concrete and building materials", "comps": "H:0.007781, C:0.076175, N:0.000363, O:0.459103, Na:0.011659, Mg:0.021757, Al:0.051009, Si:0.231474, S:0.002804, K:0.017058, Ca:0.084471, Ti:0.003403, V:0.000024, Mn:0.000362, Fe:0.031375, Ni:0.000002, Pb:0.001179"}
+{"num": 20, "name": "Bakelite", "density": 1.25, "category": "Plastics and polymers", "comps": "H:0.057444, C:0.774589, O:0.167968"}
+{"num": 21, "name": "Barium Fluoride", "density": 4.89, "category": "Detectors and scintillators", "comps": "F:0.216720, Ba:0.783280"}
+{"num": 22, "name": "Barium Sulfate", "density": 4.5, "category": "Other compounds", "comps": "O:0.274212, S:0.137368, Ba:0.588420"}
+{"num": 23, "name": "Benzene", "density": 0.8765, "category": "Water and liquids", "comps": "H:0.077418, C:0.922582"}
+{"num": 24, "name": "Beryllium", "density": 1.848, "category": "Metals and alloys", "comps": "Be:1.000000"}
+{"num": 25, "name": "Beryllium Carbide", "density": 1.9, "category": "Other compounds", "comps": "Be:0.600111, C:0.399889"}
+{"num": 26, "name": "Beryllium Oxide", "density": 3.01, "category": "Other compounds", "comps": "Be:0.360320, O:0.639680"}
+{"num": 27, "name": "Bismuth", "density": 9.747, "category": "Metals and alloys", "comps": "Bi:1.000000"}
+{"num": 28, "name": "Bismuth Germanate (BGO)", "density": 7.13, "category": "Detectors and scintillators", "comps": "O:0.154126, Ge:0.174820, Bi:0.671054"}
+{"num": 29, "name": "Blood (ICRP)", "density": 1.06, "category": "Tissue and dosimetry", "comps": "H:0.101866, C:0.100020, N:0.029640, O:0.759414, Na:0.001850, Mg:0.000040, Si:0.000030, P:0.000350, S:0.001850, Cl:0.002780, K:0.001630, Ca:0.000060, Fe:0.000460, Zn:0.000010"}
+{"num": 30, "name": "Bone Equivalent Plastic, B-100", "density": 1.45, "category": "Tissue and dosimetry", "comps": "H:0.065471, C:0.536945, N:0.021500, O:0.032085, F:0.167411, Ca:0.176589"}
+{"num": 31, "name": "Bone Equivalent Plastic, B-110", "density": 1.785, "category": "Tissue and dosimetry", "comps": "H:0.035500, C:0.367300, N:0.039700, O:0.045300, F:0.249300, Ca:0.262900"}
+{"num": 32, "name": "Bone, Compact (ICRU)", "density": 1.85, "category": "Tissue and dosimetry", "comps": "H:0.063984, C:0.278000, N:0.027000, O:0.410016, Mg:0.002000, P:0.070000, S:0.002000, Ca:0.147000"}
+{"num": 33, "name": "Bone, Cortical (ICRP)", "density": 1.85, "category": "Tissue and dosimetry", "comps": "H:0.047234, C:0.144330, N:0.041990, O:0.446096, Mg:0.002200, P:0.104970, S:0.003150, Ca:0.209930, Zn:0.000100"}
+{"num": 34, "name": "Boral (65% Al-35% B4C)", "density": 2.53, "category": "Neutron absorbers and shielding", "comps": "B:0.274000, C:0.076000, Al:0.650000"}
+{"num": 35, "name": "Boral (Aluminum 10% Boron Alloy)", "density": 2.6, "category": "Neutron absorbers and shielding", "comps": "B:0.100000, Na:0.005000, Al:0.879000, Si:0.002500, K:0.010000, Ti:0.000500, Fe:0.003000"}
+{"num": 36, "name": "Boral (Aluminum 5% Boron Alloy)", "density": 2.6, "category": "Neutron absorbers and shielding", "comps": "B:0.050000, Na:0.005000, Al:0.929500, Si:0.002000, K:0.010000, Ti:0.000500, Fe:0.003000"}
+{"num": 37, "name": "Borax", "density": 1.73, "category": "Neutron absorbers and shielding", "comps": "H:0.052859, B:0.113391, O:0.713187, Na:0.120563"}
+{"num": 38, "name": "Boric Acid", "density": 1.5, "category": "Neutron absorbers and shielding", "comps": "H:0.048903, B:0.174842, O:0.776255"}
+{"num": 39, "name": "Boron", "density": 2.37, "category": "Neutron absorbers and shielding", "comps": "B:1.000000"}
+{"num": 40, "name": "Boron Carbide", "density": 2.52, "category": "Neutron absorbers and shielding", "comps": "B:0.782610, C:0.217390"}
+{"num": 41, "name": "Boron Fluoride (B2F4)", "density": 0.004058, "category": "Gases", "comps": "B:0.221501, F:0.778499"}
+{"num": 42, "name": "Boron Fluoride (BF3)", "density": 0.002831, "category": "Gases", "comps": "B:0.159440, F:0.840560"}
+{"num": 43, "name": "Boron Oxide", "density": 1.812, "category": "Other compounds", "comps": "B:0.310551, O:0.689449"}
+{"num": 44, "name": "Brain (ICRP)", "density": 1.03, "category": "Tissue and dosimetry", "comps": "H:0.110667, C:0.125420, N:0.013280, O:0.737723, Na:0.001840, Mg:0.000150, P:0.003540, S:0.001770, Cl:0.002360, K:0.003100, Ca:0.000090, Fe:0.000050, Zn:0.000010"}
+{"num": 45, "name": "Brass (Typical Composition)", "density": 8.07, "category": "Metals and alloys", "comps": "Fe:0.000868, Cu:0.665381, Zn:0.325697, Sn:0.002672, Pb:0.005377"}
+{"num": 46, "name": "Brick, Common Silica", "density": 1.8, "category": "Concrete and building materials", "comps": "O:0.525000, Al:0.005000, Si:0.449000, Ca:0.014000, Fe:0.007000"}
+{"num": 47, "name": "Brick, Fire", "density": 2.1, "category": "Concrete and building materials", "comps": "O:0.497000, Mg:0.006000, Al:0.212000, Si:0.252000, Ca:0.007000, Ti:0.012000, Fe:0.014000"}
+{"num": 48, "name": "Brick, Kaolin (White)", "density": 2.1, "category": "Concrete and building materials", "comps": "O:0.500318, Mg:0.001205, Al:0.240568, Si:0.242823, Ca:0.000714, Ti:0.010179, Fe:0.004192"}
+{"num": 49, "name": "Bronze (Typical Composition)", "density": 8.4, "category": "Metals and alloys", "comps": "Al:0.028528, Si:0.003339, Mn:0.003555, Fe:0.010208, Ni:0.006718, Cu:0.874157, Zn:0.036037, Sn:0.024503, Pb:0.012957"}
+{"num": 50, "name": "C-552 Air-Equivalent Plastic", "density": 1.76, "category": "Tissue and dosimetry", "comps": "H:0.024680, C:0.501610, O:0.004527, F:0.465209, Si:0.003973"}
+{"num": 51, "name": "Cadmium", "density": 8.65, "category": "Metals and alloys", "comps": "Cd:1.000000"}
+{"num": 52, "name": "Cadmium Nitrate Tetrahydrate", "density": 2.45, "category": "Other compounds", "comps": "H:0.026139, N:0.090811, O:0.518650, Cd:0.364401"}
+{"num": 53, "name": "Cadmium Telluride", "density": 6.2, "category": "Detectors and scintillators", "comps": "Cd:0.468355, Te:0.531645"}
+{"num": 54, "name": "Cadmium Tungstate (CWO)", "density": 7.9, "category": "Detectors and scintillators", "comps": "O:0.177644, Cd:0.312027, W:0.510329"}
+{"num": 55, "name": "Calcium Carbonate", "density": 2.8, "category": "Other compounds", "comps": "C:0.120003, O:0.479554, Ca:0.400443"}
+{"num": 56, "name": "Calcium Fluoride", "density": 3.18, "category": "Detectors and scintillators", "comps": "F:0.486659, Ca:0.513341"}
+{"num": 57, "name": "Calcium Oxide", "density": 3.3, "category": "Other compounds", "comps": "O:0.285299, Ca:0.714701"}
+{"num": 58, "name": "Calcium Sulfate", "density": 2.96, "category": "Other compounds", "comps": "O:0.470095, S:0.235497, Ca:0.294408"}
+{"num": 59, "name": "Carbon Dioxide", "density": 0.001842, "category": "Gases", "comps": "C:0.272912, O:0.727088"}
+{"num": 60, "name": "Carbon Tetrachloride", "density": 1.594, "category": "Water and liquids", "comps": "C:0.078083, Cl:0.921917"}
+{"num": 61, "name": "Carbon, Activated", "density": 0.32, "category": "Other compounds", "comps": "B:0.000001, C:0.999999"}
+{"num": 62, "name": "Carbon, Amorphous", "density": 2.0, "category": "Other compounds", "comps": "B:0.000001, C:0.999999"}
+{"num": 63, "name": "Carbon, Graphite (Reactor Grade)", "density": 1.7, "category": "Other compounds", "comps": "B:0.000001, C:0.999999"}
+{"num": 64, "name": "Cat Litter (Clumping)", "density": 1.1, "category": "Minerals, rocks and soils", "comps": "H:0.040400, O:0.641100, Na:0.008400, Al:0.098300, Si:0.204600, Ca:0.007300"}
+{"num": 65, "name": "Cat Litter (Non-clumping)", "density": 1.1, "category": "Minerals, rocks and soils", "comps": "H:0.013732, O:0.539919, Na:0.043271, Mg:0.050466, Al:0.052132, Si:0.293185, K:0.003765, Ca:0.001341, Fe:0.002188"}
+{"num": 66, "name": "Cellulose Acetate", "density": 1.42, "category": "Plastics and polymers", "comps": "H:0.062162, C:0.444462, O:0.493376"}
+{"num": 67, "name": "Celotex", "density": 0.24, "category": "Concrete and building materials", "comps": "H:0.062165, C:0.444455, O:0.493380"}
+{"num": 68, "name": "Ceric Sulfate Dosimeter Solution", "density": 1.03, "category": "Tissue and dosimetry", "comps": "H:0.107596, N:0.000800, O:0.874976, S:0.014627, Ce:0.002001"}
+{"num": 69, "name": "Cerium Fluoride", "density": 6.16, "category": "Detectors and scintillators", "comps": "F:0.289153, Ce:0.710847"}
+{"num": 70, "name": "Cesium Iodide", "density": 4.51, "category": "Detectors and scintillators", "comps": "I:0.488451, Cs:0.511549"}
+{"num": 71, "name": "Chromium", "density": 7.18, "category": "Metals and alloys", "comps": "Cr:1.000000"}
+{"num": 72, "name": "Clay", "density": 2.2, "category": "Minerals, rocks and soils", "comps": "O:0.484345, Na:0.007608, Mg:0.010691, Al:0.122125, Si:0.294194, P:0.000113, K:0.020427, Ca:0.018957, Ti:0.004668, Mn:0.000064, Fe:0.036804"}
+{"num": 73, "name": "Coal, Anthracite", "density": 0.84, "category": "Minerals, rocks and soils", "comps": "H:0.024000, C:0.937000, N:0.009000, O:0.024000, S:0.006000"}
+{"num": 74, "name": "Coal, Bituminous", "density": 0.75, "category": "Minerals, rocks and soils", "comps": "H:0.056000, C:0.845000, N:0.016000, O:0.070000, S:0.013000"}
+{"num": 75, "name": "Coal, Lignite", "density": 0.75, "category": "Minerals, rocks and soils", "comps": "H:0.042000, C:0.727000, N:0.012000, O:0.213000, S:0.006000"}
+{"num": 76, "name": "Concrete, Barite (Type BA)", "density": 3.35, "category": "Concrete and building materials", "comps": "H:0.003585, O:0.311622, Mg:0.001195, Al:0.004183, Si:0.010457, S:0.107858, Ca:0.050194, Fe:0.047505, Ba:0.463400"}
+{"num": 77, "name": "Concrete, Barytes-limonite", "density": 3.36, "category": "Concrete and building materials", "comps": "H:0.010240, O:0.378476, Na:0.000904, Mg:0.002309, Al:0.005020, Si:0.013553, S:0.076097, Ca:0.053910, Mn:0.001405, Fe:0.137135, Ba:0.320952"}
+{"num": 78, "name": "Concrete, Boron Frits-baryte", "density": 3.1, "category": "Concrete and building materials", "comps": "H:0.005626, B:0.010449, O:0.339596, F:0.002311, Na:0.012157, Mg:0.002311, Al:0.006430, Si:0.033256, S:0.091932, K:0.001005, Ca:0.062896, Mn:0.000201, Fe:0.022003, Zn:0.006631, Ba:0.403195"}
+{"num": 79, "name": "Concrete, Colemanite-baryte", "density": 3.2, "category": "Concrete and building materials", "comps": "H:0.008564, B:0.009874, O:0.351537, Na:0.001108, Mg:0.002217, Al:0.006146, Si:0.017733, S:0.097028, Ca:0.085239, Mn:0.000101, Fe:0.010378, Ba:0.410076"}
+{"num": 80, "name": "Concrete, Ferro-phosphorus", "density": 4.8, "category": "Concrete and building materials", "comps": "H:0.005000, O:0.104000, Mg:0.002000, Al:0.004000, Si:0.034000, P:0.197000, Ca:0.042000, Fe:0.612000"}
+{"num": 81, "name": "Concrete, Hanford Dry", "density": 2.18, "category": "Concrete and building materials", "comps": "H:0.004000, O:0.482102, Na:0.002168, Mg:0.014094, Al:0.069387, Si:0.277549, K:0.013010, Ca:0.080229, Fe:0.057461"}
+{"num": 82, "name": "Concrete, Hanford Wet", "density": 2.35, "category": "Concrete and building materials", "comps": "H:0.012309, O:0.513359, Na:0.002001, Mg:0.013009, Al:0.064045, Si:0.256179, K:0.012008, Ca:0.074052, Fe:0.053037"}
+{"num": 83, "name": "Concrete, Iron-limonite", "density": 4.4, "category": "Concrete and building materials", "comps": "H:0.000500, O:0.179910, Mg:0.001999, Al:0.004998, Si:0.013993, S:0.001000, Ca:0.060970, Mn:0.015992, Fe:0.720640"}
+{"num": 84, "name": "Concrete, Iron-Portland", "density": 5.9, "category": "Concrete and building materials", "comps": "H:0.003321, O:0.058563, Mg:0.001308, Al:0.003321, Si:0.009157, S:0.000503, Ca:0.039847, Mn:0.003522, Fe:0.880459"}
+{"num": 85, "name": "Concrete, Limonite and Steel", "density": 4.54, "category": "Concrete and building materials", "comps": "H:0.006840, O:0.156222, Mg:0.001545, Al:0.006399, Si:0.014784, K:0.000883, Ca:0.057590, V:0.000883, Fe:0.754854"}
+{"num": 86, "name": "Concrete, Los Alamos (MCNP)", "density": 2.25, "category": "Concrete and building materials", "comps": "H:0.004530, O:0.512600, Na:0.015270, Al:0.035550, Si:0.360360, Ca:0.057910, Fe:0.013780"}
+{"num": 87, "name": "Concrete, Luminite-colemanite-baryte", "density": 3.1, "category": "Concrete and building materials", "comps": "H:0.010957, B:0.008846, O:0.371431, Na:0.001106, Mg:0.001407, Al:0.017692, Si:0.009650, S:0.091074, Ca:0.055086, Ti:0.012766, Mn:0.001206, Fe:0.030860, Ba:0.387917"}
+{"num": 88, "name": "Concrete, Luminite-Portland-colemanite-baryte", "density": 3.1, "category": "Concrete and building materials", "comps": "H:0.011126, B:0.010316, O:0.374023, Na:0.001113, Mg:0.002023, Al:0.013351, Si:0.015070, S:0.090724, Ca:0.077576, Ti:0.000718, Mn:0.000405, Fe:0.018914, Ba:0.384643"}
+{"num": 89, "name": "Concrete, M-1", "density": 4.5, "category": "Concrete and building materials", "comps": "H:0.008000, B:0.009000, O:0.107000, Mg:0.043000, Cl:0.021000, Mn:0.003000, Ca:0.011000, Fe:0.798000"}
+{"num": 90, "name": "Concrete, Magnetite", "density": 3.53, "category": "Concrete and building materials", "comps": "H:0.003113, O:0.330504, Mg:0.009338, Al:0.023486, Si:0.025750, S:0.001415, Ca:0.071024, Ti:0.054329, V:0.003113, Cr:0.001698, Mn:0.001981, Fe:0.474250"}
+{"num": 91, "name": "Concrete, Magnetite and Steel", "density": 4.64, "category": "Concrete and building materials", "comps": "H:0.002374, O:0.137678, Mg:0.003669, Al:0.010358, Si:0.015753, Ca:0.055675, Ti:0.015969, V:0.000647, Fe:0.757877"}
+{"num": 92, "name": "Concrete, Magnuson", "density": 2.147, "category": "Concrete and building materials", "comps": "H:0.003319, C:0.105320, O:0.499428, Na:0.001411, Mg:0.094200, Al:0.007859, Si:0.042101, S:0.002483, Cl:0.000523, K:0.009445, Ca:0.226317, Ti:0.001488, Mn:0.000512, Fe:0.005595"}
+{"num": 93, "name": "Concrete, MO", "density": 5.5, "category": "Concrete and building materials", "comps": "H:0.005000, O:0.060000, Mg:0.037000, Mn:0.004000, Cl:0.013000, Fe:0.881000"}
+{"num": 94, "name": "Concrete, Oak Ridge (ORNL)", "density": 2.3, "category": "Concrete and building materials", "comps": "H:0.006187, C:0.175193, O:0.410184, Na:0.000271, Mg:0.032649, Al:0.010830, Si:0.034479, K:0.001138, Ca:0.321287, Fe:0.007784"}
+{"num": 95, "name": "Concrete, Ordinary (NBS 03)", "density": 2.35, "category": "Concrete and building materials", "comps": "H:0.008485, C:0.050064, O:0.473483, Mg:0.024183, Al:0.036063, Si:0.145100, S:0.002970, K:0.001697, Ca:0.246924, Fe:0.011031"}
+{"num": 96, "name": "Concrete, Ordinary (NBS 04)", "density": 2.35, "category": "Concrete and building materials", "comps": "H:0.005558, O:0.498076, Na:0.017101, Mg:0.002565, Al:0.045746, Si:0.315092, S:0.001283, K:0.019239, Ca:0.082941, Fe:0.012398"}
+{"num": 97, "name": "Concrete, Ordinary (NIST)", "density": 2.3, "category": "Concrete and building materials", "comps": "H:0.022100, C:0.002484, O:0.574930, Na:0.015208, Mg:0.001266, Al:0.019953, Si:0.304627, K:0.010045, Ca:0.042951, Fe:0.006435"}
+{"num": 98, "name": "Concrete, Portland", "density": 2.3, "category": "Concrete and building materials", "comps": "H:0.010000, C:0.001000, O:0.529107, Na:0.016000, Mg:0.002000, Al:0.033872, Si:0.337021, K:0.013000, Ca:0.044000, Fe:0.014000"}
+{"num": 99, "name": "Concrete, Regular", "density": 2.3, "category": "Concrete and building materials", "comps": "H:0.010000, O:0.532000, Na:0.029000, Al:0.034000, Si:0.337000, Ca:0.044000, Fe:0.014000"}
+{"num": 100, "name": "Concrete, Rocky Flats", "density": 2.32, "category": "Concrete and building materials", "comps": "H:0.007500, C:0.055200, N:0.000200, O:0.484900, Na:0.006300, Mg:0.012500, Al:0.021700, Si:0.155000, S:0.001900, K:0.013700, Ca:0.230000, Ti:0.001000, Fe:0.010100"}
+{"num": 101, "name": "Concrete, Serpentine", "density": 2.1, "category": "Concrete and building materials", "comps": "H:0.015909, C:0.000909, O:0.511818, Na:0.004091, Mg:0.135000, Al:0.019091, Si:0.209091, K:0.004091, Ca:0.068182, Cr:0.000909, Fe:0.030909"}
+{"num": 102, "name": "Copper", "density": 8.96, "category": "Metals and alloys", "comps": "Cu:1.000000"}
+{"num": 103, "name": "Diatomaceous Earth", "density": 0.22, "category": "Minerals, rocks and soils", "comps": "H:0.008956, O:0.546579, Na:0.009896, Mg:0.002774, Al:0.015581, Si:0.394761, K:0.011074, Ca:0.003945, Fe:0.006434"}
+{"num": 104, "name": "Earth, Typical Western U.S.", "density": 1.52, "category": "Minerals, rocks and soils", "comps": "H:0.023834, O:0.598898, Al:0.080446, Si:0.296821"}
+{"num": 105, "name": "Earth, U.S. Average", "density": 1.52, "category": "Minerals, rocks and soils", "comps": "O:0.513713, Na:0.006140, Mg:0.013303, Al:0.068563, Si:0.271183, K:0.014327, Ca:0.051167, Ti:0.004605, Mn:0.000716, Fe:0.056283"}
+{"num": 106, "name": "Ethane", "density": 0.001253, "category": "Gases", "comps": "H:0.201125, C:0.798875"}
+{"num": 107, "name": "Ethyl Acetate", "density": 0.901, "category": "Water and liquids", "comps": "H:0.091522, C:0.545290, O:0.363189"}
+{"num": 108, "name": "Ethyl Alcohol", "density": 0.7893, "category": "Water and liquids", "comps": "H:0.131269, C:0.521438, O:0.347294"}
+{"num": 109, "name": "Ethylene", "density": 0.001175, "category": "Gases", "comps": "H:0.143711, C:0.856289"}
+{"num": 110, "name": "Ethylene Glycol", "density": 1.114, "category": "Water and liquids", "comps": "H:0.097436, C:0.387018, O:0.515546"}
+{"num": 111, "name": "Explosive Compound, AN", "density": 1.72, "category": "Other compounds", "comps": "H:0.050370, N:0.349978, O:0.599652"}
+{"num": 112, "name": "Explosive Compound, EGDN", "density": 1.49, "category": "Other compounds", "comps": "H:0.026514, C:0.157970, N:0.184222, O:0.631294"}
+{"num": 113, "name": "Explosive Compound, HMX", "density": 1.89, "category": "Other compounds", "comps": "H:0.027227, C:0.162222, N:0.378361, O:0.432190"}
+{"num": 114, "name": "Explosive Compound, NC", "density": 1.49, "category": "Other compounds", "comps": "H:0.029216, C:0.271296, N:0.121276, O:0.578212"}
+{"num": 115, "name": "Explosive Compound, NG", "density": 1.6, "category": "Other compounds", "comps": "H:0.022193, C:0.158671, N:0.185040, O:0.634096"}
+{"num": 116, "name": "Explosive Compound, PETN", "density": 1.77, "category": "Other compounds", "comps": "H:0.025506, C:0.189961, N:0.177223, O:0.607310"}
+{"num": 117, "name": "Explosive Compound, RDX", "density": 1.82, "category": "Other compounds", "comps": "H:0.027227, C:0.162222, N:0.378361, O:0.432190"}
+{"num": 118, "name": "Explosive Compound, TNT", "density": 1.65, "category": "Other compounds", "comps": "H:0.022189, C:0.370160, N:0.185004, O:0.422648"}
+{"num": 119, "name": "Eye Lens (ICRP)", "density": 1.1, "category": "Tissue and dosimetry", "comps": "H:0.099269, C:0.193710, N:0.053270, O:0.653751"}
+{"num": 120, "name": "Felt", "density": 0.185, "category": "Plastics and polymers", "comps": "H:0.044200, C:0.434600, N:0.176500, O:0.344700"}
+{"num": 121, "name": "Ferric Oxide", "density": 5.2, "category": "Other compounds", "comps": "O:0.300567, Fe:0.699433"}
+{"num": 122, "name": "Ferrous Sulfate Dosimeter Solution", "density": 1.024, "category": "Tissue and dosimetry", "comps": "H:0.108259, N:0.000027, O:0.878636, Na:0.000022, S:0.012968, Cl:0.000034, Fe:0.000054"}
+{"num": 123, "name": "Fertilizer (Muriate of Potash)", "density": 1.27, "category": "Other compounds", "comps": "H:0.000050, O:0.000718, Na:0.008487, Mg:0.000206, S:0.000159, Cl:0.477922, K:0.511852, Ca:0.000276, Br:0.000330"}
+{"num": 124, "name": "Fiberglass, Type C", "density": 2.49, "category": "Other compounds", "comps": "B:0.018579, O:0.478631, Na:0.059171, Mg:0.018037, Al:0.021107, Si:0.302924, S:0.000399, Ca:0.099757, Fe:0.001395"}
+{"num": 125, "name": "Fiberglass, Type E", "density": 2.565, "category": "Other compounds", "comps": "B:0.022803, O:0.471950, F:0.004895, Na:0.007262, Mg:0.014759, Al:0.072536, Si:0.247102, K:0.008127, Ca:0.143428, Ti:0.004400, Fe:0.002739"}
+{"num": 126, "name": "Fiberglass, Type R", "density": 2.55, "category": "Other compounds", "comps": "O:0.486722, Mg:0.036182, Al:0.132313, Si:0.280461, Ca:0.064322"}
+{"num": 127, "name": "Freon-12", "density": 1.12, "category": "Water and liquids", "comps": "C:0.099335, F:0.314247, Cl:0.586418"}
+{"num": 128, "name": "Freon-12B2", "density": 1.8, "category": "Water and liquids", "comps": "C:0.057245, F:0.181096, Br:0.761659"}
+{"num": 129, "name": "Freon-13", "density": 0.95, "category": "Water and liquids", "comps": "C:0.114983, F:0.545622, Cl:0.339396"}
+{"num": 130, "name": "Freon-13B1", "density": 1.5, "category": "Water and liquids", "comps": "C:0.080659, F:0.382749, Br:0.536592"}
+{"num": 131, "name": "Freon-13I1", "density": 1.8, "category": "Water and liquids", "comps": "C:0.061309, F:0.290924, I:0.647767"}
+{"num": 132, "name": "Gadolinium", "density": 7.9004, "category": "Metals and alloys", "comps": "Gd:1.000000"}
+{"num": 133, "name": "Gadolinium Oxysulfide", "density": 7.44, "category": "Detectors and scintillators", "comps": "O:0.084528, S:0.084690, Gd:0.830782"}
+{"num": 134, "name": "Gadolinium Silicate (GSO)", "density": 6.71, "category": "Detectors and scintillators", "comps": "O:0.189305, Si:0.066462, Gd:0.744233"}
+{"num": 135, "name": "Gafchromic Sensor (GS)", "density": 1.3, "category": "Tissue and dosimetry", "comps": "H:0.089700, C:0.605800, N:0.112200, O:0.192300"}
+{"num": 136, "name": "Gallium Arsenide", "density": 5.31, "category": "Detectors and scintillators", "comps": "Ga:0.482030, As:0.517970"}
+{"num": 137, "name": "Gasoline", "density": 0.721, "category": "Water and liquids", "comps": "H:0.157000, C:0.843000"}
+{"num": 138, "name": "Germanium, High Purity", "density": 5.323, "category": "Detectors and scintillators", "comps": "Ge:1.000000"}
+{"num": 139, "name": "Glass Scintillator, Li Doped (GS1, GS2, GS3)", "density": 2.66, "category": "Detectors and scintillators", "comps": "Li:0.027874, O:0.477940, Mg:0.144729, Al:0.058218, Si:0.257089, Ce:0.034151"}
+{"num": 140, "name": "Glass Scintillator, Li Doped (GS10, GS20, GS30)", "density": 2.5, "category": "Detectors and scintillators", "comps": "Li:0.083623, O:0.501077, Mg:0.024121, Al:0.095265, Si:0.261764, Ce:0.034151"}
+{"num": 141, "name": "Glass Scintillator, Li Doped (GSF1)", "density": 2.42, "category": "Detectors and scintillators", "comps": "Li:0.046550, O:0.505813, Na:0.017840, Al:0.095456, Si:0.313809, Ce:0.020531"}
+{"num": 142, "name": "Glass Scintillator, Li Doped (KG1, KG2, KG3)", "density": 2.42, "category": "Detectors and scintillators", "comps": "Li:0.097560, O:0.513850, Si:0.345902, Ce:0.042688"}
+{"num": 143, "name": "Glass, Borosilicate (Pyrex Glass)", "density": 2.23, "category": "Other compounds", "comps": "B:0.040064, O:0.539562, Na:0.028191, Al:0.011644, Si:0.377220, K:0.003321"}
+{"num": 144, "name": "Glass, Foam", "density": 0.128, "category": "Other compounds", "comps": "H:0.001000, B:0.015000, O:0.534000, Na:0.161000, Si:0.279000, S:0.010000"}
+{"num": 145, "name": "Glass, Lead", "density": 6.22, "category": "Neutron absorbers and shielding", "comps": "O:0.156453, Si:0.080866, Ti:0.008092, As:0.002651, Pb:0.751938"}
+{"num": 146, "name": "Glass, Plate", "density": 2.4, "category": "Other compounds", "comps": "O:0.459800, Na:0.096441, Si:0.336553, Ca:0.107205"}
+{"num": 147, "name": "Glycerol", "density": 1.2613, "category": "Water and liquids", "comps": "H:0.087554, C:0.391262, O:0.521185"}
+{"num": 148, "name": "Gold", "density": 19.32, "category": "Metals and alloys", "comps": "Au:1.000000"}
+{"num": 149, "name": "Gypsum (Plaster of Paris)", "density": 2.32, "category": "Concrete and building materials", "comps": "H:0.023416, O:0.557572, S:0.186215, Ca:0.232797"}
+{"num": 150, "name": "He-3 Proportional Gas", "density": 0.000125, "category": "Gases", "comps": "He3:1.000000"}
+{"num": 151, "name": "Helium, Natural", "density": 0.000166, "category": "Gases", "comps": "He:1.000000"}
+{"num": 152, "name": "Hydrogen", "density": 8.4e-05, "category": "Gases", "comps": "H:1.000000"}
+{"num": 153, "name": "Incoloy-800", "density": 7.94, "category": "Metals and alloys", "comps": "C:0.000650, Al:0.003750, Si:0.006500, S:0.000100, Ti:0.003750, Cr:0.210000, Mn:0.009750, Fe:0.435630, Ni:0.325000, Cu:0.004880"}
+{"num": 154, "name": "Inconel-600", "density": 8.47, "category": "Metals and alloys", "comps": "C:0.000980, Si:0.003250, S:0.000100, Cr:0.155000, Mn:0.006500, Fe:0.080000, Ni:0.750930, Cu:0.003250"}
+{"num": 156, "name": "Inconel-718", "density": 8.19, "category": "Metals and alloys", "comps": "B:0.000050, C:0.000730, Al:0.005000, Si:0.003180, P:0.000140, S:0.000140, Ti:0.009000, Cr:0.190000, Mn:0.003180, Fe:0.170000, Ni:0.525000, Co:0.009100, Cu:0.002730, Nb:0.051250, Mo:0.030500"}
+{"num": 157, "name": "Indium", "density": 7.31, "category": "Metals and alloys", "comps": "In:1.000000"}
+{"num": 158, "name": "Iron", "density": 7.874, "category": "Metals and alloys", "comps": "Fe:1.000000"}
+{"num": 159, "name": "Iron Boride (Fe2B)", "density": 7.3, "category": "Neutron absorbers and shielding", "comps": "B:0.088252, Fe:0.911748"}
+{"num": 160, "name": "Iron Boride (FeB)", "density": 7.15, "category": "Neutron absorbers and shielding", "comps": "B:0.162174, Fe:0.837826"}
+{"num": 161, "name": "Iron, Armco Ingot", "density": 7.866, "category": "Metals and alloys", "comps": "C:0.000120, O:0.001100, P:0.000050, S:0.000250, Mn:0.000170, Fe:0.998310"}
+{"num": 162, "name": "Iron, Cast (Gray)", "density": 7.15, "category": "Metals and alloys", "comps": "C:0.034000, Si:0.026000, P:0.003000, S:0.001000, Mn:0.006500, Fe:0.929500"}
+{"num": 163, "name": "Iron, Wrought (Byers No. 1)", "density": 7.7, "category": "Metals and alloys", "comps": "C:0.000810, Si:0.001599, P:0.000628, S:0.000101, Mn:0.000152, Fe:0.996711"}
+{"num": 164, "name": "Kaowool", "density": 0.096, "category": "Neutron absorbers and shielding", "comps": "B:0.000248, O:0.500064, Al:0.238163, Si:0.243627, Ca:0.000715, Ti:0.010189, Fe:0.006994"}
+{"num": 165, "name": "Kapton Polyimide Film", "density": 1.42, "category": "Plastics and polymers", "comps": "H:0.026362, C:0.691133, N:0.073270, O:0.209235"}
+{"num": 166, "name": "Kennertium", "density": 16.8, "category": "Neutron absorbers and shielding", "comps": "Ni:0.090000, Cu:0.150000, W:0.760000"}
+{"num": 167, "name": "Kernite", "density": 1.95, "category": "Minerals, rocks and soils", "comps": "H:0.029506, B:0.158240, O:0.644003, Na:0.168250"}
+{"num": 168, "name": "Kerosene", "density": 0.819, "category": "Water and liquids", "comps": "H:0.160000, C:0.840000"}
+{"num": 169, "name": "Krypton", "density": 0.003478, "category": "Gases", "comps": "Kr:1.000000"}
+{"num": 170, "name": "Kynar", "density": 1.79, "category": "Plastics and polymers", "comps": "H:0.031481, C:0.375135, F:0.593384"}
+{"num": 171, "name": "Lead", "density": 11.35, "category": "Metals and alloys", "comps": "Pb:1.000000"}
+{"num": 172, "name": "Lead Tungstate (PWO)", "density": 8.24, "category": "Detectors and scintillators", "comps": "O:0.140642, W:0.404011, Pb:0.455347"}
+{"num": 173, "name": "Lithium", "density": 0.534, "category": "Metals and alloys", "comps": "Li:1.000000"}
+{"num": 174, "name": "Lithium Amide", "density": 1.178, "category": "Other compounds", "comps": "H:0.087783, Li:0.302262, N:0.609955"}
+{"num": 175, "name": "Lithium Fluoride", "density": 2.635, "category": "Other compounds", "comps": "Li:0.267585, F:0.732415"}
+{"num": 176, "name": "Lithium Gadrium Borate (LGB)", "density": 3.5, "category": "Detectors and scintillators", "comps": "Li6:0.098240, B10:0.081766, O:0.391956, Gd:0.428038"}
+{"num": 177, "name": "Lithium Hydride", "density": 0.82, "category": "Other compounds", "comps": "H:0.126797, Li:0.873203"}
+{"num": 178, "name": "Lithium Iodide (High Density)", "density": 4.08, "category": "Detectors and scintillators", "comps": "Li:0.051858, I:0.948142"}
+{"num": 179, "name": "Lithium Iodide (Low Density)", "density": 3.494, "category": "Detectors and scintillators", "comps": "Li:0.051858, I:0.948142"}
+{"num": 180, "name": "Lithium Oxide", "density": 2.013, "category": "Other compounds", "comps": "Li:0.464570, O:0.535430"}
+{"num": 181, "name": "Lithium Tetraborate", "density": 2.44, "category": "Other compounds", "comps": "Li:0.082085, B:0.255680, O:0.662235"}
+{"num": 182, "name": "Lucite", "density": 1.19, "category": "Plastics and polymers", "comps": "H:0.080538, C:0.599848, O:0.319614"}
+{"num": 183, "name": "Lutetium Aluminum Garnet (LuAG)", "density": 6.73, "category": "Detectors and scintillators", "comps": "O:0.225396, Al:0.158379, Lu:0.616225"}
+{"num": 184, "name": "Lutetium Orthoaluminate (LuAP)", "density": 8.4, "category": "Detectors and scintillators", "comps": "O:0.192034, Al:0.107949, Lu:0.700017"}
+{"num": 185, "name": "Lutetium Oxyorthosilicate (LSO)", "density": 7.4, "category": "Detectors and scintillators", "comps": "O:0.174660, Si:0.061320, Lu:0.764021"}
+{"num": 186, "name": "Lutetium Yttrium OxyorthoSilicate (LYSO)", "density": 7.3, "category": "Detectors and scintillators", "comps": "O:0.125815, Si:0.044172, Y:0.279654, Lu:0.550359"}
+{"num": 187, "name": "Magnesium", "density": 1.74, "category": "Metals and alloys", "comps": "Mg:1.000000"}
+{"num": 188, "name": "Magnesium Oxide", "density": 3.58, "category": "Other compounds", "comps": "O:0.396964, Mg:0.603036"}
+{"num": 189, "name": "Magnesium Tetraborate", "density": 2.53, "category": "Other compounds", "comps": "B:0.240837, O:0.623790, Mg:0.135373"}
+{"num": 190, "name": "Masonite", "density": 1.3, "category": "Plastics and polymers", "comps": "H:0.062165, C:0.444455, O:0.493380"}
+{"num": 191, "name": "Melamine", "density": 1.35, "category": "Plastics and polymers", "comps": "H:0.046680, C:0.397313, N:0.556008"}
+{"num": 192, "name": "Mercury", "density": 13.546, "category": "Metals and alloys", "comps": "Hg:1.000000"}
+{"num": 193, "name": "Mercury Iodide", "density": 6.36, "category": "Detectors and scintillators", "comps": "I:0.558560, Hg:0.441440"}
+{"num": 194, "name": "Methane", "density": 0.000667, "category": "Gases", "comps": "H:0.251318, C:0.748682"}
+{"num": 195, "name": "Methanol", "density": 0.7914, "category": "Water and liquids", "comps": "H:0.125822, C:0.374852, O:0.499326"}
+{"num": 196, "name": "Methylene Chloride", "density": 1.3266, "category": "Water and liquids", "comps": "H:0.023735, C:0.141415, Cl:0.834850"}
+{"num": 197, "name": "Molybdenum", "density": 10.22, "category": "Metals and alloys", "comps": "Mo:1.000000"}
+{"num": 198, "name": "Monosodium Titanate, MST", "density": 1.0, "category": "Other compounds", "comps": "H:0.005047, O:0.400528, Na:0.115105, Ti:0.479320"}
+{"num": 199, "name": "Muscle Equivalent-Liquid, with Sucrose", "density": 1.11, "category": "Tissue and dosimetry", "comps": "H:0.098234, C:0.156214, N:0.035451, O:0.710101"}
+{"num": 200, "name": "Muscle Equivalent-Liquid, without Sucrose", "density": 1.07, "category": "Tissue and dosimetry", "comps": "H:0.101969, C:0.120058, N:0.035451, O:0.742522"}
+{"num": 201, "name": "Muscle, Skeletal (ICRP)", "density": 1.04, "category": "Tissue and dosimetry", "comps": "H:0.100637, C:0.107830, N:0.027680, O:0.754773, Na:0.000750, Mg:0.000190, P:0.001800, S:0.002410, Cl:0.000790, K:0.003020, Ca:0.000030, Fe:0.000040, Zn:0.000050"}
+{"num": 202, "name": "Muscle, Striated (ICRU)", "density": 1.04, "category": "Tissue and dosimetry", "comps": "H:0.101997, C:0.123000, N:0.035000, O:0.729003, Na:0.000800, Mg:0.000200, P:0.002000, S:0.005000, K:0.003000"}
+{"num": 203, "name": "Neon", "density": 0.000839, "category": "Gases", "comps": "Ne:1.000000"}
+{"num": 204, "name": "Nickel", "density": 8.902, "category": "Metals and alloys", "comps": "Ni:1.000000"}
+{"num": 205, "name": "Niobium", "density": 8.57, "category": "Metals and alloys", "comps": "Nb:1.000000"}
+{"num": 206, "name": "Nitrogen", "density": 0.001165, "category": "Gases", "comps": "N:1.000000"}
+{"num": 207, "name": "Nylon, Dupont ELVAmide 8062", "density": 1.08, "category": "Plastics and polymers", "comps": "H:0.103509, C:0.648416, N:0.099536, O:0.148539"}
+{"num": 208, "name": "Nylon, Type 11 (Rilsan)", "density": 1.425, "category": "Plastics and polymers", "comps": "H:0.115476, C:0.720819, N:0.076417, O:0.087289"}
+{"num": 209, "name": "Nylon, Type 6 and Type 6/6", "density": 1.14, "category": "Plastics and polymers", "comps": "H:0.097976, C:0.636856, N:0.123779, O:0.141389"}
+{"num": 210, "name": "Nylon, Type 6/10", "density": 1.14, "category": "Plastics and polymers", "comps": "H:0.107062, C:0.680449, N:0.099189, O:0.113300"}
+{"num": 211, "name": "Oil, Crude (Heavy, Cold Lake, Canada)", "density": 0.97, "category": "Water and liquids", "comps": "H:0.104000, C:0.837000, N:0.004000, O:0.011000, S:0.044000"}
+{"num": 212, "name": "Oil, Crude (Heavy, Mexican)", "density": 0.975, "category": "Water and liquids", "comps": "H:0.104039, C:0.853733, S:0.042228"}
+{"num": 213, "name": "Oil, Crude (Heavy, Qayarah, Iraq)", "density": 0.97, "category": "Water and liquids", "comps": "H:0.102000, C:0.807000, N:0.007000, S:0.084000"}
+{"num": 214, "name": "Oil, Crude (Light, Texas)", "density": 0.875, "category": "Water and liquids", "comps": "H:0.123246, C:0.852204, N:0.007014, S:0.017535"}
+{"num": 215, "name": "Oil, Fuel (California)", "density": 0.955, "category": "Water and liquids", "comps": "H:0.125878, C:0.862308, S:0.011814"}
+{"num": 216, "name": "Oil, Hydraulic", "density": 0.871, "category": "Water and liquids", "comps": "H:0.040495, C:0.584904, O:0.077915, P:0.037709, Cl:0.258977"}
+{"num": 217, "name": "Oil, Lard", "density": 0.915, "category": "Water and liquids", "comps": "H:0.117621, C:0.778655, O:0.103724"}
+{"num": 218, "name": "Oxygen", "density": 0.001332, "category": "Gases", "comps": "O:1.000000"}
+{"num": 219, "name": "P-10 Gas", "density": 0.001561, "category": "Gases", "comps": "H:0.010735, C:0.031980, Ar:0.957286"}
+{"num": 220, "name": "P-5 Gas", "density": 0.001611, "category": "Gases", "comps": "H:0.005202, C:0.015497, Ar:0.979302"}
+{"num": 221, "name": "Palladium", "density": 12.02, "category": "Metals and alloys", "comps": "Pd:1.000000"}
+{"num": 222, "name": "Photographic Emulsion, Gel in", "density": 1.2914, "category": "Tissue and dosimetry", "comps": "H:0.081180, C:0.416060, N:0.111240, O:0.380640, S:0.010880"}
+{"num": 223, "name": "Photographic Emulsion, Kodak Type AA", "density": 2.2, "category": "Tissue and dosimetry", "comps": "H:0.030500, C:0.210700, N:0.072100, O:0.163200, Br:0.222800, Ag:0.300700"}
+{"num": 224, "name": "Photographic Emulsion, Standard Nuclear", "density": 3.815, "category": "Tissue and dosimetry", "comps": "H:0.014100, C:0.072261, N:0.019320, O:0.066101, S:0.001890, Br:0.349104, Ag:0.474105, I:0.003120"}
+{"num": 225, "name": "Platinum", "density": 21.45, "category": "Metals and alloys", "comps": "Pt:1.000000"}
+{"num": 226, "name": "Plutonium Bromide", "density": 6.75, "category": "Nuclear fuel", "comps": "Br:0.500617, Pu238:0.000250, Pu239:0.466923, Pu240:0.029963, Pu241:0.001998, Pu242:0.000250, Am241:0.000000"}
+{"num": 227, "name": "Plutonium Carbide", "density": 13.6, "category": "Nuclear fuel", "comps": "C:0.047826, Pu238:0.000476, Pu239:0.890282, Pu240:0.057130, Pu241:0.003809, Pu242:0.000476, Am241:0.000000"}
+{"num": 228, "name": "Plutonium Chloride", "density": 5.71, "category": "Nuclear fuel", "comps": "Cl:0.307859, Pu238:0.000346, Pu239:0.647152, Pu240:0.041528, Pu241:0.002769, Pu242:0.000346, Am241:0.000000"}
+{"num": 229, "name": "Plutonium Dioxide", "density": 11.46, "category": "Nuclear fuel", "comps": "O:0.118025, Pu238:0.000441, Pu239:0.824647, Pu240:0.052919, Pu241:0.003528, Pu242:0.000441, Am241:0.000000"}
+{"num": 230, "name": "Plutonium Fluoride (PuF3)", "density": 9.33, "category": "Nuclear fuel", "comps": "F:0.192476, Pu238:0.000404, Pu239:0.755035, Pu240:0.048451, Pu241:0.003230, Pu242:0.000404, Am241:0.000000"}
+{"num": 231, "name": "Plutonium Fluoride (PuF4)", "density": 7.0, "category": "Nuclear fuel", "comps": "F:0.241162, Pu238:0.000379, Pu239:0.709514, Pu240:0.045530, Pu241:0.003035, Pu242:0.000379, Am241:0.000000"}
+{"num": 232, "name": "Plutonium Fluoride (PuF6)", "density": 5.08, "category": "Nuclear fuel", "comps": "F:0.322817, Pu238:0.000339, Pu239:0.633166, Pu240:0.040631, Pu241:0.002709, Pu242:0.000339, Am241:0.000000"}
+{"num": 233, "name": "Plutonium Iodide", "density": 6.92, "category": "Nuclear fuel", "comps": "I:0.614218, Pu238:0.000193, Pu239:0.360706, Pu240:0.023147, Pu241:0.001543, Pu242:0.000193, Am241:0.000000"}
+{"num": 234, "name": "Plutonium Nitrate", "density": 2.447, "category": "Nuclear fuel", "comps": "N:0.115012, O:0.394122, Pu238:0.000245, Pu239:0.458960, Pu240:0.029452, Pu241:0.001963, Pu242:0.000245, Am241:0.000000"}
+{"num": 235, "name": "Plutonium Nitride", "density": 14.25, "category": "Nuclear fuel", "comps": "N:0.055335, Pu238:0.000472, Pu239:0.883262, Pu240:0.056680, Pu241:0.003779, Pu242:0.000472, Am241:0.000000"}
+{"num": 236, "name": "Plutonium Oxide (Pu2O3)", "density": 10.5, "category": "Nuclear fuel", "comps": "O:0.091210, Pu238:0.000454, Pu239:0.849719, Pu240:0.054527, Pu241:0.003635, Pu242:0.000454, Am241:0.000000"}
+{"num": 237, "name": "Plutonium Oxide (PuO)", "density": 14.0, "category": "Nuclear fuel", "comps": "O:0.062713, Pu238:0.000469, Pu239:0.876363, Pu240:0.056237, Pu241:0.003749, Pu242:0.000469, Am241:0.000000"}
+{"num": 238, "name": "Plutonium, Aged WGPu (A: 4-7% Pu-240)", "density": 19.84, "category": "Nuclear fuel", "comps": "Pu238:0.000100, Pu239:0.936296, Pu240:0.059910, Pu241:0.001997, Pu242:0.000300, Am241:0.001398"}
+{"num": 239, "name": "Plutonium, Aged WGPu (B: 10-13% Pu-240)", "density": 19.84, "category": "Nuclear fuel", "comps": "Pu238:0.000892, Pu239:0.861901, Pu240:0.117081, Pu241:0.009914, Pu242:0.001685, Am241:0.008526"}
+{"num": 240, "name": "Plutonium, Aged WGPu (C: 16-19% Pu-240)", "density": 19.84, "category": "Nuclear fuel", "comps": "Pu238:0.002334, Pu239:0.784554, Pu240:0.165159, Pu241:0.014006, Pu242:0.006711, Am241:0.027235"}
+{"num": 241, "name": "Plutonium, DOE 3013 WGPu", "density": 19.84, "category": "Nuclear fuel", "comps": "Pu238:0.000500, Pu239:0.935000, Pu240:0.060000, Pu241:0.004000, Pu242:0.000500"}
+{"num": 242, "name": "Plutonium, Fuel Grade", "density": 19.84, "category": "Nuclear fuel", "comps": "Pu238:0.001000, Pu239:0.861000, Pu240:0.120000, Pu241:0.016000, Pu242:0.002000"}
+{"num": 243, "name": "Plutonium, Power Grade", "density": 19.84, "category": "Nuclear fuel", "comps": "Pu238:0.009901, Pu239:0.623762, Pu240:0.217822, Pu241:0.118812, Pu242:0.029703"}
+{"num": 244, "name": "Plutonium, Shefelbine WGPu", "density": 19.84, "category": "Nuclear fuel", "comps": "Pu238:0.000300, Pu239:0.939200, Pu240:0.057000, Pu241:0.003000, Pu242:0.000300, Am241:0.000200"}
+{"num": 245, "name": "Polycarbonate", "density": 1.2, "category": "Plastics and polymers", "comps": "H:0.055491, C:0.755751, O:0.188758"}
+{"num": 246, "name": "Polyethylene Terephthalate (PET)", "density": 1.38, "category": "Plastics and polymers", "comps": "H:0.041960, C:0.625016, O:0.333024"}
+{"num": 247, "name": "Polyethylene, Borated", "density": 1.0, "category": "Neutron absorbers and shielding", "comps": "H:0.125355, B:0.100000, C:0.774645"}
+{"num": 248, "name": "Polyethylene, Non-borated", "density": 0.93, "category": "Plastics and polymers", "comps": "H:0.143716, C:0.856284"}
+{"num": 249, "name": "Polyisocyanurate (PIR)", "density": 0.0482, "category": "Plastics and polymers", "comps": "H:0.040277, C:0.719916, N:0.111941, O:0.127866"}
+{"num": 250, "name": "Polypropylene (PP)", "density": 0.9, "category": "Plastics and polymers", "comps": "H:0.143711, C:0.856289"}
+{"num": 251, "name": "Polystyrene (PS)", "density": 1.06, "category": "Plastics and polymers", "comps": "H:0.077421, C:0.922579"}
+{"num": 252, "name": "Polytetrafluoroethylene (PTFE)", "density": 2.25, "category": "Plastics and polymers", "comps": "C:0.240183, F:0.759818"}
+{"num": 253, "name": "Polyurethane Foam (PUR)", "density": 0.021, "category": "Plastics and polymers", "comps": "H:0.041000, C:0.544000, N:0.121000, O:0.294000"}
+{"num": 254, "name": "Polyvinyl Acetate (PVA)", "density": 1.19, "category": "Plastics and polymers", "comps": "H:0.070245, C:0.558066, O:0.371689"}
+{"num": 255, "name": "Polyvinyl Chloride (PVC)", "density": 1.406, "category": "Plastics and polymers", "comps": "H:0.048382, C:0.384361, Cl:0.567257"}
+{"num": 256, "name": "Polyvinyl Toluene (PVT)", "density": 1.032, "category": "Plastics and polymers", "comps": "H:0.085000, C:0.915000"}
+{"num": 257, "name": "Polyvinylidene Chloride (PVDC)", "density": 1.7, "category": "Plastics and polymers", "comps": "H:0.020793, C:0.247793, Cl:0.731413"}
+{"num": 258, "name": "Potassium Aluminum Silicate", "density": 1.1, "category": "Other compounds", "comps": "O:0.459866, Al:0.096940, Si:0.302720, K:0.140474"}
+{"num": 259, "name": "Potassium Iodide", "density": 3.13, "category": "Other compounds", "comps": "K:0.235528, I:0.764472"}
+{"num": 260, "name": "Potassium Oxide", "density": 2.32, "category": "Other compounds", "comps": "O:0.169852, K:0.830148"}
+{"num": 261, "name": "Propane (Gas)", "density": 0.001879, "category": "Gases", "comps": "H:0.182855, C:0.817145"}
+{"num": 262, "name": "Propane (Liquid)", "density": 0.43, "category": "Water and liquids", "comps": "H:0.182855, C:0.817145"}
+{"num": 263, "name": "P-terphenyl", "density": 1.23, "category": "Detectors and scintillators", "comps": "H:0.056553, C:0.943447"}
+{"num": 264, "name": "Radiochromic Dye Film, Nylon Base (RDF: NB)", "density": 1.08, "category": "Tissue and dosimetry", "comps": "H:0.101996, C:0.654396, N:0.098915, O:0.144693"}
+{"num": 265, "name": "Rock (Average of 5 Types)", "density": 2.662, "category": "Minerals, rocks and soils", "comps": "H:0.001657, C:0.026906, O:0.488149, Na:0.012403, Mg:0.023146, Al:0.054264, Si:0.246249, S:0.000577, K:0.018147, Ca:0.089863, Ti:0.003621, Mn:0.000386, Fe:0.033377, Pb:0.001255"}
+{"num": 266, "name": "Rock, Basalt", "density": 3.01, "category": "Minerals, rocks and soils", "comps": "O:0.441115, Na:0.021700, Mg:0.041878, Al:0.083934, Si:0.232811, K:0.008920, Ca:0.068973, Ti:0.011151, Mn:0.001541, Fe:0.085141, Pb:0.002835"}
+{"num": 267, "name": "Rock, Granite", "density": 2.69, "category": "Minerals, rocks and soils", "comps": "O:0.484170, Na:0.027328, Mg:0.004274, Al:0.076188, Si:0.336169, K:0.034144, Ca:0.012985, Ti:0.001795, Mn:0.000387, Fe:0.021555, Pb:0.001004"}
+{"num": 268, "name": "Rock, Limestone", "density": 2.61, "category": "Minerals, rocks and soils", "comps": "H:0.000899, C:0.113782, O:0.497802, Na:0.000373, Mg:0.047860, Al:0.004254, Si:0.024419, S:0.000201, K:0.000334, Ca:0.305865, Ti:0.000361, Fe:0.003513, Pb:0.000337"}
+{"num": 269, "name": "Rock, Sandstone", "density": 2.32, "category": "Minerals, rocks and soils", "comps": "H:0.001791, C:0.013652, O:0.519609, Na:0.002969, Mg:0.007240, Al:0.025417, Si:0.366185, S:0.000280, K:0.011628, Ca:0.039328, Ti:0.001199, Fe:0.010031, Pb:0.000671"}
+{"num": 270, "name": "Rock, Shale", "density": 2.68, "category": "Minerals, rocks and soils", "comps": "H:0.005597, C:0.007098, O:0.498049, Na:0.009647, Mg:0.014477, Al:0.081529, Si:0.271661, S:0.002404, K:0.035707, Ca:0.022162, Ti:0.003597, Fe:0.046646, Pb:0.001425"}
+{"num": 271, "name": "Rubber, Butyl", "density": 0.92, "category": "Plastics and polymers", "comps": "H:0.143711, C:0.856289"}
+{"num": 272, "name": "Rubber, Natural", "density": 0.92, "category": "Plastics and polymers", "comps": "H:0.118371, C:0.881629"}
+{"num": 273, "name": "Rubber, Neoprene", "density": 1.23, "category": "Plastics and polymers", "comps": "H:0.056920, C:0.542646, Cl:0.400434"}
+{"num": 274, "name": "Rubber, Silicon", "density": 1.0185, "category": "Plastics and polymers", "comps": "H:0.080716, C:0.321164, O:0.223545, Si:0.374575"}
+{"num": 275, "name": "Salt Water (T = 0°C)", "density": 1.209865, "category": "Water and liquids", "comps": "H:0.082491, O:0.654709, Na:0.103378, Cl:0.159422"}
+{"num": 276, "name": "Salt Water (T = 20°C)", "density": 1.022394, "category": "Water and liquids", "comps": "H:0.108114, O:0.858069, Na:0.013302, Cl:0.020514"}
+{"num": 277, "name": "Sand", "density": 1.7, "category": "Minerals, rocks and soils", "comps": "H:0.007833, C:0.003360, O:0.536153, Na:0.017063, Al:0.034401, Si:0.365067, K:0.011622, Ca:0.011212, Fe:0.013289"}
+{"num": 278, "name": "Sea Water, Simple Artificial", "density": 1.023343, "category": "Water and liquids", "comps": "H:0.107974, O:0.858765, Na:0.010785, Mg:0.001284, S:0.000906, Cl:0.019472, K:0.000399, Ca:0.000415"}
+{"num": 279, "name": "Sea Water, Standard", "density": 1.023343, "category": "Water and liquids", "comps": "H:0.107979, B:0.000005, O:0.858803, F:0.000001, Na:0.010784, Mg:0.001284, S:0.000905, Cl:0.019352, K:0.000399, Ca:0.000412, Br:0.000067, Sr:0.000008"}
+{"num": 280, "name": "Sepiolite", "density": 2.14, "category": "Minerals, rocks and soils", "comps": "H:0.021782, O:0.568029, Mg:0.150070, Si:0.260119"}
+{"num": 281, "name": "Silicon", "density": 2.33, "category": "Other compounds", "comps": "Si:1.000000"}
+{"num": 282, "name": "Silicon Carbide (Hexagonal)", "density": 3.21, "category": "Other compounds", "comps": "C:0.299547, Si:0.700453"}
+{"num": 283, "name": "Silicon Dioxide (Alpha-quartz)", "density": 2.648, "category": "Other compounds", "comps": "O:0.532565, Si:0.467435"}
+{"num": 284, "name": "Silicon Dioxide (Silica)", "density": 2.32, "category": "Other compounds", "comps": "O:0.532565, Si:0.467435"}
+{"num": 285, "name": "Silver", "density": 10.5, "category": "Metals and alloys", "comps": "Ag:1.000000"}
+{"num": 286, "name": "Skin (ICRP)", "density": 1.1, "category": "Tissue and dosimetry", "comps": "H:0.100588, C:0.228250, N:0.046420, O:0.619002, Na:0.000070, Mg:0.000060, P:0.000330, S:0.001590, Cl:0.002670, K:0.000850, Ca:0.000150, Fe:0.000010, Zn:0.000010"}
+{"num": 287, "name": "Sodium", "density": 0.971, "category": "Metals and alloys", "comps": "Na:1.000000"}
+{"num": 288, "name": "Sodium Bismuth Tungstate (NBWO)", "density": 7.57, "category": "Detectors and scintillators", "comps": "O:0.175903, Na:0.031595, W:0.505301, Bi:0.287201"}
+{"num": 289, "name": "Sodium Chloride", "density": 2.17, "category": "Other compounds", "comps": "Na:0.393372, Cl:0.606628"}
+{"num": 290, "name": "Sodium Iodide", "density": 3.667, "category": "Detectors and scintillators", "comps": "Na:0.153373, I:0.846627"}
+{"num": 291, "name": "Sodium Nitrate", "density": 2.261, "category": "Other compounds", "comps": "N:0.164795, O:0.564720, Na:0.270485"}
+{"num": 292, "name": "Sodium Oxide", "density": 2.27, "category": "Other compounds", "comps": "O:0.258143, Na:0.741857"}
+{"num": 293, "name": "Steel, Boron Stainless", "density": 7.87, "category": "Steels", "comps": "B:0.010000, C:0.000396, Si:0.004950, P:0.000228, S:0.000149, Cr:0.188100, Mn:0.009900, Fe:0.694713, Ni:0.091575"}
+{"num": 294, "name": "Steel, Carbon", "density": 7.82, "category": "Steels", "comps": "C:0.005000, Fe:0.995000"}
+{"num": 295, "name": "Steel, HT9 Stainless", "density": 7.874, "category": "Steels", "comps": "C:0.002000, Si:0.004000, P:0.000300, S:0.000200, V:0.003000, Cr:0.115000, Mn:0.006000, Fe:0.849500, Ni:0.005000, Mo:0.010000, W:0.005000"}
+{"num": 296, "name": "Steel, Stainless 202", "density": 7.86, "category": "Steels", "comps": "C:0.000750, N:0.001250, Si:0.005000, P:0.000300, S:0.000150, Cr:0.180000, Mn:0.087500, Fe:0.675050, Ni:0.050000"}
+{"num": 297, "name": "Steel, Stainless 302", "density": 7.86, "category": "Steels", "comps": "C:0.001400, Si:0.009300, P:0.000420, S:0.000280, Cr:0.180000, Mn:0.018600, Fe:0.700000, Ni:0.090000"}
+{"num": 298, "name": "Steel, Stainless 304", "density": 8.0, "category": "Steels", "comps": "C:0.000400, Si:0.005000, P:0.000230, S:0.000150, Cr:0.190000, Mn:0.010000, Fe:0.701730, Ni:0.092500"}
+{"num": 299, "name": "Steel, Stainless 304L", "density": 8.0, "category": "Steels", "comps": "C:0.000150, Si:0.005000, P:0.000230, S:0.000150, Cr:0.190000, Mn:0.010000, Fe:0.694480, Ni:0.100000"}
+{"num": 300, "name": "Steel, Stainless 316", "density": 8.0, "category": "Steels", "comps": "C:0.000410, Si:0.005070, P:0.000230, S:0.000150, Cr:0.170000, Mn:0.010140, Fe:0.669000, Ni:0.120000, Mo:0.025000"}
+{"num": 301, "name": "Steel, Stainless 316L", "density": 8.0, "category": "Steels", "comps": "C:0.000300, Si:0.010000, P:0.000450, S:0.000300, Cr:0.170000, Mn:0.020000, Fe:0.653950, Ni:0.120000, Mo:0.025000"}
+{"num": 302, "name": "Steel, Stainless 321", "density": 8.0, "category": "Steels", "comps": "C:0.000800, Si:0.010000, P:0.000450, S:0.000300, Ti:0.001500, Cr:0.180000, Mn:0.020000, Fe:0.676950, Ni:0.110000"}
+{"num": 303, "name": "Steel, Stainless 347", "density": 8.0, "category": "Steels", "comps": "C:0.000800, Si:0.010000, P:0.000450, S:0.000300, Cr:0.170000, Mn:0.020000, Fe:0.680450, Ni:0.110000, Nb:0.004000, Ta:0.004000"}
+{"num": 304, "name": "Steel, Stainless 409", "density": 7.8, "category": "Steels", "comps": "C:0.000790, Si:0.009830, P:0.000440, S:0.000440, Ti:0.007370, Cr:0.111300, Mn:0.009830, Fe:0.860000"}
+{"num": 305, "name": "Steel, Stainless 440", "density": 7.8, "category": "Steels", "comps": "C:0.006750, Si:0.006500, P:0.000260, S:0.000200, Cr:0.170000, Mn:0.006500, Fe:0.795050, Mo:0.004880"}
+{"num": 306, "name": "Sterotex", "density": 0.862, "category": "Plastics and polymers", "comps": "H:0.124370, C:0.767948, O:0.107682"}
+{"num": 307, "name": "Stilbene (Trans-stilbene Isomer)", "density": 1.22, "category": "Detectors and scintillators", "comps": "H:0.056553, C:0.943447"}
+{"num": 308, "name": "Sulphur", "density": 2.0, "category": "Other compounds", "comps": "S:1.000000"}
+{"num": 309, "name": "Tantalum", "density": 16.654, "category": "Metals and alloys", "comps": "Ta:1.000000"}
+{"num": 310, "name": "Thorium", "density": 11.72, "category": "Metals and alloys", "comps": "Th:1.000000"}
+{"num": 311, "name": "Thorium Dioxide", "density": 10.0, "category": "Nuclear fuel", "comps": "O:0.121191, Th:0.878809"}
+{"num": 312, "name": "Tin", "density": 7.31, "category": "Metals and alloys", "comps": "Sn:1.000000"}
+{"num": 313, "name": "Tissue Equivalent, MS20", "density": 1.0, "category": "Tissue and dosimetry", "comps": "H:0.081192, C:0.583442, N:0.017798, O:0.186381, Mg:0.130287, Cl:0.000900"}
+{"num": 314, "name": "Tissue Equivalent-Gas, Methane Based (TEG: MB)", "density": 0.001064, "category": "Tissue and dosimetry", "comps": "H:0.101869, C:0.456179, N:0.035172, O:0.406780"}
+{"num": 315, "name": "Tissue Equivalent-Gas, Propane Based (TEG: PB)", "density": 0.001826, "category": "Tissue and dosimetry", "comps": "H:0.102672, C:0.568940, N:0.035022, O:0.293366"}
+{"num": 316, "name": "Tissue, Adipose (ICRP)", "density": 0.92, "category": "Tissue and dosimetry", "comps": "H:0.119477, C:0.637240, N:0.007970, O:0.232333, Na:0.000500, Mg:0.000020, P:0.000160, S:0.000730, Cl:0.001190, K:0.000320, Ca:0.000020, Fe:0.000020, Zn:0.000020"}
+{"num": 317, "name": "Tissue, Breast", "density": 1.02, "category": "Tissue and dosimetry", "comps": "H:0.106000, C:0.332000, N:0.030000, O:0.527000, Na:0.001000, P:0.001000, S:0.002000, Cl:0.001000"}
+{"num": 318, "name": "Tissue, Lung (ICRP)", "density": 1.05, "category": "Tissue and dosimetry", "comps": "H:0.101278, C:0.102310, N:0.028650, O:0.757072, Na:0.001840, Mg:0.000730, P:0.000800, S:0.002250, Cl:0.002660, K:0.001940, Ca:0.000090, Fe:0.000370, Zn:0.000010"}
+{"num": 319, "name": "Tissue, Ovary", "density": 1.05, "category": "Tissue and dosimetry", "comps": "H:0.105000, C:0.093000, N:0.024000, O:0.768000, Na:0.002000, P:0.002000, S:0.002000, Cl:0.002000, K:0.002000"}
+{"num": 320, "name": "Tissue, Soft (ICRP)", "density": 1.0, "category": "Tissue and dosimetry", "comps": "H:0.104472, C:0.232190, N:0.024880, O:0.630238, Na:0.001130, Mg:0.000130, P:0.001330, S:0.001990, Cl:0.001340, K:0.001990, Ca:0.000230, Fe:0.000050, Zn:0.000030"}
+{"num": 321, "name": "Tissue, Soft (ICRU Four Component)", "density": 1.0, "category": "Tissue and dosimetry", "comps": "H:0.101172, C:0.111000, N:0.026000, O:0.761828"}
+{"num": 322, "name": "Tissue, Testes (ICRP)", "density": 1.04, "category": "Tissue and dosimetry", "comps": "H:0.104166, C:0.092270, N:0.019940, O:0.773884, Na:0.002260, Mg:0.000110, P:0.001250, S:0.001460, Cl:0.002440, K:0.002080, Ca:0.000100, Fe:0.000020, Zn:0.000020"}
+{"num": 323, "name": "Tissue, Testis (ICRU)", "density": 1.04, "category": "Tissue and dosimetry", "comps": "H:0.106000, C:0.099000, N:0.020000, O:0.766000, Na:0.002000, P:0.001000, S:0.002000, Cl:0.002000, K:0.002000"}
+{"num": 324, "name": "Titanium", "density": 4.54, "category": "Metals and alloys", "comps": "Ti:1.000000"}
+{"num": 325, "name": "Titanium Alloy, Grade 5", "density": 4.43, "category": "Metals and alloys", "comps": "H:0.000110, C:0.000570, N:0.000210, O:0.001410, Al:0.061250, Ti:0.893630, V:0.040000, Fe:0.002830"}
+{"num": 326, "name": "Titanium Dioxide", "density": 4.26, "category": "Other compounds", "comps": "O:0.400592, Ti:0.599408"}
+{"num": 327, "name": "Titanium Hydride", "density": 3.75, "category": "Neutron absorbers and shielding", "comps": "H:0.040412, Ti:0.959588"}
+{"num": 328, "name": "Toluene", "density": 0.8669, "category": "Water and liquids", "comps": "H:0.087510, C:0.912490"}
+{"num": 329, "name": "Tributyl Borate", "density": 0.864, "category": "Water and liquids", "comps": "H:0.118245, B:0.046973, C:0.626231, O:0.208550"}
+{"num": 330, "name": "Tributyl Phosphate (TBP)", "density": 0.9724, "category": "Water and liquids", "comps": "H:0.102189, C:0.541197, O:0.240309, P:0.116305"}
+{"num": 331, "name": "Tungsten", "density": 19.3, "category": "Metals and alloys", "comps": "W:1.000000"}
+{"num": 332, "name": "Uranium Carbide", "density": 13.63, "category": "Nuclear fuel", "comps": "C:0.048049, U234:0.000254, U235:0.028559, U236:0.000131, U238:0.923007"}
+{"num": 333, "name": "Uranium Dicarbide", "density": 11.28, "category": "Nuclear fuel", "comps": "C:0.091692, U234:0.000243, U235:0.027249, U236:0.000125, U238:0.880691"}
+{"num": 334, "name": "Uranium Dioxide", "density": 10.96, "category": "Nuclear fuel", "comps": "O:0.118533, U234:0.000235, U235:0.026444, U236:0.000122, U238:0.854666"}
+{"num": 335, "name": "Uranium Hexafluoride", "density": 4.68, "category": "Nuclear fuel", "comps": "F:0.323884, U234:0.000181, U235:0.020283, U236:0.000093, U238:0.655559"}
+{"num": 336, "name": "Uranium Hydride", "density": 11.1, "category": "Nuclear fuel", "comps": "H:0.012548, U234:0.000264, U235:0.029624, U236:0.000136, U238:0.957429"}
+{"num": 337, "name": "Uranium Nitride", "density": 14.31, "category": "Nuclear fuel", "comps": "N:0.055590, U234:0.000252, U235:0.028332, U236:0.000130, U238:0.915695"}
+{"num": 338, "name": "Uranium Oxide", "density": 8.3, "category": "Nuclear fuel", "comps": "O:0.152037, U234:0.000226, U235:0.025439, U236:0.000117, U238:0.822181"}
+{"num": 339, "name": "Uranium Tetrafluoride", "density": 6.7, "category": "Nuclear fuel", "comps": "F:0.242055, U234:0.000202, U235:0.022738, U236:0.000105, U238:0.734900"}
+{"num": 340, "name": "Uranium Trioxide", "density": 7.29, "category": "Nuclear fuel", "comps": "O:0.167852, U234:0.000222, U235:0.024964, U236:0.000115, U238:0.806847"}
+{"num": 341, "name": "Uranium, Depleted, Typical", "density": 18.951157, "category": "Nuclear fuel", "comps": "U234:0.000005, U235:0.002500, U238:0.997495"}
+{"num": 342, "name": "Uranium, Enriched, Typical Commercial", "density": 18.944492, "category": "Nuclear fuel", "comps": "U234:0.000305, U235:0.029600, U238:0.970095"}
+{"num": 343, "name": "Uranium, HEU, Health Physics Society", "density": 18.724868, "category": "Nuclear fuel", "comps": "U234:0.010530, U235:0.931740, U236:0.002060, U238:0.055670"}
+{"num": 344, "name": "Uranium, HEU, Russian Average", "density": 18.732854, "category": "Nuclear fuel", "comps": "U234:0.009670, U235:0.898000, U236:0.003810, U238:0.088520"}
+{"num": 345, "name": "Uranium, HEU, U.S. Average", "density": 18.72476, "category": "Nuclear fuel", "comps": "U234:0.009800, U235:0.931550, U236:0.004500, U238:0.054150"}
+{"num": 346, "name": "Uranium, Low Enriched (LEU)", "density": 18.944386, "category": "Nuclear fuel", "comps": "U234:0.000267, U235:0.030000, U236:0.000138, U238:0.969595"}
+{"num": 347, "name": "Uranium, Natural (NU)", "density": 18.95, "category": "Nuclear fuel", "comps": "U234:0.000057, U235:0.007204, U238:0.992739"}
+{"num": 348, "name": "Uranium-Plutonium, Mixed Oxide (MOX)", "density": 11.0, "category": "Nuclear fuel", "comps": "O:0.118462, U234:0.000010, U235:0.002101, U236:0.000000, U238:0.838236, Pu238:0.001030, Pu239:0.022532, Pu240:0.010751, Pu241:0.003913, Pu242:0.002966"}
+{"num": 349, "name": "Uranyl Fluoride", "density": 6.37, "category": "Nuclear fuel", "comps": "O:0.103908, F:0.123385, U234:0.000206, U235:0.023181, U236:0.000107, U238:0.749213"}
+{"num": 350, "name": "Uranyl Nitrate", "density": 2.203, "category": "Nuclear fuel", "comps": "N:0.071106, O:0.324888, U234:0.000161, U235:0.018120, U236:0.000083, U238:0.585641"}
+{"num": 351, "name": "Vermiculite, Exfoliated", "density": 0.085, "category": "Minerals, rocks and soils", "comps": "H:0.011835, O:0.496356, Mg:0.133383, Al:0.063151, Si:0.189668, K:0.021668, Ca:0.016353, Ti:0.009854, Fe:0.057732"}
+{"num": 352, "name": "Viton Fluoroelastomer", "density": 1.8, "category": "Plastics and polymers", "comps": "H:0.009417, C:0.280555, F:0.710028"}
+{"num": 353, "name": "Water, Heavy", "density": 1.10534, "category": "Water and liquids", "comps": "H2:0.201133, O:0.798867"}
+{"num": 354, "name": "Water, Liquid", "density": 0.998207, "category": "Water and liquids", "comps": "H:0.111894, O:0.888106"}
+{"num": 355, "name": "Water, Vapor", "density": 0.000756, "category": "Gases", "comps": "H:0.111894, O:0.888106"}
+{"num": 356, "name": "Wax, M3", "density": 1.05, "category": "Plastics and polymers", "comps": "H:0.114318, C:0.655823, O:0.092183, Mg:0.134792, Ca:0.002883"}
+{"num": 357, "name": "Wax, Mix D", "density": 0.99, "category": "Plastics and polymers", "comps": "H:0.134040, C:0.777960, O:0.035020, Mg:0.038594, Ti:0.014386"}
+{"num": 358, "name": "Wax, Paraffin", "density": 0.93, "category": "Plastics and polymers", "comps": "H:0.148605, C:0.851395"}
+{"num": 359, "name": "Wood (Southern Pine)", "density": 0.64, "category": "Concrete and building materials", "comps": "H:0.059642, C:0.497018, N:0.004970, O:0.427435, Mg:0.001988, S:0.004970, K:0.001988, Ca:0.001988"}
+{"num": 360, "name": "Xenon", "density": 0.005485, "category": "Gases", "comps": "Xe:1.000000"}
+{"num": 361, "name": "Yttrium Aluminum Garnet (YAG)", "density": 4.56, "category": "Detectors and scintillators", "comps": "O:0.323428, Al:0.227263, Y:0.449308"}
+{"num": 362, "name": "Yttrium Aluminum Perovskite (YAP)", "density": 5.37, "category": "Detectors and scintillators", "comps": "O:0.292876, Al:0.164636, Y:0.542487"}
+{"num": 363, "name": "Yttrium OxyorthoSilicate (YSO)", "density": 4.45, "category": "Detectors and scintillators", "comps": "O:0.279813, Si:0.098237, Y:0.621949"}
+{"num": 364, "name": "Zeolite (Natrolite)", "density": 2.25, "category": "Minerals, rocks and soils", "comps": "H:0.010604, O:0.504947, Na:0.120928, Al:0.141925, Si:0.221597"}
+{"num": 365, "name": "Zinc", "density": 7.133, "category": "Metals and alloys", "comps": "Zn:1.000000"}
+{"num": 366, "name": "Zinc Selenide", "density": 5.42, "category": "Detectors and scintillators", "comps": "Zn:0.453068, Se:0.546932"}
+{"num": 367, "name": "Zinc Sulfide", "density": 4.09, "category": "Detectors and scintillators", "comps": "S:0.328960, Zn:0.671040"}
+{"num": 368, "name": "Zircaloy-2", "density": 6.56, "category": "Metals and alloys", "comps": "O:0.001197, Cr:0.000997, Fe:0.000997, Ni:0.000499, Zr:0.982348, Sn:0.013962"}
+{"num": 369, "name": "Zircaloy-4", "density": 6.56, "category": "Metals and alloys", "comps": "O:0.001196, Cr:0.000997, Fe:0.001994, Zr:0.981858, Sn:0.013955"}
+{"num": 370, "name": "Zirconium", "density": 6.506, "category": "Metals and alloys", "comps": "Zr:1.000000"}
+{"num": 371, "name": "Zirconium Hydride (Zr5H8)", "density": 5.61, "category": "Neutron absorbers and shielding", "comps": "H:0.017371, Zr:0.982629"}
+{"num": 372, "name": "Zirconium Hydride (ZrH2)", "density": 5.61, "category": "Neutron absorbers and shielding", "comps": "H:0.021620, Zr:0.978380"}

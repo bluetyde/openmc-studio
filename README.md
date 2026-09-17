@@ -38,8 +38,10 @@ Select a part, pick a tool, and drag its handles in the slice view or the 3D vie
 - **Rotate**: drag a ring to turn the part about that axis (boxes and cylinders).
   In 3D the angle follows the pointer around the ring from any viewing angle.
   Rotation is also in Properties as degrees about x, then y, then z.
-- **Snap** (Home tab): click to cycle the move/scale step (off, 0.1–10 cm) and the
-  rotation step (off, 1–90°). Esc cancels a drag in progress.
+- **Snap** (Home tab): click **Move 1 cm** or **Rotate 15°** to set the step. Type any value and
+  press Enter, click a quick pick (0.1–10 cm, 1–90°), or tick **Off** to drag freely. Esc closes the
+  box without changing anything. The step is remembered in this browser. Esc also cancels a drag
+  in progress.
 - **Undo / Redo**: **Ctrl+Z** and **Ctrl+Y** (or Ctrl+Shift+Z; Cmd on the Mac), or the
   buttons on the Home tab. Each drag, code-tab edit or burst of typing is one step
   (the last 100 are kept). In a text box, Ctrl+Z undoes the typing instead.
@@ -49,6 +51,18 @@ written as tilted planes (MCNP `P`) and general quadrics (MCNP `GQ`); the MCNP e
 and its geometry check handle both. In the code tabs a tilted plane's position (`d=`
 in model.py, the last number on a `P` card) can be edited like any other plane; the
 normal and the `GQ` coefficients are read-only, so change the rotation for those.
+
+## Metric or imperial
+
+Run ▸ Settings ▸ Display ▸ **Units** switches what Studio shows and accepts between metric (cm,
+g/cm³) and imperial (inches, lb/ft³). It changes Properties, the Explorer, the material lists, the
+viewport's axis ticks and slice box, the coordinate and drag readouts, and the Move/scale snap step
+(each system keeps its own step: 1 cm, 0.25 in by default, so drags land on round inches). The
+choice is saved in this browser.
+
+The model is always stored in cm and g/cm³, and **model.py and model.mcnp stay in cm and g/cm³**
+because OpenMC and MCNP need them; with imperial on, both code tabs say so. Typing 12 in stores
+30.48 cm exactly. Energies (MeV) and angles are the same in both.
 
 ## Selecting several parts, and groups
 
@@ -74,6 +88,7 @@ normal and the `GQ` coefficients are read-only, so change the rotation for those
 - **In the outputs** groups change nothing in the geometry. model.py lists them as
   `groups = {"Shield": [cell_source_cavity, ...]}` and model.mcnp as comment cards,
   `c Group: Shield = cells 2 3 4`. The project file keeps each group and its pivot.
+- **Not yet**: groups inside groups. A part or source belongs to at most one group for now.
 
 Faces that should touch are written as one shared surface even after rotations leave tiny rounding
 differences (surfaces closer than 1e-7 cm are merged), so rotated assemblies don't create nearly
@@ -122,7 +137,21 @@ model.py or model.mcnp on the right.
 
 ## Material library
 
-**Model ▸ Material ▾** opens a searchable list. **Common** is the 18 built-in materials. Below it,
+**Picking a material**: click the **Material** field of a part (or of a selection or group, or the
+world's **Fill**). The list shows the materials already in the project, then every material you can
+add. Pick one and it's assigned; a library material is added to the project the first time you use
+it, and picking it again for another part reuses that copy. The Explorer's Materials section follows
+along:
+
+- A library material that nothing uses any more and that you haven't edited is removed on its own
+  (the Log says so; Ctrl+Z brings it back).
+- A material you've edited, or a Custom material, stays even when nothing uses it. The Explorer shows
+  it as **unused**, and model.py leaves it out.
+- **Model ▸ Material ▾** gives the material to the selected parts. With no parts selected it adds the
+  material and opens it in Properties; if you then neither use nor edit it, it's removed when you
+  select something else.
+
+**Model ▸ Material ▾** and the field's list are both searchable. **Common** is the 18 built-in materials. Below it,
 the library in `studio/openmc_studio/static/materials.jsonl` is grouped by category (click a
 category to open it). Type to search by name, category or PNNL number (`#354`), press **Enter** to
 add the first match, or use the arrow keys. Without the file, only the common materials are listed.

@@ -42,6 +42,7 @@ button,input,select{font:inherit;color:inherit}
 .rbtn{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:54px;padding:5px 6px;background:none;border:1px solid transparent;border-radius:5px;cursor:pointer;font-size:11.5px;color:var(--text);white-space:nowrap}
 .rbtn svg{color:var(--accent)}
 .rbtn:hover{background:var(--raise);border-color:var(--line2)}
+.rbtn.on{background:var(--sel);border-color:rgba(82,184,255,.55)}
 .rbtn:disabled{opacity:.4;cursor:not-allowed;background:none;border-color:transparent}
 .rlabel{font-size:10.5px;color:var(--faint);padding:2px 0 3px;letter-spacing:.04em;text-transform:uppercase}
 .menu{position:fixed;z-index:20;background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:4px;min-width:250px;max-height:60vh;overflow:auto;box-shadow:0 10px 30px rgba(0,0,0,.45)}
@@ -93,6 +94,22 @@ body.is-dragging,body.is-dragging *{cursor:grabbing!important;user-select:none}
 .dtab{display:flex;align-items:center;gap:6px;background:none;border:0;border-right:1px solid var(--line);padding:7px 14px;color:var(--muted);cursor:pointer;white-space:nowrap}
 .dtab[aria-selected="true"]{background:var(--panel);color:var(--text);box-shadow:inset 0 2px 0 var(--accent)}
 .doc{display:flex;flex-direction:column;min-height:0;min-width:0}
+.docs{display:grid;grid-template-columns:minmax(0,1fr);min-height:0;min-width:0}
+.docs.split{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.docs.split>#docView{border-right:1px solid var(--line)}
+.dtabs .spacer{flex:1}
+.splitbtn{display:flex;align-items:center;gap:6px;background:none;border:0;border-left:1px solid var(--line);padding:7px 14px;color:var(--muted);cursor:pointer;white-space:nowrap}
+.splitbtn[aria-pressed="true"]{color:var(--text);background:var(--panel);box-shadow:inset 0 2px 0 var(--accent)}
+pre.code .ln.sel{background:rgba(82,184,255,.09);box-shadow:inset 3px 0 0 var(--accent)}
+.ed{border-bottom:1px dotted rgba(82,184,255,.75);cursor:text;border-radius:2px}
+pre.code .ed:hover{background:var(--accent-soft)}
+pre.code .ed.stale{border-bottom-color:transparent;cursor:default;background:none}
+.edin{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--accent);border-radius:3px;padding:0 3px;margin:-1px 0;outline:none}
+.edin.bad{border-color:var(--err)}
+pre.code.stale{opacity:.5;transition:opacity .15s}
+.t-card{color:#7cc4ff}.t-mcom{color:#6f8a74}.t-err{color:var(--err);white-space:pre-wrap}
+.mstatus{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mstatus.ok{color:var(--ok)}.mstatus.err{color:var(--err)}.mstatus.warn{color:var(--warn)}.mstatus.busy{color:var(--accent)}
 .toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 10px;border-bottom:1px solid var(--line)}
 .seg{display:flex;border:1px solid var(--line2);border-radius:5px;overflow:hidden}
 .seg button{background:none;border:0;padding:3px 9px;cursor:pointer;color:var(--muted);font:500 11.5px var(--mono)}
@@ -105,6 +122,8 @@ body.is-dragging,body.is-dragging *{cursor:grabbing!important;user-select:none}
 .readout{margin-left:auto;color:var(--muted);font:11.5px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:100%}
 .vpwrap{position:relative;flex:1;min-height:0;background:var(--ground)}
 #vp{position:absolute;inset:0;display:block;cursor:crosshair}
+#vp3,#vp3o{position:absolute;left:0;top:0;display:block}
+#vp3o{cursor:grab;touch-action:none}
 .legend{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:3px;padding:7px 9px;background:rgba(21,24,27,.88);border:1px solid var(--line);border-radius:6px;font-size:11.5px;pointer-events:none;max-width:45%}
 .legend div{display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .codewrap{flex:1;overflow:auto;min-height:0;background:#111316}
@@ -180,7 +199,10 @@ input[type=checkbox]{accent-color:var(--accent)}
   .win{grid-template-rows:auto auto auto}
   .main{grid-template-columns:minmax(0,1fr)}
   .explorer{border-right:0;border-bottom:1px solid var(--line);max-height:260px}
-  .center{grid-template-rows:auto 420px 200px}
+  .center{grid-template-rows:auto auto 200px}
+  .docs>.doc{height:420px}
+  .docs.split{grid-template-columns:minmax(0,1fr)}
+  .docs.split>#docView{border-right:0;border-bottom:1px solid var(--line)}
   .propspanel{border-left:0;border-top:1px solid var(--line)}
   .chip{display:none}
 }
@@ -212,11 +234,19 @@ input[type=checkbox]{accent-color:var(--accent)}
       <div class="dtabs" role="tablist">
         <button class="dtab" role="tab" id="tabView" aria-selected="true" type="button">Viewport</button>
         <button class="dtab" role="tab" id="tabCode" aria-selected="false" type="button">model.py</button>
-        <button class="dtab" role="tab" id="tabMcnp" aria-selected="false" type="button" hidden>model.mcnp</button>
+        <button class="dtab" role="tab" id="tabMcnp" aria-selected="false" type="button">model.mcnp</button>
+        <span class="spacer"></span>
+        <button class="splitbtn" type="button" id="splitBtn" aria-pressed="false" title="Show the viewport next to model.py or model.mcnp">
+          <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2.5" y="3" width="13" height="12" rx="1.5"/><path d="M9 3v12"/></svg>Split</button>
       </div>
+
+      <div class="docs" id="docs">
 
       <div class="doc" id="docView">
         <div class="toolbar">
+          <div class="seg" role="group" aria-label="View">
+            <button type="button" data-vmode="slice">Slice</button><button type="button" data-vmode="3d">3D</button>
+          </div>
           <div class="seg" role="group" aria-label="Slice plane">
             <button type="button" data-plane="xy">XY</button><button type="button" data-plane="xz">XZ</button><button type="button" data-plane="yz">YZ</button>
           </div>
@@ -224,6 +254,7 @@ input[type=checkbox]{accent-color:var(--accent)}
           <div class="seg" role="group" aria-label="Zoom">
             <button type="button" id="zoomOut" aria-label="Zoom out">−</button><button type="button" id="zoomFit">Fit</button><button type="button" id="zoomIn" aria-label="Zoom in">+</button>
           </div>
+          <label class="chk" id="cutWrap" hidden title="Cut the model open at the slice plane"><input type="checkbox" id="cutaway" checked> Cutaway</label>
           <span class="layers" id="layers" hidden>
             <label class="chk"><input type="checkbox" id="showMesh" checked> Flux map</label>
             <select id="meshPick" aria-label="Mesh tally to show"></select>
@@ -234,13 +265,15 @@ input[type=checkbox]{accent-color:var(--accent)}
         </div>
         <div class="vpwrap" id="vpwrap">
           <canvas id="vp" tabindex="0" aria-label="Geometry slice. Click a region or source to select it."></canvas>
+          <canvas id="vp3" hidden aria-hidden="true"></canvas>
+          <canvas id="vp3o" hidden tabindex="0" aria-label="3D view. Drag to orbit, click a part to select it."></canvas>
           <div class="legend" id="legend"></div>
         </div>
       </div>
 
       <div class="doc" id="docCode" hidden>
         <div class="toolbar">
-          <span class="tlabel">Generated from the model. It updates as you edit.</span>
+          <span class="tlabel">Updates as you edit. Click a <span class="ed">dotted number</span> to change it, or a line to select its part.</span>
           <span class="spacer"></span>
           <button class="tbtn" type="button" id="copyCode">Copy</button>
           <button class="tbtn" type="button" id="saveCode">Save model.py</button>
@@ -250,12 +283,14 @@ input[type=checkbox]{accent-color:var(--accent)}
 
       <div class="doc" id="docMcnp" hidden>
         <div class="toolbar">
-          <span class="tlabel" id="mcnpStatus">MCNP input exported by openmc-mcnp-project.</span>
+          <span class="mstatus" id="mcnpStatus">MCNP input from openmc-mcnp-project, validated as you edit.</span>
           <span class="spacer"></span>
           <button class="tbtn" type="button" id="copyMcnp">Copy</button>
           <button class="tbtn" type="button" id="saveMcnp">Save .mcnp</button>
         </div>
         <div class="codewrap"><pre class="code" id="mcnpCode"></pre></div>
+      </div>
+
       </div>
 
       <div class="output">
@@ -304,6 +339,12 @@ const ICON = {
   open:'<path d="M9 11.5v-9M5 6.5l4-4 4 4M3 13.5v2h12v-2"/>',
   reset:'<path d="M3.5 9a5.5 5.5 0 1 0 1.8-4.1"/><path d="M3.5 2.5v3h3"/>',
   world:'<rect x="2.5" y="2.5" width="13" height="13" rx="1" stroke-dasharray="2.2 2"/>',
+  select:'<path d="M4.5 2.5l9 6.4-4 .9 2.5 4.8-1.9 1-2.5-4.8-3.1 2.8z"/>',
+  move:'<path d="M9 1.8v14.4M1.8 9h14.4"/><path d="M6.8 4L9 1.8 11.2 4M6.8 14L9 16.2 11.2 14M4 6.8L1.8 9 4 11.2M14 6.8L16.2 9 14 11.2"/>',
+  scale:'<rect x="2.5" y="7.5" width="8" height="8" rx="1"/><path d="M9.5 8.5l6-6M11.2 2.5h4.3v4.3"/>',
+  rotate:'<path d="M15 9.5A6 6 0 1 1 9 3.5"/><path d="M8.2 1.2L10.6 3.5 8.2 5.8"/>',
+  grid:'<path d="M2.5 6.5h13M2.5 11.5h13M6.5 2.5v13M11.5 2.5v13"/>',
+  rotstep:'<path d="M2.5 15.5h13M2.5 15.5l9-10"/><path d="M8.5 15.5a6 6 0 0 0-1.8-4.2"/>',
   settings:'<path d="M3 5h12M3 9h12M3 13h12"/><circle cx="6" cy="5" r="1.7" fill="#1b1e22"/><circle cx="12" cy="9" r="1.7" fill="#1b1e22"/><circle cx="8" cy="13" r="1.7" fill="#1b1e22"/>'
 };
 const ic = (n, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
@@ -362,7 +403,7 @@ function newSource(id, name, particle = 'neutron') {
     energy:'lines', lines: particle === 'photon' ? '0.662:1' : '14.1:1', wa:0.988, wb:2.249, theta:1.2895, emin:0.1, emax:2};
 }
 function newPart(id, name, shape) {
-  return {id, name, shape, x:0, y:0, z:0, r:10, h:20, axis:'z', sx:20, sy:20, sz:20, material:'void'};
+  return {id, name, shape, x:0, y:0, z:0, r:10, h:20, axis:'z', sx:20, sy:20, sz:20, rx:0, ry:0, rz:0, material:'void'};
 }
 function sampleModel() {
   const part = (id, name, shape, o) => Object.assign(newPart(id, name, shape), o);
@@ -387,6 +428,11 @@ function sampleModel() {
 }
 
 const STORE_KEY = 'openmc-studio-v1';
+function normalizeProject(o) { // fill fields added in later versions
+  o.settings = {...DEFAULT_SETTINGS, ...o.settings};
+  (o.parts || []).forEach(p => ['rx', 'ry', 'rz'].forEach(k => { if (p[k] === undefined || p[k] === null) p[k] = 0; }));
+  return o;
+}
 function validProject(o) {
   return !!o && Array.isArray(o.materials) && Array.isArray(o.parts) && Array.isArray(o.sources) &&
     Array.isArray(o.tallies) && !!o.settings && typeof o.settings === 'object';
@@ -394,7 +440,7 @@ function validProject(o) {
 function loadStored() {
   try {
     const o = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (validProject(o)) { o.settings = {...DEFAULT_SETTINGS, ...o.settings}; return o; }
+    if (validProject(o)) { normalizeProject(o); return o; }
   } catch (e) {}
   return null;
 }
@@ -402,7 +448,7 @@ function store() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } c
 
 let S = loadStored() || sampleModel();
 let sel = {kind:'source', id:(S.sources[0] || {}).id};
-const view = {plane:'xz', slice:0, zoom:1};
+const view = {plane:'xz', slice:0, zoom:1, mode:'slice'};
 
 /* ───────── Parsing helpers ───────── */
 const fin = Number.isFinite;
@@ -449,16 +495,44 @@ const partById = id => S.parts.find(p => p.id === id);
 const partLabel = id => id === 'world' ? 'World' : ((partById(id) || {}).name || '?');
 
 /* ───────── Geometry math (mirrors the CSG that model.py builds) ───────── */
+/* Rotation. A box or cylinder has a local frame M (columns = its local x, y, z axes in world coordinates):
+   M = Rz(rz) · Ry(ry) · Rx(rx) · base, where base points a cylinder's local z along its x/y/z axis setting.
+   When M is a signed permutation (all rotations are 90° multiples) the part is axis-aligned again, and the
+   generator writes ordinary XPlane/ZCylinder surfaces; otherwise general Plane and Quadric surfaces. */
+const DEG = Math.PI / 180;
+const IDENT3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+const AXIS_BASE = {z:IDENT3, x:[[0, 0, 1], [0, 1, 0], [-1, 0, 0]], y:[[1, 0, 0], [0, 0, 1], [0, -1, 0]]};
+function rotXYZ(rx, ry, rz) {
+  const cx = Math.cos(rx * DEG), sx = Math.sin(rx * DEG), cy = Math.cos(ry * DEG), sy = Math.sin(ry * DEG), cz = Math.cos(rz * DEG), sz = Math.sin(rz * DEG);
+  return [[cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx],
+          [sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx],
+          [-sy, cy * sx, cy * cx]];
+}
+const mat3mul = (A, B) => A.map(row => [0, 1, 2].map(j => row[0] * B[0][j] + row[1] * B[1][j] + row[2] * B[2][j]));
+const snapUnit = v => Math.abs(v) < 1e-9 ? 0 : Math.abs(Math.abs(v) - 1) < 1e-9 ? Math.sign(v) : v;
+const FRAMES = new WeakMap();
+function partFrame(p) {
+  const key = `${p.shape}|${p.axis}|${p.rx || 0}|${p.ry || 0}|${p.rz || 0}`;
+  const cached = FRAMES.get(p);
+  if (cached && cached.key === key) return cached;
+  const base = p.shape === 'cylinder' ? (AXIS_BASE[p.axis] || IDENT3) : IDENT3;
+  const M = mat3mul(rotXYZ(p.rx || 0, p.ry || 0, p.rz || 0), base).map(r => r.map(snapUnit));
+  const f = {key, M, aligned: M.every(r => r.every(v => v === 0 || v === 1 || v === -1))};
+  if (f.aligned) {
+    f.localOf = [0, 1, 2].map(i => [0, 1, 2].find(j => M[i][j] !== 0)); // local axis lying along world axis i
+    f.axis = 'xyz'[[0, 1, 2].find(i => M[i][2] !== 0)];                // world axis of the local z axis
+  }
+  FRAMES.set(p, f);
+  return f;
+}
+const isRotated = p => p.shape !== 'sphere' && !!((p.rx || 0) || (p.ry || 0) || (p.rz || 0));
 function inShape(p, x, y, z) {
   const dx = x - p.x, dy = y - p.y, dz = z - p.z;
   if (p.shape === 'sphere') return dx*dx + dy*dy + dz*dz < p.r*p.r;
-  if (p.shape === 'cylinder') {
-    const h = p.h / 2, r2 = p.r * p.r;
-    if (p.axis === 'x') return dy*dy + dz*dz < r2 && Math.abs(dx) < h;
-    if (p.axis === 'y') return dx*dx + dz*dz < r2 && Math.abs(dy) < h;
-    return dx*dx + dy*dy < r2 && Math.abs(dz) < h;
-  }
-  return Math.abs(dx) < p.sx/2 && Math.abs(dy) < p.sy/2 && Math.abs(dz) < p.sz/2;
+  const M = partFrame(p).M; // local = Mᵀ · d
+  const lx = M[0][0]*dx + M[1][0]*dy + M[2][0]*dz, ly = M[0][1]*dx + M[1][1]*dy + M[2][1]*dz, lz = M[0][2]*dx + M[1][2]*dy + M[2][2]*dz;
+  if (p.shape === 'cylinder') return lx*lx + ly*ly < p.r*p.r && Math.abs(lz) < p.h/2;
+  return Math.abs(lx) < p.sx/2 && Math.abs(ly) < p.sy/2 && Math.abs(lz) < p.sz/2;
 }
 function inWorld(x, y, z) {
   const R = S.settings.worldR;
@@ -470,11 +544,11 @@ function cellIndexAt(x, y, z) {
   for (let i = 0; i < S.parts.length; i++) if (inShape(S.parts[i], x, y, z)) return i;
   return -1;
 }
-function partHalfExtents(p) {
+function partHalfExtents(p) { // half-widths of the world-axis bounding box
   if (p.shape === 'sphere') return [p.r, p.r, p.r];
-  if (p.shape === 'box') return [p.sx/2, p.sy/2, p.sz/2];
-  const h = p.h/2;
-  return p.axis === 'x' ? [h, p.r, p.r] : p.axis === 'y' ? [p.r, h, p.r] : [p.r, p.r, h];
+  const M = partFrame(p).M;
+  if (p.shape === 'box') { const hs = [p.sx/2, p.sy/2, p.sz/2]; return [0, 1, 2].map(i => Math.abs(M[i][0]) * hs[0] + Math.abs(M[i][1]) * hs[1] + Math.abs(M[i][2]) * hs[2]); }
+  return [0, 1, 2].map(i => Math.abs(M[i][2]) * p.h / 2 + p.r * Math.sqrt(Math.max(0, 1 - M[i][2] * M[i][2])));
 }
 function partLeavesWorld(p) {
   const [hx, hy, hz] = partHalfExtents(p), R = S.settings.worldR, eps = 1e-9;
@@ -508,6 +582,7 @@ function problems() {
   S.parts.forEach(p => {
     const dims = p.shape === 'sphere' ? [p.r] : p.shape === 'cylinder' ? [p.r, p.h] : [p.sx, p.sy, p.sz];
     if (![p.x, p.y, p.z].every(fin)) add('error', `${p.name}: center needs three numbers.`, 'part', p.id);
+    if (![p.rx || 0, p.ry || 0, p.rz || 0].every(fin)) add('error', `${p.name}: rotation angles must be numbers (degrees).`, 'part', p.id);
     if (!dims.every(pos)) add('error', `${p.name}: sizes must be above 0 cm.`, 'part', p.id);
     else if (partLeavesWorld(p)) add('warn', `${p.name} extends past the world boundary. Particles leave at the boundary, so the outer part is cut off.`, 'part', p.id);
     if (p.material !== 'void' && !matById(p.material)) add('error', `${p.name}: its material was deleted. Pick a material or Void.`, 'part', p.id);
@@ -598,8 +673,19 @@ function makeNamer() {
   };
 }
 
-function generate(probs) {
-  const st = S.settings, eig = st.runMode === 'eigenvalue', L = [], name = makeNamer();
+// Builds model.py. With mark=true, every editable number is wrapped as \u0001<ref>\u0002text\u0003 and
+// the result carries a source map (map[ref] says which field the number came from), the owner object
+// of every line, and the surfaces in creation order (OpenMC IDs 1, 2, 3… = MCNP surface numbers).
+function buildScript(probs, mark) {
+  const st = S.settings, eig = st.runMode === 'eigenvalue', L = [], OWN = [], MAP = [], SURF = [], name = makeNamer();
+  let owner = null;
+  const push = (...lines) => lines.forEach(l => { L.push(l); OWN.push(owner); });
+  const E = (text, ref) => {
+    if (!mark) return text;
+    MAP.push(ref);
+    return `\u0001${MAP.length - 1}\u0002${text}\u0003`;
+  };
+  const F = (obj, key, text, extra) => E(text, {t:'field', obj, key, ...extra});
   const errors = probs.filter(p => p.sev === 'error').length;
   const tracks = parseTrack(st.track).out;
   // --track (tracks=True) writes every particle up to max_tracks and ignores settings.track,
@@ -607,127 +693,184 @@ function generate(probs) {
   const wantAll = st.maxTracks > 0 && !tracks.length;
   const usedIds = new Set(S.parts.map(p => p.material).concat(st.worldFill));
   const mats = S.materials.filter(m => usedIds.has(m.id));
-  const mv = {}, sv = {}, cv = {};
+  const mv = {}, cv = {};
 
-  L.push('"""', `${st.name} — model.py generated by OpenMC Studio`, '',
+  push('"""', `${st.name} — model.py generated by OpenMC Studio`, '',
     `${eig ? 'Eigenvalue' : 'Fixed-source'} run: ${S.parts.length + 1} cells, ${S.sources.length} source${S.sources.length === 1 ? '' : 's'}, ${S.tallies.length} tall${S.tallies.length === 1 ? 'y' : 'ies'}, seed ${st.seed}.`,
     'Run it inside your OpenMC environment (OpenMC 0.14 or newer):', '    python model.py',
     'OPENMC_CROSS_SECTIONS must point at a cross_sections.xml.', '"""');
-  if (errors) L.push(`# WARNING: the model has ${errors} problem${errors === 1 ? '' : 's'} (see the Problems panel). This script will not run until they are fixed.`);
-  L.push('import openmc', '');
+  if (errors) push(`# WARNING: the model has ${errors} problem${errors === 1 ? '' : 's'} (see the Problems panel). This script will not run until they are fixed.`);
+  push('import openmc', '');
 
-  L.push('# ── Materials ──────────────────────────────────────────────');
+  push('# ── Materials ──────────────────────────────────────────────');
   mats.forEach(m => {
+    owner = {kind:'material', id:m.id};
     const v = mv[m.id] = name('mat', m.name);
-    if (m.ref) L.push(`# ${m.ref}`);
-    L.push(`${v} = openmc.Material(name=${pyStr(m.name)})`, `${v}.set_density("g/cm3", ${num(m.density)})`);
-    parseComps(m.comps).out.forEach(c =>
-      L.push(`${v}.${c.nuclide ? 'add_nuclide' : 'add_element'}(${pyStr(c.sym)}, ${num(c.amt)}, ${pyStr(m.frac)})`));
-    if (m.sab) L.push(`${v}.add_s_alpha_beta(${pyStr(m.sab)})`);
-    L.push('');
+    if (m.ref) push(`# ${m.ref}`);
+    push(`${v} = openmc.Material(name=${pyStr(m.name)})`, `${v}.set_density("g/cm3", ${F(m, 'density', num(m.density))})`);
+    parseComps(m.comps).out.forEach((c, i) =>
+      push(`${v}.${c.nuclide ? 'add_nuclide' : 'add_element'}(${pyStr(c.sym)}, ${E(num(c.amt), {t:'comp', obj:m, index:i})}, ${pyStr(m.frac)})`));
+    if (m.sab) push(`${v}.add_s_alpha_beta(${pyStr(m.sab)})`);
+    push('');
   });
-  L.push(`materials = openmc.Materials([${mats.map(m => mv[m.id]).join(', ')}])`, '');
+  owner = null;
+  push(`materials = openmc.Materials([${mats.map(m => mv[m.id]).join(', ')}])`, '');
 
-  L.push('# ── Geometry ───────────────────────────────────────────────',
+  push('# ── Geometry ───────────────────────────────────────────────',
     '# Every surface is created once and shared, so faces that touch (or sit on the world',
     '# boundary) are one surface and particles are never lost between them.',
     '# Parts listed first win where shapes overlap (same order as the Explorer).');
   const R = st.worldR, bc = `boundary_type=${pyStr(st.worldBC)}`, surfs = new Map();
   const tag = v => (v < 0 ? 'm' : '') + num(Math.abs(v)).replace(/\.0$/, '').replace(/[^0-9a-z]/gi, 'p');
-  const surface = (key, prefix, label, ctor, isWorld) => {
+  const surface = (key, prefix, label, ctorFn, desc, isWorld) => {
     if (!surfs.has(key)) {
       const v = name(prefix, label);
       surfs.set(key, v);
-      L.push(`${v} = ${ctor.slice(0, -1)}${isWorld ? (ctor.endsWith('()') ? bc : ', ' + bc) : ''})`);
+      SURF.push({...desc, owner});
+      const ctor = ctorFn();
+      push(`${v} = ${ctor.slice(0, -1)}${isWorld ? (ctor.endsWith('()') ? bc : ', ' + bc) : ''})`);
     }
     return surfs.get(key);
   };
-  const plane = (ax, v, isWorld) => surface(`P${ax}:${num(v)}`, `${ax}plane`, tag(v), `openmc.${ax.toUpperCase()}Plane(${num(v)})`, isWorld);
-  const sphere = (x, y, z, r, isWorld) => surface(`S:${[x, y, z, r].map(num)}`, 'sphere', `r${tag(r)}`,
-    x || y || z ? `openmc.Sphere(x0=${num(x)}, y0=${num(y)}, z0=${num(z)}, r=${num(r)})` : `openmc.Sphere(r=${num(r)})`, isWorld);
+  const plane = (ax, v, isWorld) => surface(`P${ax}:${num(v)}`, `${ax}plane`, tag(v),
+    () => `openmc.${ax.toUpperCase()}Plane(${E(num(v), {t:'plane', ax, value:v})})`, {kind:'plane', ax, value:v}, isWorld);
+  const sphere = (x, y, z, r, isWorld) => {
+    const ref = which => ({t:'sphere', x, y, z, r, which});
+    return surface(`S:${[x, y, z, r].map(num)}`, 'sphere', `r${tag(r)}`,
+      () => x || y || z
+        ? `openmc.Sphere(x0=${E(num(x), ref('x'))}, y0=${E(num(y), ref('y'))}, z0=${E(num(z), ref('z'))}, r=${E(num(r), ref('r'))})`
+        : `openmc.Sphere(r=${E(num(r), ref('r'))})`,
+      {kind:'sphere', x, y, z, r}, isWorld);
+  };
   const slab = (ax, lo, hi, isWorld) => `+${plane(ax, lo, isWorld)} & -${plane(ax, hi, isWorld)}`;
-  if (st.worldShape === 'sphere') L.push(`world = -${sphere(0, 0, 0, R, true)}`);
+  // General (tilted) plane n·x = d. The normal's first non-zero component is made positive so a face shared by
+  // two rotated parts is one surface, whichever side each part is on; `sense` is flipped to match.
+  const gplane = (n, d, sense) => {
+    const k = n.findIndex(v => Math.abs(v) > 1e-12), flip = n[k] < 0;
+    const nn = flip ? n.map(v => -v) : n, dd = flip ? -d : d;
+    if (nn[k] === 1 && nn.every((v, i) => i === k || v === 0)) // axis-aligned normal: share the ordinary X/Y/ZPlane
+      return `${(sense === '+') !== flip ? '+' : '-'}${plane('xyz'[k], dd)}`;
+    const v = surface(`G:${[...nn, dd].map(num)}`, 'plane', 'tilted',
+      () => `openmc.Plane(a=${num(nn[0])}, b=${num(nn[1])}, c=${num(nn[2])}, d=${num(dd)})`, {kind:'gplane'});
+    return `${(sense === '+') !== flip ? '+' : '-'}${v}`;
+  };
+  const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const gslab = (n, c, half) => `${gplane(n, dot3(n, c) - half, '+')} & ${gplane(n, dot3(n, c) + half, '-')}`;
+  // Cylinder of radius r about axis u through c: |(I - uuᵀ)(x - c)|² = r²  →  openmc.Quadric / MCNP GQ.
+  const quadric = (u, c, r) => {
+    const P = [0, 1, 2].map(i => [0, 1, 2].map(j => (i === j ? 1 : 0) - u[i] * u[j]));
+    const Pc = P.map(row => dot3(row, c)), co = [P[0][0], P[1][1], P[2][2], 2 * P[0][1], 2 * P[1][2], 2 * P[0][2], -2 * Pc[0], -2 * Pc[1], -2 * Pc[2], dot3(c, Pc) - r * r];
+    const names = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'j', 'k'];
+    return surface(`Q:${co.map(num)}`, 'quadric', 'cyl', () => `openmc.Quadric(${co.map((v, i) => `${names[i]}=${num(v)}`).join(', ')})`, {kind:'quadric'});
+  };
+  owner = {kind:'world'};
+  if (st.worldShape === 'sphere') push(`world = -${sphere(0, 0, 0, R, true)}`);
   else {
     const w = ['x', 'y', 'z'].map(ax => slab(ax, -R, R, true));
-    L.push(`world = ${w.join(' & ')}`);
+    push(`world = ${w.join(' & ')}`);
   }
-  L.push('');
+  owner = null;
+  push('');
   const shapeVar = {};
   S.parts.forEach(p => {
+    owner = {kind:'part', id:p.id};
     let expr;
+    const fr = p.shape === 'sphere' ? null : partFrame(p), ctr = [p.x, p.y, p.z], col = k => [fr.M[0][k], fr.M[1][k], fr.M[2][k]];
     if (p.shape === 'sphere') expr = `-${sphere(p.x, p.y, p.z, p.r)}`;
-    else if (p.shape === 'box') expr = ['x', 'y', 'z'].map(ax => slab(ax, p[ax] - p['s' + ax] / 2, p[ax] + p['s' + ax] / 2)).join(' & ');
+    else if (p.shape === 'box' && fr.aligned) expr = ['x', 'y', 'z'].map((ax, i) => {
+      const hs = [p.sx, p.sy, p.sz][fr.localOf[i]] / 2;
+      return slab(ax, p[ax] - hs, p[ax] + hs);
+    }).join(' & ');
+    else if (p.shape === 'box') expr = [0, 1, 2].map(k => gslab(col(k), ctr, [p.sx, p.sy, p.sz][k] / 2)).join(' & ');
+    else if (!fr.aligned) expr = `-${quadric(col(2), ctr, p.r)} & ${gslab(col(2), ctr, p.h / 2)}`;
     else {
-      const ax = p.axis, [a, b] = {x:['y', 'z'], y:['x', 'z'], z:['x', 'y']}[ax];
-      const cyl = surface(`C${ax}:${[p[a], p[b], p.r].map(num)}`, `${ax}cyl`, `r${tag(p.r)}`,
-        `openmc.${ax.toUpperCase()}Cylinder(${a}0=${num(p[a])}, ${b}0=${num(p[b])}, r=${num(p.r)})`);
+      const ax = fr.axis, [a, b] = {x:['y', 'z'], y:['x', 'z'], z:['x', 'y']}[ax];
+      const av = p[a], bv = p[b], rv = p.r;
+      const ref = which => ({t:'cyl', ax, a:av, b:bv, r:rv, which});
+      const cyl = surface(`C${ax}:${[av, bv, rv].map(num)}`, `${ax}cyl`, `r${tag(rv)}`,
+        () => `openmc.${ax.toUpperCase()}Cylinder(${a}0=${E(num(av), ref('a'))}, ${b}0=${E(num(bv), ref('b'))}, r=${E(num(rv), ref('r'))})`,
+        {kind:'cyl', ax, a:av, b:bv, r:rv});
       expr = `-${cyl} & ${slab(ax, p[ax] - p.h / 2, p[ax] + p.h / 2)}`;
     }
     shapeVar[p.id] = name('shape', p.name);
-    L.push(`${shapeVar[p.id]} = ${expr}`);
+    push(`${shapeVar[p.id]} = ${expr}`);
   });
-  if (S.parts.length) L.push('');
+  owner = null;
+  if (S.parts.length) push('');
   const fill = id => id === 'void' || !mv[id] ? 'None' : mv[id];
   S.parts.forEach((p, i) => {
+    owner = {kind:'part', id:p.id};
     const v = cv[p.id] = name('cell', p.name);
     const earlier = S.parts.slice(0, i).map(q => shapeVar[q.id]);
     const region = `${shapeVar[p.id]} & world` + (earlier.length ? ` & ~(${earlier.join(' | ')})` : '');
-    L.push(`${v} = openmc.Cell(name=${pyStr(p.name)}, fill=${fill(p.material)}, region=${region})`);
+    push(`${v} = openmc.Cell(name=${pyStr(p.name)}, fill=${fill(p.material)}, region=${region})`);
   });
   cv.world = 'cell_world';
+  owner = {kind:'world'};
   const all = S.parts.map(q => shapeVar[q.id]);
-  L.push(`cell_world = openmc.Cell(name="World", fill=${fill(st.worldFill)}, region=world${all.length ? ` & ~(${all.join(' | ')})` : ''})`);
-  L.push(`geometry = openmc.Geometry([${S.parts.map(p => cv[p.id]).concat('cell_world').join(', ')}])`, '');
+  push(`cell_world = openmc.Cell(name="World", fill=${fill(st.worldFill)}, region=world${all.length ? ` & ~(${all.join(' | ')})` : ''})`);
+  owner = null;
+  push(`geometry = openmc.Geometry([${S.parts.map(p => cv[p.id]).concat('cell_world').join(', ')}])`, '');
 
-  L.push('# ── Sources ────────────────────────────────────────────────');
+  push('# ── Sources ────────────────────────────────────────────────');
+  const vecF = (s, kx, ky, kz) => `(${F(s, kx, num(s[kx]))}, ${F(s, ky, num(s[ky]))}, ${F(s, kz, num(s[kz]))})`;
   const srcVars = S.sources.map(s => {
+    owner = {kind:'source', id:s.id};
     const v = name('src', s.name);
-    L.push(`${v} = openmc.IndependentSource()`, `${v}.particle = ${pyStr(s.particle)}`);
-    if (s.space === 'point') L.push(`${v}.space = openmc.stats.Point(${vec3(s.x, s.y, s.z)})`);
-    else if (s.space === 'box') L.push(`${v}.space = openmc.stats.Box(${vec3(s.x0, s.y0, s.z0)}, ${vec3(s.x1, s.y1, s.z1)})`);
-    else if (s.space === 'sphere') L.push(`${v}.space = openmc.stats.spherical_uniform(r_outer=${num(s.r)}, r_inner=${num(s.rin)}, origin=${vec3(s.x, s.y, s.z)})`);
-    else L.push(`${v}.space = openmc.stats.CylindricalIndependent(`,
-      `    r=openmc.stats.PowerLaw(${num(s.rin)}, ${num(s.r)}, 1),  # uniform in volume`,
+    push(`${v} = openmc.IndependentSource()`, `${v}.particle = ${pyStr(s.particle)}`);
+    if (s.space === 'point') push(`${v}.space = openmc.stats.Point(${vecF(s, 'x', 'y', 'z')})`);
+    else if (s.space === 'box') push(`${v}.space = openmc.stats.Box(${vecF(s, 'x0', 'y0', 'z0')}, ${vecF(s, 'x1', 'y1', 'z1')})`);
+    else if (s.space === 'sphere') push(`${v}.space = openmc.stats.spherical_uniform(r_outer=${F(s, 'r', num(s.r))}, r_inner=${F(s, 'rin', num(s.rin))}, origin=${vecF(s, 'x', 'y', 'z')})`);
+    else push(`${v}.space = openmc.stats.CylindricalIndependent(`,
+      `    r=openmc.stats.PowerLaw(${F(s, 'rin', num(s.rin))}, ${F(s, 'r', num(s.r))}, 1),  # uniform in volume`,
       `    phi=openmc.stats.Uniform(0.0, 6.283185307179586),`,
-      `    z=openmc.stats.Uniform(${num(-s.h/2)}, ${num(s.h/2)}),`,
-      `    origin=${vec3(s.x, s.y, s.z)})`);
-    if (s.angle === 'isotropic') L.push(`${v}.angle = openmc.stats.Isotropic()`);
-    else { const n = Math.hypot(s.u, s.v, s.w) || 1; L.push(`${v}.angle = openmc.stats.Monodirectional(${vec3(s.u/n, s.v/n, s.w/n)})`); }
+      `    z=openmc.stats.Uniform(${E(num(-s.h/2), {t:'halfh', obj:s})}, ${E(num(s.h/2), {t:'halfh', obj:s})}),`,
+      `    origin=${vecF(s, 'x', 'y', 'z')})`);
+    if (s.angle === 'isotropic') push(`${v}.angle = openmc.stats.Isotropic()`);
+    else { const n = Math.hypot(s.u, s.v, s.w) || 1; push(`${v}.angle = openmc.stats.Monodirectional(${vec3(s.u/n, s.v/n, s.w/n)})`); }
     if (s.energy === 'lines') {
       const ls = parseLines(s.lines).out;
-      L.push(`${v}.energy = openmc.stats.Discrete([${ls.map(l => num(l.e * 1e6)).join(', ')}], [${ls.map(l => num(l.p)).join(', ')}])  # eV`);
-    } else if (s.energy === 'watt') L.push(`${v}.energy = openmc.stats.Watt(a=${num(s.wa * 1e6)}, b=${num(s.wb / 1e6)})  # a in eV, b in 1/eV`);
-    else if (s.energy === 'maxwell') L.push(`${v}.energy = openmc.stats.Maxwell(theta=${num(s.theta * 1e6)})  # eV`);
-    else L.push(`${v}.energy = openmc.stats.Uniform(${num(s.emin * 1e6)}, ${num(s.emax * 1e6)})  # eV`);
-    L.push(`${v}.strength = ${num(s.strength)}`, '');
+      push(`${v}.energy = openmc.stats.Discrete([${ls.map((l, i) => E(num(l.e * 1e6), {t:'line', obj:s, index:i, part:'e', scale:1e-6})).join(', ')}], [${ls.map((l, i) => E(num(l.p), {t:'line', obj:s, index:i, part:'p'})).join(', ')}])  # eV`);
+    } else if (s.energy === 'watt') push(`${v}.energy = openmc.stats.Watt(a=${F(s, 'wa', num(s.wa * 1e6), {scale:1e-6})}, b=${F(s, 'wb', num(s.wb / 1e6), {scale:1e6})})  # a in eV, b in 1/eV`);
+    else if (s.energy === 'maxwell') push(`${v}.energy = openmc.stats.Maxwell(theta=${F(s, 'theta', num(s.theta * 1e6), {scale:1e-6})})  # eV`);
+    else push(`${v}.energy = openmc.stats.Uniform(${F(s, 'emin', num(s.emin * 1e6), {scale:1e-6})}, ${F(s, 'emax', num(s.emax * 1e6), {scale:1e-6})})  # eV`);
+    push(`${v}.strength = ${F(s, 'strength', num(s.strength))}`, '');
     return v;
   });
+  owner = null;
 
-  L.push('# ── Tallies ────────────────────────────────────────────────');
+  push('# ── Tallies ────────────────────────────────────────────────');
   const talVars = S.tallies.map(t => {
+    owner = {kind:'tally', id:t.id};
     const v = name('tally', t.name), filters = [];
     if (t.kind === 'mesh') {
       const m = name('mesh', t.name);
-      L.push(`${m} = openmc.RegularMesh(name=${pyStr(t.name)})`, `${m}.dimension = [${int(t.nx)}, ${int(t.ny)}, ${int(t.nz)}]`,
-        `${m}.lower_left = [${num(t.lx)}, ${num(t.ly)}, ${num(t.lz)}]`, `${m}.upper_right = [${num(t.ux)}, ${num(t.uy)}, ${num(t.uz)}]`);
+      const I = k => F(t, k, int(t[k]), {int:true});
+      push(`${m} = openmc.RegularMesh(name=${pyStr(t.name)})`, `${m}.dimension = [${I('nx')}, ${I('ny')}, ${I('nz')}]`,
+        `${m}.lower_left = [${F(t, 'lx', num(t.lx))}, ${F(t, 'ly', num(t.ly))}, ${F(t, 'lz', num(t.lz))}]`,
+        `${m}.upper_right = [${F(t, 'ux', num(t.ux))}, ${F(t, 'uy', num(t.uy))}, ${F(t, 'uz', num(t.uz))}]`);
       filters.push(`openmc.MeshFilter(${m})`);
     } else filters.push(`openmc.CellFilter([${t.cells.filter(c => cv[c]).map(c => cv[c]).join(', ')}])`);
-    if (t.ebins.trim()) filters.push(`openmc.EnergyFilter([${parseNums(t.ebins).vals.map(e => num(e * 1e6)).join(', ')}])`);
-    L.push(`${v} = openmc.Tally(name=${pyStr(t.name)})`, `${v}.filters = [${filters.join(', ')}]`,
+    if (t.ebins.trim()) filters.push(`openmc.EnergyFilter([${parseNums(t.ebins).vals.map((e, i) => E(num(e * 1e6), {t:'ebin', obj:t, index:i, scale:1e-6})).join(', ')}])`);
+    push(`${v} = openmc.Tally(name=${pyStr(t.name)})`, `${v}.filters = [${filters.join(', ')}]`,
       `${v}.scores = [${t.scores.map(pyStr).join(', ')}]`, '');
     return v;
   });
-  L.push(`tallies = openmc.Tallies([${talVars.join(', ')}])`, '');
+  owner = null;
+  push(`tallies = openmc.Tallies([${talVars.join(', ')}])`, '');
 
-  L.push('# ── Settings ───────────────────────────────────────────────', 'settings = openmc.Settings()',
-    `settings.run_mode = ${pyStr(st.runMode)}`, `settings.particles = ${int(st.particles)}`, `settings.batches = ${int(st.batches)}`);
-  if (eig) L.push(`settings.inactive = ${int(st.inactive)}`);
-  L.push(`settings.seed = ${int(st.seed)}  # same seed + same model = the same particle histories`,
+  owner = {kind:'settings'};
+  const IS = k => F(st, k, int(st[k]), {int:true});
+  push('# ── Settings ───────────────────────────────────────────────', 'settings = openmc.Settings()',
+    `settings.run_mode = ${pyStr(st.runMode)}`, `settings.particles = ${IS('particles')}`, `settings.batches = ${IS('batches')}`);
+  if (eig) push(`settings.inactive = ${IS('inactive')}`);
+  push(`settings.seed = ${IS('seed')}  # same seed + same model = the same particle histories`,
     `settings.source = [${srcVars.join(', ')}]`);
-  if (st.photon) L.push('settings.photon_transport = True');
-  if (wantAll) L.push(`settings.max_tracks = ${int(st.maxTracks)}`);
-  if (tracks.length) L.push(`settings.track = [${tracks.map(t => `(${t.join(', ')})`).join(', ')}]  # (batch, generation, particle)`);
-  L.push('', 'model = openmc.Model(geometry=geometry, materials=materials, settings=settings, tallies=tallies)', '',
+  if (st.photon) push('settings.photon_transport = True');
+  if (wantAll) push(`settings.max_tracks = ${IS('maxTracks')}`);
+  if (tracks.length) push(`settings.track = [${tracks.map(t => `(${t.join(', ')})`).join(', ')}]  # (batch, generation, particle)`);
+  owner = null;
+  push('', 'model = openmc.Model(geometry=geometry, materials=materials, settings=settings, tallies=tallies)', '',
     'if __name__ == "__main__":',
     '    import sys',
     '    if "--export-xml" in sys.argv:  # OpenMC Studio exports model.xml this way for MCNP translation',
@@ -735,9 +878,10 @@ function generate(probs) {
     '        raise SystemExit(0)',
     `    statepoint = model.run(${wantAll ? 'tracks=True' : ''})`,
     '    print(f"Finished: {statepoint}")');
-  if (wantAll || tracks.length) L.push('    print("Particle tracks written to tracks.h5 (open with openmc.Tracks)")');
-  return L.join('\n') + '\n';
+  if (wantAll || tracks.length) push('    print("Particle tracks written to tracks.h5 (open with openmc.Tracks)")');
+  return {text: L.join('\n') + '\n', owners: OWN, map: MAP, surfaces: SURF, materials: mats};
 }
+function generate(probs) { return buildScript(probs, false).text; }
 
 /* ───────── MCNP equivalents (NE403 lab notation) shown beside sources and tallies ───────── */
 const mcnpNum = v => fin(v) ? String(+v.toPrecision(6)) : '?';
@@ -934,7 +1078,7 @@ function openProject(file) {
     try {
       const o = JSON.parse(r.result);
       if (!validProject(o)) throw new Error('missing materials, parts, sources, tallies or settings');
-      o.settings = {...DEFAULT_SETTINGS, ...o.settings};
+      normalizeProject(o);
       S = o; sel = {kind:'settings'};
       log('ok', `Opened ${file.name}.`); renderAll();
     } catch (e) { log('error', `${file.name} isn't an OpenMC Studio project: ${e.message}.`); }
@@ -967,11 +1111,14 @@ function setOutTab(which) {
 /* ───────── Ribbon ───────── */
 const RIBBON = {
   Home:[
+    {label:'Tools', btns:toolButtons()},
+    {label:'Snap', btns:snapButtons()},
     {label:'Edit', btns:[['duplicate', 'Duplicate', duplicateSelected, () => !!LISTS[sel.kind]], ['del', 'Delete', removeSelected, () => !!LISTS[sel.kind]]]},
     {label:'Order', btns:[['up', 'Raise', () => moveSelected(-1), () => !!LISTS[sel.kind]], ['down', 'Lower', () => moveSelected(1), () => !!LISTS[sel.kind]]]},
     {label:'Project', btns:[['reset', 'Demo model', resetSample]]}
   ],
   Model:[
+    {label:'Tools', btns:toolButtons()},
     {label:'Parts', btns:[['sphere', 'Sphere', () => addPart('sphere')], ['cylinder', 'Cylinder', () => addPart('cylinder')], ['box', 'Box', () => addPart('box')]]},
     {label:'Materials', btns:[['material', 'Material ▾', e => openMatMenu(e.currentTarget)]]},
     {label:'Boundary', btns:[['world', 'World', () => select('world')]]}
@@ -995,9 +1142,11 @@ function renderRibbon() {
   RIBBON[ribbonTab].forEach(g => {
     const grp = document.createElement('div'); grp.className = 'rgroup';
     const row = document.createElement('div'); row.className = 'rbtns';
-    g.btns.forEach(([icon, label, fn, enabled]) => {
+    g.btns.forEach(([icon, labelOrFn, fn, enabled, active]) => {
+      const label = typeof labelOrFn === 'function' ? labelOrFn() : labelOrFn;
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'rbtn'; b.innerHTML = ic(icon) + `<span>${label}</span>`;
+      if (active) { const on = !!active(); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }
       if (enabled && !enabled()) { b.disabled = true; if (!downloads && /Save/.test(label)) b.title = 'Saving files is not available in this view.'; }
       b.addEventListener('click', fn);
       row.appendChild(b);
@@ -1024,6 +1173,7 @@ function openMatMenu(btn) {
 /* ───────── Explorer tree ───────── */
 const collapsed = {};
 function shapeMeta(p) {
+  if (isRotated(p)) return `${p.shape === 'box' ? `${p.sx}×${p.sy}×${p.sz}` : `r ${p.r} · ${p.h}`} ↻`;
   if (p.shape === 'sphere') return `r ${p.r}`;
   if (p.shape === 'cylinder') return `r ${p.r} · ${p.h}`;
   return `${p.sx}×${p.sy}×${p.sz}`;
@@ -1091,7 +1241,9 @@ function specFor(kind, o) {
         F('num', 'r', 'Radius', {unit:'cm', show:() => sph() || cyl()}),
         F('num', 'h', 'Height', {unit:'cm', show:cyl}),
         F('select', 'axis', 'Axis', {options:() => [['x', 'x'], ['y', 'y'], ['z', 'z']], show:cyl}),
-        F('vec', null, 'Size', {keys:['sx', 'sy', 'sz'], unit:'cm', show:box})
+        F('vec', null, 'Size', {keys:['sx', 'sy', 'sz'], unit:'cm', show:box}),
+        F('vec', null, 'Rotation', {keys:['rx', 'ry', 'rz'], unit:'°', show:() => !sph(),
+          hint:'Degrees about x, then y, then z. 90° steps export as ordinary planes and cylinders; other angles as tilted planes and GQ quadrics (their numbers are read-only in the code tabs).'})
       ]}
     ];
   }
@@ -1314,7 +1466,7 @@ async function localInit() {
     `Connected to the local runner: OpenMC ${esc(h.openmc)}, Python ${esc(h.python)}. Runs are saved in <code>${esc(h.runs_dir)}</code>.` +
     (h.cross_sections_found ? '' : ' <b>OPENMC_CROSS_SECTIONS is not set or the file is missing</b>, so runs will fail. Run point_conda_env_here.sh.'));
   $('#runChip').dataset.local = `OpenMC ${h.openmc}`;
-  renderResults(); refreshRuns(); renderRibbon();
+  renderResults(); refreshRuns(); renderRibbon(); schedule();
 }
 function setRunning(on) {
   const b = $('#runBtn');
@@ -1418,47 +1570,459 @@ $('#runs').addEventListener('click', async e => {
     try {
       const o = await api(`/api/runs/${encodeURIComponent(l.dataset.load)}/project`);
       if (!validProject(o)) throw new Error('project file is incomplete');
-      o.settings = {...DEFAULT_SETTINGS, ...o.settings};
+      normalizeProject(o);
       S = o; sel = {kind:'settings'};
       log('ok', `Opened the model from run ${esc(l.dataset.load)}.`); renderAll();
     } catch (err) { log('error', `Couldn't open that model: ${esc(err.message)}`); }
   }
 });
 
-/* MCNP export (runs openmc-mcnp-project's export_mcnp.py through the local server) */
-let mcnpDeck = null;
+/* ───────── Live code tabs: editable numbers, click-to-select, live model.mcnp ───────── */
+const CODEVIEW = {py:null, mcnp:null};   // {owners, refs} for what's on screen
+const EDITING = {pane:null};             // an inline edit is open in this pane
+const LIVE = {seq:0, client:Math.random().toString(36).slice(2) + Date.now().toString(36), sentScript:null, ctx:null, report:null, timer:null, loggedFor:null};
+const same = (a, b) => num(a) === num(b);
+const fmtNum = x => String(+(+x).toPrecision(12));
+
+function ownerMatchesSel(o) {
+  if (!o) return false;
+  if (o.kind === 'world' || o.kind === 'settings') return sel.kind === o.kind;
+  return sel.kind === o.kind && sel.id === o.id;
+}
+function selectOwner(o) {
+  if (!o) return;
+  if (o.kind === 'world' || o.kind === 'settings') select(o.kind);
+  else select(o.kind, o.id);
+}
+
+// Apply an edited number to the model field it came from. Returns an error message, or null.
+function moveFace(ax, old, nw) {
+  const jobs = [];
+  for (const p of S.parts) {
+    let key = null, lo, hi;
+    const fr = p.shape === 'sphere' ? null : partFrame(p);
+    if (!fr || !fr.aligned) continue;
+    if (p.shape === 'box') key = 's' + 'xyz'[fr.localOf['xyz'.indexOf(ax)]];
+    else if (fr.axis === ax) key = 'h';
+    if (key) { lo = p[ax] - p[key] / 2; hi = p[ax] + p[key] / 2; }
+    if (!key) continue;
+    let nlo = lo, nhi = hi;
+    if (same(lo, old)) nlo = nw; else if (same(hi, old)) nhi = nw; else continue;
+    if (!(nhi > nlo)) return `${p.name}: its ${ax} extent would be zero or negative.`;
+    jobs.push(() => { p[ax] = (nlo + nhi) / 2; p[key] = nhi - nlo; });
+  }
+  const st = S.settings;
+  if (st.worldShape === 'box' && (same(old, st.worldR) || same(old, -st.worldR))) {
+    if (!(Math.abs(nw) > 0)) return 'The world boundary needs a non-zero half-width.';
+    jobs.push(() => { st.worldR = Math.abs(nw); });
+  }
+  if (!jobs.length) return 'Nothing uses that plane any more; the view will refresh.';
+  jobs.forEach(j => j());
+  return null;
+}
+function applyEdit(ref, raw) {
+  const v = Number(String(raw).trim());
+  if (!Number.isFinite(v)) return 'Enter a number.';
+  const val = ref.scale ? v * ref.scale : v;
+  const o = ref.obj;
+  switch (ref.t) {
+    case 'field':
+      if (ref.int && !Number.isInteger(val)) return 'Enter a whole number.';
+      o[ref.key] = ref.neg ? -val : val;
+      return null;
+    case 'comp': {
+      const {out} = parseComps(o.comps);
+      if (!out[ref.index]) return 'That component changed; the view will refresh.';
+      o.comps = out.map((c, i) => `${c.sym}:${fmtNum(i === ref.index ? val : c.amt)}`).join(', ');
+      return null;
+    }
+    case 'line': {
+      const {out} = parseLines(o.lines);
+      if (!out[ref.index]) return 'That energy line changed; the view will refresh.';
+      out[ref.index][ref.part] = val;
+      o.lines = out.map(l => `${fmtNum(l.e)}:${fmtNum(l.p)}`).join(', ');
+      return null;
+    }
+    case 'ebin': {
+      const {vals} = parseNums(o.ebins);
+      if (vals[ref.index] === undefined) return 'That energy edge changed; the view will refresh.';
+      vals[ref.index] = val;
+      o.ebins = vals.map(fmtNum).join(', ');
+      return null;
+    }
+    case 'halfh':
+      if (!(Math.abs(val) > 0)) return 'Height must be above 0.';
+      o.h = 2 * Math.abs(val);
+      return null;
+    case 'plane':
+      return moveFace(ref.ax, ref.value, val);
+    case 'sphere': {
+      let hit = 0;
+      S.parts.forEach(p => {
+        if (p.shape === 'sphere' && same(p.x, ref.x) && same(p.y, ref.y) && same(p.z, ref.z) && same(p.r, ref.r)) { p[ref.which] = val; hit++; }
+      });
+      const st = S.settings;
+      if (st.worldShape === 'sphere' && same(ref.r, st.worldR) && !ref.x && !ref.y && !ref.z) {
+        if (ref.which !== 'r') return 'The world boundary is centered at the origin.';
+        st.worldR = Math.abs(val); hit++;
+      }
+      return hit ? null : 'Nothing uses that sphere any more; the view will refresh.';
+    }
+    case 'cyl': {
+      const [ka, kb] = {x:['y', 'z'], y:['x', 'z'], z:['x', 'y']}[ref.ax];
+      let hit = 0;
+      S.parts.forEach(p => {
+        if (p.shape === 'cylinder' && partFrame(p).aligned && partFrame(p).axis === ref.ax && same(p[ka], ref.a) && same(p[kb], ref.b) && same(p.r, ref.r)) {
+          p[{a:ka, b:kb, r:'r'}[ref.which]] = val; hit++;
+        }
+      });
+      return hit ? null : 'Nothing uses that cylinder any more; the view will refresh.';
+    }
+  }
+  return 'That value is calculated from other settings; change those instead.';
+}
+
+// ── model.py rendering (source-mapped) ──
+const MARK_RE = /\u0001(\d+)\u0002([^\u0003]*)\u0003/g;
+function highlightPyLine(line, inDoc) {
+  if (inDoc || line.trim() === '"""' || /^[A-Z].*generated by OpenMC Studio$/.test(line)) return `<span class="t-doc">${esc(line)}</span>`;
+  let html = '', last = 0, m;
+  const plain = seg => {
+    let out = '', i = 0, t;
+    PY_RE.lastIndex = 0;
+    while ((t = PY_RE.exec(seg))) {
+      if (t.index > i) out += esc(seg.slice(i, t.index));
+      out += `<span class="t-${t[1] ? 'doc' : t[2] ? 'com' : t[3] ? 'str' : t[4] ? 'kw' : t[5] ? 'mod' : 'num'}">${esc(t[0])}</span>`;
+      i = PY_RE.lastIndex;
+    }
+    return out + esc(seg.slice(i));
+  };
+  MARK_RE.lastIndex = 0;
+  while ((m = MARK_RE.exec(line))) {
+    html += plain(line.slice(last, m.index));
+    html += `<span class="t-num ed" data-ref="${m[1]}" title="Click to edit">${esc(m[2])}</span>`;
+    last = MARK_RE.lastIndex;
+  }
+  return html + plain(line.slice(last));
+}
+function renderPy(P) {
+  if ($('#docCode').hidden || EDITING.pane === 'py') return;
+  const b = buildScript(P, true);
+  const lines = b.text.replace(/\n$/, '').split('\n');
+  let inDoc = false;
+  const html = lines.map((l, i) => {
+    const startDoc = l === '"""';
+    const h = highlightPyLine(l, inDoc && !startDoc);
+    if (startDoc) inDoc = !inDoc;
+    return `<span class="ln${ownerMatchesSel(b.owners[i]) ? ' sel' : ''}" data-line="${i}">${h || ' '}</span>`;
+  }).join('');
+  $('#code').innerHTML = html;
+  CODEVIEW.py = {owners: b.owners, refs: b.map};
+  scrollSelIntoView('py');
+}
+
+// ── model.mcnp rendering: map deck numbers back to model fields ──
+const NUM_RE = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
+function mcnpContext(P, built) {
+  // Everything needed to read the deck back, captured when the script is sent.
+  const src = S.sources[0] || null;
+  const dists = [];
+  if (src && S.settings.runMode !== 'eigenvalue') {
+    const addDist = (si, sp) => dists.push({si, sp});
+    if (src.space === 'box') ['x', 'y', 'z'].forEach(a => addDist([{t:'field', obj:src, key:a + '0'}, {t:'field', obj:src, key:a + '1'}], []));
+    if (src.space === 'sphere') addDist([{t:'field', obj:src, key:'rin'}, {t:'field', obj:src, key:'r'}], []);
+    if (src.space === 'cylinder') { addDist([{t:'field', obj:src, key:'rin'}, {t:'field', obj:src, key:'r'}], []); addDist([{t:'halfh', obj:src}, {t:'halfh', obj:src}], []); }
+    if (src.energy === 'lines') {
+      const ls = parseLines(src.lines).out;
+      if (ls.length > 1) addDist(ls.map((l, i) => ({t:'line', obj:src, index:i, part:'e'})), ls.map((l, i) => ({t:'line', obj:src, index:i, part:'p'})));
+    } else if (src.energy === 'watt') addDist(null, [null, {t:'field', obj:src, key:'wa'}, {t:'field', obj:src, key:'wb'}]);
+    else if (src.energy === 'maxwell') addDist(null, [null, {t:'field', obj:src, key:'theta'}]);
+    else if (src.energy === 'uniform') addDist([{t:'field', obj:src, key:'emin'}, {t:'field', obj:src, key:'emax'}], []);
+  }
+  const tallyScores = [];
+  S.tallies.forEach(t => t.scores.forEach(() => tallyScores.push(t)));
+  return {surfaces: built.surfaces, materials: built.materials, parts: S.parts.slice(), source: src, dists, tallyScores};
+}
+function annotateMcnp(deck, ctx, editable) {
+  const owners = [], refs = [];
+  let block = 0, card = null, cardOwner = null, kw = null, kwIndex = 0, valueIndex = 0;
+  const cellOwner = n => n >= 1 && n <= ctx.parts.length ? {kind:'part', id:ctx.parts[n - 1].id} : {kind:'world'};
+  const matOwner = n => ctx.materials[n - 1] ? {kind:'material', id:ctx.materials[n - 1].id} : null;
+  const fieldRef = (obj, key, extra) => obj ? {t:'field', obj, key, ...extra} : null;
+
+  const html = deck.replace(/\n$/, '').split('\n').map((line, li) => {
+    const trimmed = line.trim();
+    if (!trimmed) { block++; card = null; owners.push(null); return '<span class="ln"> </span>'; }
+    if (li === 0 || /^(\$|c(\s|$))/i.test(trimmed)) { owners.push(null); return `<span class="ln"><span class="t-mcom">${esc(line)}</span></span>`; }
+    const cont = /^\s/.test(line);
+    const parts = line.split(/(\s+)/);
+    let out = '';
+    if (!cont) { card = null; kw = null; valueIndex = 0; }
+    const refFor = (tok, n) => {
+      // n: numeric-token index within the card (continuations included)
+      if (block === 0) { // cells: "N M -rho ..." (void cells: "N 0 ...")
+        if (n === 2 && card.mat > 0) return fieldRef(ctx.materials[card.mat - 1], 'density', {neg:true});
+        return null;
+      }
+      if (block === 1) { // surfaces
+        const d = card.surf; if (!d) return null;
+        const c = n - 2; // token 0 = surface number, 1 = type, 2… = constants
+        const T = card.type;
+        if (d.kind === 'plane') return (T === 'P' && c === 3) || (/^P[XYZ]$/.test(T) && c === 0) ? {t:'plane', ax:d.ax, value:d.value} : null;
+        if (d.kind === 'sphere') {
+          const which = T === 'SO' ? ['r'][c] : T === 'S' ? ['x', 'y', 'z', 'r'][c] : null;
+          return which ? {t:'sphere', x:d.x, y:d.y, z:d.z, r:d.r, which} : null;
+        }
+        if (d.kind === 'cyl') {
+          const which = T.startsWith('C/') ? ['a', 'b', 'r'][c] : ['r'][c];
+          return which ? {t:'cyl', ax:d.ax, a:d.a, b:d.b, r:d.r, which} : null;
+        }
+        return null;
+      }
+      // data cards
+      const H = card.head;
+      if (H === 'KCODE') return [fieldRef(S.settings, 'particles', {int:true}), null, fieldRef(S.settings, 'inactive', {int:true}), fieldRef(S.settings, 'batches', {int:true})][n] || null;
+      if (H === 'SDEF') {
+        const s = ctx.source; if (!s) return null;
+        if (kw === 'POS') return fieldRef(s, ['x', 'y', 'z'][kwIndex]);
+        if (kw === 'ERG' && s.energy === 'lines' && kwIndex === 0) return {t:'line', obj:s, index:0, part:'e'};
+        return null;
+      }
+      let m;
+      if ((m = H.match(/^S([IP])(\d+)$/))) {
+        const d = ctx.dists[+m[2] - 1]; if (!d) return null;
+        const list = m[1] === 'I' ? d.si : d.sp;
+        return list ? list[n] || null : null;
+      }
+      if ((m = H.match(/^E(\d+)$/))) { const t = ctx.tallyScores[(+m[1] - 4) / 10]; return t ? {t:'ebin', obj:t, index:n + 1} : null; }
+      if ((m = H.match(/^FMESH(\d+)/))) {
+        const t = ctx.tallyScores[(+m[1] - 4) / 10]; if (!t) return null;
+        const map = {ORIGIN:['lx', 'ly', 'lz'], IMESH:['ux'], JMESH:['uy'], KMESH:['uz'], IINTS:['nx'], JINTS:['ny'], KINTS:['nz']};
+        if (kw === 'EMESH') return {t:'ebin', obj:t, index:kwIndex + 1};
+        const key = map[kw] && map[kw][kwIndex];
+        return key ? fieldRef(t, key, /INTS$/.test(kw) ? {int:true} : {}) : null;
+      }
+      return null;
+    };
+
+    for (const piece of parts) {
+      if (!piece || /^\s+$/.test(piece)) { out += esc(piece); continue; }
+      // split KEY=VALUE so the value can be a number span
+      let pre = '', tok = piece;
+      const eq = piece.indexOf('=');
+      if (eq >= 0) { pre = piece.slice(0, eq + 1); tok = piece.slice(eq + 1); kw = pre.slice(0, -1).toUpperCase(); kwIndex = 0; }
+      if (!card) { // first token of a card; tokens are counted per card, across continuation lines
+        if (block === 0) card = {kind:'cell', num:parseInt(piece, 10), n:0};
+        else if (block === 1) { const sn = parseInt(piece.replace(/^[*+]/, ''), 10); card = {kind:'surf', num:sn, surf:ctx.surfaces[sn - 1], n:0}; }
+        else card = {kind:'data', head:piece.toUpperCase().replace(/:.*$/, ''), n:0};
+        cardOwner = block === 0 ? (card.num === 999 ? {kind:'world'} : cellOwner(card.num))
+          : block === 1 ? (card.surf ? card.surf.owner : null)
+          : cardOwnerFor(card.head, ctx, matOwner);
+        out += `<span class="t-card">${esc(piece)}</span>`;
+        continue;
+      }
+      const n = ++card.n;
+      if (block === 0 && n === 1) card.mat = parseInt(piece, 10) || 0;
+      if (block === 1 && n === 1 && !NUM_RE.test(piece)) { card.type = piece.toUpperCase(); out += `<span class="t-kw">${esc(piece)}</span>`; continue; }
+      if (pre) out += `<span class="t-kw">${esc(pre)}</span>`;
+      if (tok && NUM_RE.test(tok)) {
+        const ref = refFor(tok, block >= 2 ? valueIndex : n);
+        if (block >= 2) valueIndex++;
+        if (kw) kwIndex++;
+        if (ref) {
+          refs.push(ref);
+          out += `<span class="t-num ed${editable ? '' : ' stale'}" data-ref="${refs.length - 1}"${editable ? ' title="Click to edit"' : ''}>${esc(tok)}</span>`;
+        } else out += `<span class="t-num">${esc(tok)}</span>`;
+      } else if (tok) out += esc(tok);
+    }
+    owners.push(cardOwner);
+    return `<span class="ln${ownerMatchesSel(cardOwner) ? ' sel' : ''}" data-line="${li}">${out || ' '}</span>`;
+  }).join('');
+  return {html, owners, refs};
+}
+function cardOwnerFor(head, ctx, matOwner) {
+  let m;
+  if ((m = head.match(/^MT?(\d+)$/))) return matOwner(+m[1]);
+  if (/^(SDEF|SI\d+|SP\d+)$/.test(head)) return ctx.source ? {kind:'source', id:ctx.source.id} : null;
+  if (/^(NPS|KCODE|KSRC|MODE)$/.test(head)) return {kind:'settings'};
+  if ((m = head.match(/^(?:F|FC|FM|E|SD|FMESH)(\d+)$/))) { const t = ctx.tallyScores[(+m[1] - 4) / 10]; return t ? {kind:'tally', id:t.id} : null; }
+  return null;
+}
+
+function mcnpVisible() { return !$('#docMcnp').hidden; }
+function setMcnpStatus(state, text) {
+  const el = $('#mcnpStatus');
+  el.className = `mstatus ${state}`;
+  el.textContent = text;
+}
+function renderMcnp(P) {
+  if (!mcnpVisible() || EDITING.pane === 'mcnp') return;
+  const pane = $('#mcnpCode');
+  if (!LOCAL.on) {
+    setMcnpStatus('off', IN_ARTIFACT || !LOCAL.token ? 'Live MCNP needs the local Studio server' : 'Connecting to the local server…');
+    pane.innerHTML = '<span class="ln t-mcom">Start OpenMC Studio from its launcher (Start OpenMC Studio.cmd / .command) to see the</span>' +
+      '<span class="ln t-mcom">validated MCNP input here, updated as you edit.</span>';
+    CODEVIEW.mcnp = null;
+    return;
+  }
+  const script = generate(P), r = LIVE.report;
+  const fresh = !!r && LIVE.sentScript === script;
+  if (!r) { pane.innerHTML = '<span class="ln t-mcom">Translating with MCNPy… (the first export takes about 15 s while MCNPy starts)</span>'; }
+  else if (r.deck) {
+    const view = annotateMcnp(r.deck, LIVE.ctx, fresh);
+    pane.innerHTML = view.html;
+    CODEVIEW.mcnp = fresh ? {owners: view.owners, refs: view.refs} : null;
+    scrollSelIntoView('mcnp');
+  } else {
+    pane.innerHTML = `<span class="ln t-err">${esc(r.error || 'No deck was produced.')}</span>`;
+    CODEVIEW.mcnp = null;
+  }
+  pane.classList.toggle('stale', !fresh);
+  if (fresh) {
+    if (r.ok) setMcnpStatus('ok', `✓ Validated · ${r.seconds} s${r.translation_cached ? ' (geometry unchanged)' : ''}`);
+    else setMcnpStatus('err', r.error ? '⚠ Not exportable — see the message below' : '⚠ Didn’t validate — see Log');
+    if (LIVE.loggedFor !== r) { // log each new result once
+      LIVE.loggedFor = r;
+      if (!r.ok && r.validation) r.validation.trim().split('\n').filter(l => /\[ERROR\]|FAILED/.test(l)).forEach(l => log('error', `model.mcnp: ${esc(l.trim())}`));
+    }
+  }
+}
+function geometryPart(script) { const i = script.indexOf('# ── Sources'); return i < 0 ? script : script.slice(0, i); }
+function liveMcnpTick(P) {
+  if (!LOCAL.on || !mcnpVisible()) return;
+  const script = generate(P);
+  if (script === LIVE.sentScript) return;
+  const errs = P.filter(p => p.sev === 'error');
+  if (errs.length) { setMcnpStatus('warn', `Fix ${errs.length} problem${errs.length === 1 ? '' : 's'} to update (see Problems)`); return; }
+  setMcnpStatus('busy', 'Waiting for edits to pause…');
+  clearTimeout(LIVE.timer);
+  LIVE.timer = setTimeout(() => sendLive(), 900);
+}
+async function sendLive() {
+  const P = problems();
+  if (P.some(p => p.sev === 'error')) return;
+  const built = buildScript(P, false), script = built.text;
+  if (script === LIVE.sentScript) return;
+  const seq = ++LIVE.seq, ctx = mcnpContext(P, built);
+  const slow = !LIVE.report || !LIVE.sentScript || geometryPart(LIVE.sentScript) !== geometryPart(script);
+  setMcnpStatus('busy', slow ? 'Updating… (geometry or materials changed: about 10 s)' : 'Updating… (about 1 s)');
+  let r;
+  try { r = await api('/api/mcnp-live', {method:'POST', body:JSON.stringify({script, name:S.settings.name, seq, client:LIVE.client})}); }
+  catch (e) { if (seq === LIVE.seq) setMcnpStatus('err', `Live MCNP failed: ${e.message}`); return; }
+  if (r.superseded || seq !== LIVE.seq) return; // a newer edit is on its way
+  LIVE.sentScript = script; LIVE.ctx = ctx; LIVE.report = r;
+  if (EDITING.pane !== 'mcnp') renderMcnp(problems());
+  if (generate(problems()) !== script) liveMcnpTick(problems()); // edits made while this one ran
+}
+
+function scrollSelIntoView(pane) {
+  const key = `${sel.kind}:${sel.id || ''}`;
+  if (scrollSelIntoView[pane] === key) return;
+  const wrap = pane === 'py' ? $('#code') : $('#mcnpCode');
+  const first = wrap.querySelector('.ln.sel');
+  if (!first || wrap.closest('.doc').hidden) return;
+  scrollSelIntoView[pane] = key;
+  const box = wrap.parentElement, top = first.offsetTop;
+  if (top < box.scrollTop || top > box.scrollTop + box.clientHeight - 40) box.scrollTop = Math.max(0, top - 60);
+}
+
+function startInlineEdit(span, ref, pane) {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'edin';
+  input.value = span.textContent;
+  input.style.width = `${Math.max(4, span.textContent.length + 2)}ch`;
+  input.setAttribute('aria-label', 'Edit value');
+  span.replaceWith(input);
+  EDITING.pane = pane;
+  input.focus();
+  input.select();
+  let done = false;
+  const finish = commit => {
+    if (done) return;
+    if (commit) {
+      const err = applyEdit(ref, input.value);
+      if (err) { input.classList.add('bad'); input.title = err; log('warn', esc(err)); if (commit !== 'blur') return; }
+      else log('ok', `Set ${esc(input.value.trim())}.`);
+    }
+    done = true;
+    EDITING.pane = null;
+    scrollSelIntoView.py = scrollSelIntoView.mcnp = null;
+    renderProps();
+    const P = problems();
+    renderPy(P); renderMcnp(P);
+    schedule();
+  };
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(input.value !== span.textContent ? 'blur' : false));
+}
+function codeClick(e, pane) {
+  if (e.target.closest('.edin')) return;
+  const view = CODEVIEW[pane];
+  const ed = e.target.closest('.ed');
+  const ln = e.target.closest('.ln');
+  const lineOwner = ln && view && ln.dataset.line !== undefined ? view.owners[+ln.dataset.line] : null;
+  if (ed && view && !ed.classList.contains('stale')) {
+    const ref = view.refs[+ed.dataset.ref];
+    if (ref) {
+      startInlineEdit(ed, ref, pane);
+      if (lineOwner && !ownerMatchesSel(lineOwner)) { // show what's being edited in Properties
+        scrollSelIntoView[pane] = lineOwner.kind + ':' + (lineOwner.id || '');
+        selectOwner(lineOwner);
+      }
+      return;
+    }
+  }
+  if (!ln || !view || ln.dataset.line === undefined) return;
+  const owner = view.owners[+ln.dataset.line];
+  if (owner && !ownerMatchesSel(owner)) {
+    scrollSelIntoView[pane] = owner.kind + ':' + (owner.id || ''); // it's already on screen here
+    selectOwner(owner);
+  }
+}
+$('#code').addEventListener('click', e => codeClick(e, 'py'));
+$('#mcnpCode').addEventListener('click', e => codeClick(e, 'mcnp'));
+
+/* MCNP export button: validated deck into a new ~/OpenMC-runs/mcnp-exports folder */
 async function exportMcnp() {
   if (!LOCAL.on) { log('warn', 'MCNP export needs the local Studio server (start Studio from its launcher).'); return; }
   const P = problems(), errs = P.filter(p => p.sev === 'error');
   setOutTab('log');
   if (errs.length) { log('error', `Not exported: fix ${errs.length} problem${errs.length === 1 ? '' : 's'} first (see Problems).`); return; }
-  log('info', 'Exporting MCNP input: translating with MCNPy, remediating, validating (about 10 s)…');
+  log('info', 'Exporting MCNP input to a new folder…');
   let r;
   try { r = await api('/api/export-mcnp', {method:'POST', body:JSON.stringify({script:generate(P), project:S, name:S.settings.name})}); }
   catch (e) { log('error', `MCNP export failed: ${esc(e.message)}`); return; }
-  if (r.error) {
-    log('error', `MCNP export: ${esc(r.error)}`);
-    if (r.validation) r.validation.trim().split('\n').forEach(l => log(/FAIL|ERROR/.test(l) ? 'error' : 'info', esc(l)));
-    if (!r.deck) return;
-  }
+  if (r.error) { log('error', `MCNP export: ${esc(r.error)}`); return; }
   (r.added || []).forEach(a => log('info', `+ ${esc(a)}`));
   (r.notes || []).forEach(n => log('warn', esc(n)));
   if (r.validation) r.validation.trim().split('\n').filter(l => !l.startsWith('---')).forEach(l =>
     log(/FAILED|\[ERROR\]/.test(l) ? 'error' : /PASSED|\[OK\]/.test(l) ? 'ok' : 'info', esc(l.trim())));
-  if (r.deck) {
-    mcnpDeck = {name: r.name, text: r.deck, ok: r.ok};
-    $('#mcnpCode').innerHTML = r.deck.split('\n').map(l => `<span class="ln">${esc(l) || ' '}</span>`).join('');
-    $('#mcnpStatus').textContent = r.ok ? `Validated. Folder: ${r.folder}` : `Written but NOT validated — see Log. Folder: ${r.folder}`;
-    $('#tabMcnp').hidden = false;
-    setDocTab('mcnp');
-    log(r.ok ? 'ok' : 'error', r.ok ? `MCNP input ready: <code>${esc(r.folder)}/${esc(r.name)}_runnable.mcnp</code>.` : 'The MCNP input did not validate; don\u2019t run it until the errors above are fixed.');
-  }
+  log(r.ok ? 'ok' : 'error', r.ok ? `MCNP input saved: <code>${esc(r.folder)}/${esc(r.name)}_runnable.mcnp</code>.`
+    : 'The MCNP input did not validate; don’t run it until the errors above are fixed.');
 }
 $('#copyMcnp').addEventListener('click', async () => {
-  if (!mcnpDeck) return;
-  try { await navigator.clipboard.writeText(mcnpDeck.text); log('ok', 'Copied the MCNP input.'); } catch (e) { log('warn', 'Copy was blocked. Select the text and press Ctrl+C.'); }
+  const d = LIVE.report && LIVE.report.deck;
+  if (!d) return;
+  try { await navigator.clipboard.writeText(d); log('ok', 'Copied the MCNP input.'); } catch (e) { log('warn', 'Copy was blocked. Select the text and press Ctrl+C.'); }
 });
-$('#saveMcnp').addEventListener('click', () => { if (mcnpDeck) saveFile(`${mcnpDeck.name}.mcnp`, mcnpDeck.text); });
+$('#saveMcnp').addEventListener('click', () => {
+  const r = LIVE.report;
+  if (r && r.deck) saveFile(`${r.name || 'model'}.mcnp`, r.deck, r.ok ? '' : 'Note: this deck did not validate.');
+});
+
+/* split view */
+const VIEWSTATE = {split:false, right:'code', mode:'slice'};
+try { Object.assign(VIEWSTATE, JSON.parse(localStorage.getItem('openmc-studio-view') || '{}')); } catch (e) {}
+function saveViewState() { try { localStorage.setItem('openmc-studio-view', JSON.stringify(VIEWSTATE)); } catch (e) {} }
+$('#splitBtn').addEventListener('click', () => {
+  VIEWSTATE.split = !VIEWSTATE.split;
+  saveViewState();
+  setDocTab(VIEWSTATE.split ? VIEWSTATE.right : 'view');
+});
 
 /* overlays */
 const VIRIDIS = [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]];
@@ -1562,6 +2126,603 @@ $('#replayBtn').addEventListener('click', () => {
   localRun();
 });
 
+/* ───────── Transform tools: Select / Move / Scale / Rotate (Roblox Studio style) ─────────
+   Handles are built in screen space through a view adapter, so the 2D slice and the 3D view share the math:
+   adapter = {toScreen([x,y,z]) → [px,py], axesShown:[world axis indices], ringAxes:[…], pxPerCm, rotSign(axis)}. */
+const TOOL = {mode:'select', moveSnap:1, rotSnap:15};
+try { Object.assign(TOOL, JSON.parse(localStorage.getItem('openmc-studio-tool') || '{}')); } catch (e) {}
+const saveTool = () => { try { localStorage.setItem('openmc-studio-tool', JSON.stringify(TOOL)); } catch (e) {} };
+const MOVE_STEPS = [0, 0.1, 0.5, 1, 5, 10], ROT_STEPS = [0, 1, 5, 15, 45, 90];
+const AXCOL = ['#e5484d', '#3dbd5d', '#3b82f6']; // x red, y green, z blue
+const snapStep = (v, step) => step > 0 ? Math.round(v / step) * step : v;
+const tidy = v => { const r = Math.round(v * 1e9) / 1e9; return r === 0 ? 0 : r; };
+let TDRAG = null, THOVER = null, suppressVpClick = false;
+
+function setTool(mode) {
+  TOOL.mode = mode; saveTool(); THOVER = null;
+  renderRibbon(); schedule();
+}
+function cycleSnap(key, steps, unit) {
+  TOOL[key] = steps[(steps.indexOf(TOOL[key]) + 1) % steps.length];
+  saveTool(); renderRibbon();
+  log('info', TOOL[key] ? `${key === 'moveSnap' ? 'Move and scale snap' : 'Rotation snap'}: ${TOOL[key]} ${unit}.` : `${key === 'moveSnap' ? 'Move and scale' : 'Rotation'} snapping off.`);
+}
+const snapLabel = (v, unit) => v ? `${v} ${unit}` : 'Off';
+
+function axisRotation(i, deg) { return i === 0 ? rotXYZ(deg, 0, 0) : i === 1 ? rotXYZ(0, deg, 0) : rotXYZ(0, 0, deg); }
+function eulerFrom(R) { // inverse of rotXYZ (R = Rz·Ry·Rx), degrees
+  const sy = -R[2][0];
+  let rx, ry, rz;
+  if (Math.abs(sy) < 1 - 1e-12) { ry = Math.asin(sy); rx = Math.atan2(R[2][1], R[2][2]); rz = Math.atan2(R[1][0], R[0][0]); }
+  else { ry = Math.sign(sy) * Math.PI / 2; rx = 0; rz = Math.atan2(-R[0][1], R[1][1]); }
+  return [rx, ry, rz].map(a => tidy(a / DEG));
+}
+
+function toolTarget() {
+  if (TOOL.mode === 'select') return null;
+  const o = getSel();
+  if (!o) return null;
+  if (sel.kind === 'part') return {kind:'part', o};
+  if (sel.kind === 'source' && TOOL.mode === 'move') return {kind:'source', o};
+  return null;
+}
+function targetCenter(t) {
+  const o = t.o;
+  return t.kind === 'source' && o.space === 'box' ? [(o.x0 + o.x1) / 2, (o.y0 + o.y1) / 2, (o.z0 + o.z1) / 2] : [o.x, o.y, o.z];
+}
+
+function buildHandles(t, A) {
+  const c = targetCenter(t), [sx, sy] = A.toScreen(c), H = [];
+  const unit = i => [0, 1, 2].map(k => k === i ? 1 : 0);
+  const sdir = d => { const [ax, ay] = A.toScreen([c[0] + d[0], c[1] + d[1], c[2] + d[2]]); return [ax - sx, ay - sy]; }; // px per cm along d
+  if (![sx, sy].every(fin)) return H;
+  if (TOOL.mode === 'move') {
+    if (A.freeMove) H.push({type:'free', key:'free', x:sx, y:sy, r:7});
+    A.axesShown.forEach(i => {
+      const w = sdir(unit(i)), L = Math.hypot(w[0], w[1]);
+      if (L < 0.2 * A.pxPerCm) return;
+      [1, -1].forEach(s => H.push({type:'move', key:`move${i}${s}`, axis:i, sign:s, w, x0:sx, y0:sy, x:sx + s * w[0] / L * 72, y:sy + s * w[1] / L * 72, color:AXCOL[i]}));
+    });
+  } else if (TOOL.mode === 'scale' && t.kind === 'part') {
+    const p = t.o;
+    if (p.shape === 'sphere') {
+      A.axesShown.forEach(i => {
+        const w = sdir(unit(i));
+        if (Math.hypot(w[0], w[1]) < 0.2 * A.pxPerCm) return;
+        [1, -1].forEach(s => H.push({type:'radius', key:`radius${i}${s}`, sign:s, w, x0:sx, y0:sy, x:sx + s * w[0] * p.r, y:sy + s * w[1] * p.r, color:AXCOL[i]}));
+      });
+    } else {
+      const M = partFrame(p).M;
+      [0, 1, 2].forEach(k => {
+        const d = [M[0][k], M[1][k], M[2][k]], w = sdir(d);
+        if (Math.hypot(w[0], w[1]) < 0.25 * A.pxPerCm) return; // pointing at the viewer: no usable handle
+        const half = p.shape === 'box' ? [p.sx, p.sy, p.sz][k] / 2 : (k < 2 ? p.r : p.h / 2);
+        const main = [0, 1, 2].reduce((b, i) => Math.abs(d[i]) > Math.abs(d[b]) ? i : b, 0);
+        [1, -1].forEach(s => H.push({type:'size', key:`size${k}${s}`, k, sign:s, d, w, x0:sx, y0:sy, x:sx + s * w[0] * half, y:sy + s * w[1] * half, color:AXCOL[main]}));
+      });
+    }
+  } else if (TOOL.mode === 'rotate' && t.kind === 'part' && t.o.shape !== 'sphere') {
+    A.ringAxes.forEach(i => H.push({type:'ring', key:`ring${i}`, axis:i, x:sx, y:sy, R:A.ringRadius ? A.ringRadius(i) : 64, color:AXCOL[i],
+      ellipse:A.ringEllipse ? A.ringEllipse(i, c) : null}));
+  }
+  return H;
+}
+function segDist(px, py, ax, ay, bx, by) {
+  const L2 = (bx - ax) ** 2 + (by - ay) ** 2, t = L2 ? Math.max(0, Math.min(1, ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / L2)) : 0;
+  return Math.hypot(px - (ax + t * (bx - ax)), py - (ay + t * (by - ay)));
+}
+function hitHandle(H, mx, my) {
+  let best = null, bd = 8;
+  for (const h of H) {
+    let d;
+    if (h.type === 'ring') d = h.ellipse ? h.ellipse.dist(mx, my) : Math.abs(Math.hypot(mx - h.x, my - h.y) - h.R);
+    else if (h.type === 'move') d = segDist(mx, my, h.x0 + (h.x - h.x0) * 0.3, h.y0 + (h.y - h.y0) * 0.3, h.x, h.y) - 2;
+    else if (h.type === 'free') d = Math.hypot(mx - h.x, my - h.y) - h.r;
+    else d = Math.hypot(mx - h.x, my - h.y) - 5;
+    if (d < bd) { bd = d; best = h; }
+  }
+  return best;
+}
+
+function beginTransform(h, t, mx, my, adapter) {
+  TDRAG = {h, t, mx, my, s0:clone(t.o), adapter, acc:0, last:Math.atan2(my - h.y, mx - h.x), readout:''};
+}
+function applyTransform(mx, my) {
+  const {h, t, s0, adapter:A} = TDRAG, o = t.o, dx = mx - TDRAG.mx, dy = my - TDRAG.my, step = TOOL.moveSnap;
+  const along = w => (dx * w[0] + dy * w[1]) / (w[0] * w[0] + w[1] * w[1]); // cm moved along the direction imaged as w
+  const minSize = step > 0 ? step : 0.01;
+  if (h.type === 'move' || h.type === 'free') {
+    const delta = [0, 0, 0];
+    if (h.type === 'move') delta[h.axis] = along(h.w);
+    else A.axesShown.forEach(i => { const e = A.toScreen([1, 0, 0].map((v, k) => k === i ? 1 : 0)), z = A.toScreen([0, 0, 0]); delta[i] = along([e[0] - z[0], e[1] - z[1]]); });
+    if (t.kind === 'source' && o.space === 'box') {
+      ['x', 'y', 'z'].forEach((a, i) => {
+        if (!delta[i]) return;
+        const c0 = (s0[a + '0'] + s0[a + '1']) / 2, c = snapStep(c0 + delta[i], step);
+        o[a + '0'] = tidy(s0[a + '0'] + c - c0); o[a + '1'] = tidy(s0[a + '1'] + c - c0);
+      });
+    } else ['x', 'y', 'z'].forEach((a, i) => { if (delta[i]) o[a] = tidy(snapStep(s0[a] + delta[i], step)); });
+    const c = targetCenter(t);
+    TDRAG.readout = h.type === 'move' ? `${'xyz'[h.axis]} = ${fmtNum(c[h.axis])} cm` : `(${c.map(fmtNum).join(', ')}) cm`;
+  } else if (h.type === 'radius') {
+    o.r = tidy(Math.max(minSize, snapStep(s0.r + h.sign * along(h.w), step)));
+    TDRAG.readout = `r = ${fmtNum(o.r)} cm`;
+  } else if (h.type === 'size') {
+    const tcm = along(h.w);
+    if (o.shape === 'box' || h.k === 2) { // this face moves, the opposite face stays put
+      const key = o.shape === 'box' ? ['sx', 'sy', 'sz'][h.k] : 'h';
+      const size = Math.max(minSize, snapStep(s0[key] + h.sign * tcm, step)), shift = h.sign * (size - s0[key]) / 2;
+      o[key] = tidy(size);
+      ['x', 'y', 'z'].forEach((a, i) => { o[a] = tidy(s0[a] + h.d[i] * shift); });
+      TDRAG.readout = `${key === 'h' ? 'height' : key} = ${fmtNum(size)} cm`;
+    } else {
+      o.r = tidy(Math.max(minSize, snapStep(s0.r + h.sign * tcm, step)));
+      TDRAG.readout = `r = ${fmtNum(o.r)} cm`;
+    }
+  } else if (h.type === 'ring') {
+    const a = Math.atan2(my - h.y, mx - h.x);
+    let da = a - TDRAG.last;
+    if (da > Math.PI) da -= 2 * Math.PI; else if (da < -Math.PI) da += 2 * Math.PI;
+    TDRAG.acc += da; TDRAG.last = a;
+    // screen y points down, so a counter-clockwise drag is a negative atan2 change
+    const deg = snapStep(-TDRAG.acc / DEG * A.rotSign(h.axis), TOOL.rotSnap);
+    const R = mat3mul(axisRotation(h.axis, deg), rotXYZ(s0.rx || 0, s0.ry || 0, s0.rz || 0));
+    [o.rx, o.ry, o.rz] = eulerFrom(R);
+    TDRAG.readout = `${fmtNum(deg)}° about ${'xyz'[h.axis]}`;
+  }
+}
+function endTransform(cancel) {
+  if (!TDRAG) return;
+  const {t, s0} = TDRAG;
+  if (cancel) Object.assign(t.o, s0);
+  else if (JSON.stringify(t.o) !== JSON.stringify(s0)) {
+    const verb = {move:'Moved', free:'Moved', radius:'Resized', size:'Resized', ring:'Rotated'}[TDRAG.h.type];
+    log('ok', `${verb} ${esc(t.o.name)}: ${esc(TDRAG.readout)}.`);
+  }
+  TDRAG = null;
+  renderProps(); schedule();
+}
+
+function drawHandles(ctx, H) {
+  if (!H.length) return;
+  const tip = (x0, y0, x, y, color, w) => {
+    const ang = Math.atan2(y - y0, x - x0);
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = w; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x0 + (x - x0) * 0.3, y0 + (y - y0) * 0.3); ctx.lineTo(x - Math.cos(ang) * 10, y - Math.sin(ang) * 10); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, y);
+    ctx.lineTo(x - Math.cos(ang - 0.42) * 15, y - Math.sin(ang - 0.42) * 15);
+    ctx.lineTo(x - Math.cos(ang + 0.42) * 15, y - Math.sin(ang + 0.42) * 15);
+    ctx.closePath(); ctx.fill();
+  };
+  ctx.save();
+  for (const h of H) {
+    const hot = h.key === THOVER || (TDRAG && TDRAG.h.key === h.key);
+    ctx.globalAlpha = TDRAG && !hot ? 0.35 : 1;
+    ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 3;
+    if (h.type === 'move') tip(h.x0, h.y0, h.x, h.y, h.color, hot ? 5 : 3.5);
+    else if (h.type === 'free') { ctx.strokeStyle = '#fff'; ctx.lineWidth = hot ? 3 : 2; ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, 2 * Math.PI); ctx.stroke(); }
+    else if (h.type === 'ring') {
+      ctx.strokeStyle = h.color; ctx.lineWidth = hot ? 5 : 3;
+      ctx.beginPath();
+      if (h.ellipse) h.ellipse.path(ctx); else ctx.arc(h.x, h.y, h.R, 0, 2 * Math.PI);
+      ctx.stroke();
+    } else {
+      ctx.strokeStyle = h.color; ctx.lineWidth = 1.5; ctx.globalAlpha *= 0.7;
+      ctx.beginPath(); ctx.moveTo(h.x0, h.y0); ctx.lineTo(h.x, h.y); ctx.stroke();
+      ctx.globalAlpha = TDRAG && !hot ? 0.35 : 1;
+      ctx.fillStyle = h.color; ctx.beginPath(); ctx.arc(h.x, h.y, hot ? 8 : 6, 0, 2 * Math.PI); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1.2; ctx.stroke();
+    }
+  }
+  ctx.restore();
+  if (TDRAG && TDRAG.readout) {
+    ctx.save();
+    ctx.font = '12px "JetBrains Mono", Consolas, monospace';
+    const text = TDRAG.readout, w = ctx.measureText(text).width + 12, x = TDRAG.pmx + 14, y = TDRAG.pmy - 12;
+    ctx.fillStyle = 'rgba(14,16,19,.9)'; ctx.fillRect(x, y - 14, w, 20);
+    ctx.fillStyle = '#e8edf2'; ctx.fillText(text, x + 6, y);
+    ctx.restore();
+  }
+}
+
+// 2D slice view adapter (orthographic): u right, v up
+function adapter2D() {
+  const {cx, cy, scale} = vpGeom, ax = {xy:[0, 1, 2], xz:[0, 2, 1], yz:[1, 2, 0]}[view.plane];
+  return {
+    toScreen: p => [cx + p[ax[0]] * scale, cy - p[ax[1]] * scale],
+    axesShown: [ax[0], ax[1]], ringAxes: [ax[2]], pxPerCm: scale, freeMove: true,
+    rotSign: () => view.plane === 'xz' ? -1 : 1, // +y points away from the viewer in the XZ view
+  };
+}
+
+function toolButtons() {
+  return [['select', 'Select', () => setTool('select'), null, () => TOOL.mode === 'select'],
+          ['move', 'Move', () => setTool('move'), null, () => TOOL.mode === 'move'],
+          ['scale', 'Scale', () => setTool('scale'), null, () => TOOL.mode === 'scale'],
+          ['rotate', 'Rotate', () => setTool('rotate'), null, () => TOOL.mode === 'rotate']];
+}
+function snapButtons() {
+  return [['grid', () => `Move ${snapLabel(TOOL.moveSnap, 'cm')}`, () => cycleSnap('moveSnap', MOVE_STEPS, 'cm')],
+          ['rotstep', () => `Rotate ${snapLabel(TOOL.rotSnap, '°')}`, () => cycleSnap('rotSnap', ROT_STEPS, '°')]];
+}
+
+/* ───────── 3D view: WebGL ray tracing of Studio's own CSG (no libraries) ─────────
+   Each pixel's ray is intersected analytically with every part (sphere, box, cylinder, any rotation),
+   then walked front to back: the first stretch whose highest-priority part (Explorer order) has a
+   material is what you see. Void parts and the world fill are see-through, like cavities. The
+   optional cutaway removes everything beyond the slice plane, so cross-sections show their colors. */
+const MAXP3 = 32;
+const CAM = {target:[0, 0, 0], yaw:-0.9, pitch:0.45, dist:0, fov:45 * DEG};
+const V3 = {gl:null, prog:null, loc:null, ok:null, err:'', geom:null, drag:null};
+
+const v3sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const v3add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const v3mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+const v3dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const v3cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const v3norm = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+
+function camBasis(W, H) {
+  if (!CAM.dist) CAM.dist = (S.settings.worldR || 100) * 3.2;
+  const cp = Math.cos(CAM.pitch), pos = v3add(CAM.target, v3mul([cp * Math.cos(CAM.yaw), cp * Math.sin(CAM.yaw), Math.sin(CAM.pitch)], CAM.dist));
+  const f = v3norm(v3sub(CAM.target, pos)), r = v3norm(v3cross(f, [0, 0, 1])), u = v3cross(r, f);
+  return {pos, f, r, u, focal:(H / 2) / Math.tan(CAM.fov / 2), W, H};
+}
+function project3(B, p) {
+  const v = v3sub(p, B.pos), z = v3dot(v, B.f);
+  if (z <= 1e-6) return [NaN, NaN, z];
+  return [B.W / 2 + v3dot(v, B.r) / z * B.focal, B.H / 2 - v3dot(v, B.u) / z * B.focal, z];
+}
+function rayFor(B, px, py) { return v3norm(v3add(B.f, v3add(v3mul(B.r, (px - B.W / 2) / B.focal), v3mul(B.u, -(py - B.H / 2) / B.focal)))); }
+
+const SHADER_FS = `
+precision highp float;
+#define MAXP ${MAXP3}
+uniform vec2 uRes; uniform vec3 uCam; uniform vec3 uR; uniform vec3 uU; uniform vec3 uF; uniform float uFocal;
+uniform int uN;
+uniform vec3 uC[MAXP]; uniform vec3 uM0[MAXP]; uniform vec3 uM1[MAXP]; uniform vec3 uM2[MAXP];
+uniform vec3 uD[MAXP]; uniform vec4 uCol[MAXP]; uniform float uType[MAXP];
+uniform float uWorldR; uniform float uWorldSphere;
+uniform float uCut; uniform float uCutAxis; uniform float uCutAt; uniform float uCutSide;
+uniform float uSel;
+const float BIG = 1e9;
+
+// Values, not an index: WebGL 1 only guarantees uniform-array indexing with a loop index in fragment shaders.
+bool part(vec3 c, vec3 m0, vec3 m1, vec3 m2, vec3 d, float ty, vec3 ro, vec3 rd, out float t0, out float t1, out vec3 n0, out vec3 n1) {
+  vec3 o = ro - c;
+  vec3 lo = vec3(dot(o, m0), dot(o, m1), dot(o, m2)), ld = vec3(dot(rd, m0), dot(rd, m1), dot(rd, m2));
+  if (ty < 0.5) { // sphere
+    float b = dot(lo, ld), cc = dot(lo, lo) - d.x * d.x, disc = b * b - cc;
+    if (disc < 0.0) return false;
+    float s = sqrt(disc); t0 = -b - s; t1 = -b + s;
+    n0 = normalize(o + rd * t0); n1 = normalize(o + rd * t1);
+    return true;
+  }
+  if (ty < 1.5) { // box, half sizes d
+    vec3 inv = 1.0 / (ld + vec3(equal(ld, vec3(0.0))) * 1e-12);
+    vec3 ta = (-d - lo) * inv, tb = (d - lo) * inv, tmn = min(ta, tb), tmx = max(ta, tb);
+    t0 = max(max(tmn.x, tmn.y), tmn.z); t1 = min(min(tmx.x, tmx.y), tmx.z);
+    if (t0 > t1) return false;
+    vec3 ln0 = tmn.x >= tmn.y && tmn.x >= tmn.z ? vec3(-sign(ld.x), 0.0, 0.0) : (tmn.y >= tmn.z ? vec3(0.0, -sign(ld.y), 0.0) : vec3(0.0, 0.0, -sign(ld.z)));
+    vec3 ln1 = tmx.x <= tmx.y && tmx.x <= tmx.z ? vec3(sign(ld.x), 0.0, 0.0) : (tmx.y <= tmx.z ? vec3(0.0, sign(ld.y), 0.0) : vec3(0.0, 0.0, sign(ld.z)));
+    n0 = m0 * ln0.x + m1 * ln0.y + m2 * ln0.z; n1 = m0 * ln1.x + m1 * ln1.y + m2 * ln1.z;
+    return true;
+  }
+  // cylinder: radius d.x, half height d.y, along local z
+  float a = ld.x * ld.x + ld.y * ld.y, b = lo.x * ld.x + lo.y * ld.y, cc = lo.x * lo.x + lo.y * lo.y - d.x * d.x;
+  float sa, sb;
+  if (a < 1e-12) { if (cc > 0.0) return false; sa = -BIG; sb = BIG; }
+  else { float disc = b * b - a * cc; if (disc < 0.0) return false; float s = sqrt(disc); sa = (-b - s) / a; sb = (-b + s) / a; }
+  float za, zb;
+  if (abs(ld.z) < 1e-12) { if (abs(lo.z) > d.y) return false; za = -BIG; zb = BIG; }
+  else { float q0 = (-d.y - lo.z) / ld.z, q1 = (d.y - lo.z) / ld.z; za = min(q0, q1); zb = max(q0, q1); }
+  t0 = max(sa, za); t1 = min(sb, zb);
+  if (t0 > t1) return false;
+  vec3 p0 = lo + ld * t0, p1 = lo + ld * t1;
+  vec3 ln0 = sa > za ? normalize(vec3(p0.xy, 0.0)) : vec3(0.0, 0.0, -sign(ld.z));
+  vec3 ln1 = sb < zb ? normalize(vec3(p1.xy, 0.0)) : vec3(0.0, 0.0, sign(ld.z));
+  n0 = m0 * ln0.x + m1 * ln0.y + m2 * ln0.z; n1 = m0 * ln1.x + m1 * ln1.y + m2 * ln1.z;
+  return true;
+}
+
+void main() {
+  vec2 px = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+  vec3 rd = normalize(uF + uR * ((px.x - uRes.x * 0.5) / uFocal) - uU * ((px.y - uRes.y * 0.5) / uFocal));
+  vec3 ro = uCam;
+  vec3 bg = mix(vec3(0.075, 0.085, 0.10), vec3(0.12, 0.135, 0.155), px.y / uRes.y);
+
+  // valid range: in front of the camera, inside the world, and on the kept side of the cutaway
+  float tA = 0.0, tB = BIG; vec3 nA = -rd; float srcA = 0.0; // 0 near, 1 world, 2 cut
+  if (uWorldSphere > 0.5) {
+    float b = dot(ro, rd), cc = dot(ro, ro) - uWorldR * uWorldR, disc = b * b - cc;
+    if (disc < 0.0) { gl_FragColor = vec4(bg, 1.0); return; }
+    float s = sqrt(disc);
+    if (-b - s > tA) { tA = -b - s; nA = normalize(ro + rd * tA); srcA = 1.0; }
+    tB = min(tB, -b + s);
+  } else {
+    vec3 inv = 1.0 / (rd + vec3(equal(rd, vec3(0.0))) * 1e-12);
+    vec3 ta = (vec3(-uWorldR) - ro) * inv, tb = (vec3(uWorldR) - ro) * inv, tmn = min(ta, tb), tmx = max(ta, tb);
+    float w0 = max(max(tmn.x, tmn.y), tmn.z), w1 = min(min(tmx.x, tmx.y), tmx.z);
+    if (w0 > w1) { gl_FragColor = vec4(bg, 1.0); return; }
+    if (w0 > tA) { tA = w0; srcA = 1.0; nA = tmn.x >= tmn.y && tmn.x >= tmn.z ? vec3(-sign(rd.x), 0.0, 0.0) : (tmn.y >= tmn.z ? vec3(0.0, -sign(rd.y), 0.0) : vec3(0.0, 0.0, -sign(rd.z))); }
+    tB = min(tB, w1);
+  }
+  if (uCut > 0.5) {
+    int ax = int(uCutAxis + 0.5);
+    // remove the half on the camera's side of the plane (uCutSide = +1: coordinates above uCutAt are removed)
+    float oc = ((ax == 0 ? ro.x : (ax == 1 ? ro.y : ro.z)) - uCutAt) * uCutSide, dc = (ax == 0 ? rd.x : (ax == 1 ? rd.y : rd.z)) * uCutSide;
+    vec3 cn = (ax == 0 ? vec3(1.0, 0.0, 0.0) : (ax == 1 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0))) * uCutSide;
+    if (abs(dc) < 1e-12) { if (oc > 0.0) { gl_FragColor = vec4(bg, 1.0); return; } }
+    else {
+      float tc = -oc / dc;
+      if (dc > 0.0) tB = min(tB, tc);
+      else if (tc > tA) { tA = tc; nA = cn; srcA = 2.0; }
+    }
+  }
+  if (tA >= tB) { gl_FragColor = vec4(bg, 1.0); return; }
+
+  float T0[MAXP]; float T1[MAXP]; vec3 N0[MAXP]; vec3 N1[MAXP];
+  for (int i = 0; i < MAXP; i++) {
+    T0[i] = BIG; T1[i] = -BIG; N0[i] = vec3(0.0); N1[i] = vec3(0.0);
+    if (i >= uN) continue;
+    float a0, a1; vec3 b0, b1;
+    if (part(uC[i], uM0[i], uM1[i], uM2[i], uD[i], uType[i], ro, rd, a0, a1, b0, b1)) { T0[i] = a0; T1[i] = a1; N0[i] = b0; N1[i] = b1; }
+  }
+  float tc = tA; vec3 nc = nA; float fromCut = srcA > 1.5 ? 1.0 : 0.0;
+  for (int stepi = 0; stepi < 2 * MAXP + 2; stepi++) {
+    if (tc >= tB) break;
+    float tn = tB; vec3 nn = vec3(0.0); float cutn = 0.0;
+    for (int i = 0; i < MAXP; i++) {
+      if (i >= uN) break;
+      if (T0[i] > tc + 1e-6 && T0[i] < tn) { tn = T0[i]; nn = N0[i]; }
+      if (T1[i] > tc + 1e-6 && T1[i] < tn) { tn = T1[i]; nn = -N1[i]; }
+    }
+    float tm = 0.5 * (tc + tn);
+    int own = -1; vec4 ownCol = vec4(0.0);
+    for (int i = 0; i < MAXP; i++) {
+      if (i >= uN) break;
+      if (T0[i] < tm && tm < T1[i]) { own = i; ownCol = uCol[i]; break; }
+    }
+    if (own >= 0 && ownCol.a > 0.5) {
+      vec3 n = normalize(nc);
+      if (dot(n, rd) > 0.0) n = -n;
+      float lam = 0.30 + 0.70 * max(dot(n, -rd), 0.0);
+      vec3 col = ownCol.rgb * lam;
+      if (fromCut > 0.5) col = ownCol.rgb * 0.82 + 0.05;              // flat, slightly lifted cross-section
+      if (abs(float(own) - uSel) < 0.5) col = mix(col, vec3(0.32, 0.72, 1.0), 0.28);
+      gl_FragColor = vec4(col, 1.0);
+      return;
+    }
+    tc = tn; nc = nn; fromCut = 0.0;
+  }
+  gl_FragColor = vec4(bg, 1.0);
+}`;
+
+function v3init() {
+  if (V3.ok !== null) return V3.ok;
+  const cv = $('#vp3');
+  const gl = cv.getContext('webgl', {antialias:false, preserveDrawingBuffer:true});
+  if (!gl) { V3.ok = false; V3.err = 'This browser has no WebGL, so the 3D view is unavailable.'; return false; }
+  const mk = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+  try {
+    const prog = gl.createProgram();
+    gl.attachShader(prog, mk(gl.VERTEX_SHADER, 'attribute vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }'));
+    gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, SHADER_FS));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    gl.useProgram(prog);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+    const pl = gl.getAttribLocation(prog, 'p');
+    gl.enableVertexAttribArray(pl); gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 0, 0);
+    const names = ['uRes', 'uCam', 'uR', 'uU', 'uF', 'uFocal', 'uN', 'uWorldR', 'uWorldSphere', 'uCut', 'uCutAxis', 'uCutAt', 'uCutSide', 'uSel'];
+    V3.loc = Object.fromEntries(names.map(n => [n, gl.getUniformLocation(prog, n)]));
+    ['uC', 'uM0', 'uM1', 'uM2', 'uD', 'uCol', 'uType'].forEach(n => { V3.loc[n] = gl.getUniformLocation(prog, n + '[0]'); });
+    Object.assign(V3, {gl, prog, ok:true});
+  } catch (e) {
+    V3.ok = false; V3.err = `The 3D view couldn't start: ${e.message}`;
+  }
+  return V3.ok;
+}
+
+function partUniform(p) { // center, frame columns, dimensions, type
+  const f = p.shape === 'sphere' ? {M:IDENT3} : partFrame(p), M = f.M;
+  const cols = [0, 1, 2].map(k => [M[0][k], M[1][k], M[2][k]]);
+  const dims = p.shape === 'sphere' ? [p.r, 0, 0] : p.shape === 'box' ? [p.sx / 2, p.sy / 2, p.sz / 2] : [p.r, p.h / 2, 0];
+  return {c:[p.x, p.y, p.z], cols, dims, type:p.shape === 'sphere' ? 0 : p.shape === 'box' ? 1 : 2};
+}
+
+function draw3D() {
+  const wrap = $('#vpwrap'), W = wrap.clientWidth, H = wrap.clientHeight, cv = $('#vp3'), ov = $('#vp3o');
+  if (!W || !H) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const B = camBasis(W, H);
+  V3.geom = {B, W, H};
+  // overlay canvas
+  ov.width = Math.round(W * dpr); ov.height = Math.round(H * dpr);
+  const ctx = ov.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  if (!v3init()) {
+    ctx.fillStyle = '#d8dde3'; ctx.font = '13px "IBM Plex Sans", system-ui, sans-serif';
+    ctx.fillText(V3.err, 16, 28);
+    return;
+  }
+  const gl = V3.gl, L = V3.loc;
+  const scale = 1; // render at CSS-pixel resolution: the ray tracer does real work per pixel
+  cv.width = Math.round(W * scale); cv.height = Math.round(H * scale);
+  gl.viewport(0, 0, cv.width, cv.height);
+  const parts = S.parts.slice(0, MAXP3).map(partUniform);
+  const flat = (arr, fn) => new Float32Array(Array.from({length:MAXP3}, (_, i) => i < arr.length ? fn(arr[i], i) : [0, 0, 0]).flat());
+  gl.uniform2f(L.uRes, cv.width, cv.height);
+  gl.uniform3fv(L.uCam, B.pos); gl.uniform3fv(L.uR, B.r); gl.uniform3fv(L.uU, B.u); gl.uniform3fv(L.uF, B.f);
+  gl.uniform1f(L.uFocal, B.focal * scale);
+  gl.uniform1i(L.uN, parts.length);
+  gl.uniform3fv(L.uC, flat(parts, q => q.c));
+  gl.uniform3fv(L.uM0, flat(parts, q => q.cols[0])); gl.uniform3fv(L.uM1, flat(parts, q => q.cols[1])); gl.uniform3fv(L.uM2, flat(parts, q => q.cols[2]));
+  gl.uniform3fv(L.uD, flat(parts, q => q.dims));
+  gl.uniform4fv(L.uCol, new Float32Array(Array.from({length:MAXP3}, (_, i) => {
+    const p = S.parts[i], m = p && matById(p.material);
+    if (!m) return [0, 0, 0, 0];
+    const [r, g, b] = hexRgb(m.color);
+    return [r / 255, g / 255, b / 255, 1];
+  }).flat()));
+  gl.uniform1fv(L.uType, new Float32Array(Array.from({length:MAXP3}, (_, i) => i < parts.length ? parts[i].type : 0)));
+  gl.uniform1f(L.uWorldR, S.settings.worldR || 100);
+  gl.uniform1f(L.uWorldSphere, S.settings.worldShape === 'sphere' ? 1 : 0);
+  const cut = $('#cutaway').checked;
+  gl.uniform1f(L.uCut, cut ? 1 : 0);
+  gl.uniform1f(L.uCutAxis, {xy:2, xz:1, yz:0}[view.plane]);
+  gl.uniform1f(L.uCutAt, view.slice);
+  const cutAx = {xy:2, xz:1, yz:0}[view.plane], cutSide = B.pos[cutAx] >= view.slice ? 1 : -1;
+  gl.uniform1f(L.uCutSide, cutSide);
+  gl.uniform1f(L.uSel, sel.kind === 'part' ? S.parts.findIndex(p => p.id === sel.id) : -1);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+  const P = p => project3(B, p);
+  const line = (a, b) => { const A = P(a), C = P(b); if (!fin(A[0]) || !fin(C[0])) return; ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(C[0], C[1]); ctx.stroke(); };
+  // world boundary wireframe
+  const R = S.settings.worldR || 100;
+  ctx.strokeStyle = 'rgba(216,221,227,.28)'; ctx.lineWidth = 1; ctx.setLineDash([5, 4]);
+  if (S.settings.worldShape === 'sphere') {
+    [0, 1, 2].forEach(ax => { ctx.beginPath(); for (let a = 0; a <= 64; a++) { const t = a / 64 * 2 * Math.PI, q = [0, 0, 0]; q[(ax + 1) % 3] = R * Math.cos(t); q[(ax + 2) % 3] = R * Math.sin(t); const s = P(q); a ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); } ctx.stroke(); });
+  } else {
+    const c = [-R, R];
+    for (const x of c) for (const y of c) line([x, y, -R], [x, y, R]);
+    for (const x of c) for (const z of c) line([x, -R, z], [x, R, z]);
+    for (const y of c) for (const z of c) line([-R, y, z], [R, y, z]);
+  }
+  ctx.setLineDash([]);
+  // tracks
+  const res = LOCAL.results;
+  if (res && res.tracks.length && $('#showTracks').checked) {
+    ctx.lineWidth = 1.1; ctx.globalAlpha = 0.85;
+    res.tracks.forEach(tr => tr.tracks.forEach(pt => {
+      const p = pt.xyz;
+      for (let i = 1; i < p.length / 3; i++) {
+        const a = P([p[3 * i - 3], p[3 * i - 2], p[3 * i - 1]]), b = P([p[3 * i], p[3 * i + 1], p[3 * i + 2]]);
+        if (!fin(a[0]) || !fin(b[0])) continue;
+        ctx.strokeStyle = pt.particle === 'neutron' ? energyColor(pt.E[i - 1]) : 'rgb(255,214,102)';
+        ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      }
+    }));
+    ctx.globalAlpha = 1;
+  }
+  // sources
+  V3.sources = [];
+  S.sources.forEach(s => {
+    const c = s.space === 'box' ? [(s.x0 + s.x1) / 2, (s.y0 + s.y1) / 2, (s.z0 + s.z1) / 2] : [s.x, s.y, s.z], q = P(c);
+    if (!fin(q[0])) return;
+    const col = s.particle === 'photon' ? '255,214,102' : '82,184,255', on = sel.kind === 'source' && sel.id === s.id;
+    const g = ctx.createRadialGradient(q[0], q[1], 0, q[0], q[1], 16);
+    g.addColorStop(0, `rgba(${col},.6)`); g.addColorStop(1, `rgba(${col},0)`);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(q[0], q[1], 16, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillStyle = `rgb(${col})`; ctx.beginPath(); ctx.arc(q[0], q[1], 4.5, 0, 2 * Math.PI); ctx.fill();
+    if (on) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(q[0], q[1], 8, 0, 2 * Math.PI); ctx.stroke(); }
+    V3.sources.push({id:s.id, X:q[0], Y:q[1]});
+  });
+  // axis triad
+  const o = [44, H - 44];
+  [[1, 0, 0], [0, 1, 0], [0, 0, 1]].forEach((d, i) => {
+    const e = [v3dot(d, B.r), -v3dot(d, B.u)];
+    ctx.strokeStyle = AXCOL[i]; ctx.fillStyle = AXCOL[i]; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(o[0] + e[0] * 26, o[1] + e[1] * 26); ctx.stroke();
+    ctx.font = '600 11px "JetBrains Mono", Consolas, monospace'; ctx.fillText('xyz'[i], o[0] + e[0] * 34 - 3, o[1] + e[1] * 34 + 4);
+  });
+  ctx.fillStyle = 'rgba(216,221,227,.65)'; ctx.font = '11px "JetBrains Mono", Consolas, monospace';
+  ctx.fillText(cut ? `3D · cut open at ${AX[view.plane][2]} = ${view.slice} cm (the half facing you is removed)` : '3D', 10, 16);
+  ctx.fillText('drag to orbit · right-drag or Shift+drag to pan · wheel to zoom · F to focus', 10, 31);
+  if (S.parts.length > MAXP3) { ctx.fillStyle = '#e6b455'; ctx.fillText(`Only the first ${MAXP3} parts are drawn in 3D.`, 10, 46); }
+  // gizmo
+  const tt = toolTarget();
+  V3.handles = tt ? buildHandles(tt, adapter3D()) : [];
+  drawHandles(ctx, V3.handles);
+}
+
+function adapter3D() {
+  const {B} = V3.geom, c = toolTarget() ? targetCenter(toolTarget()) : CAM.target;
+  const depth = Math.max(1e-3, v3dot(v3sub(c, B.pos), B.f)), pxPerCm = B.focal / depth;
+  return {
+    toScreen: p => project3(B, p).slice(0, 2),
+    axesShown: [0, 1, 2], ringAxes: [0, 1, 2], pxPerCm, freeMove: false,
+    rotSign: i => { const toCam = v3sub(B.pos, c); return toCam[i] >= 0 ? 1 : -1; },
+    ringEllipse: (i, ctr) => {
+      const R = 64 / pxPerCm, e1 = [0, 1, 2].map(k => k === (i + 1) % 3 ? 1 : 0), e2 = [0, 1, 2].map(k => k === (i + 2) % 3 ? 1 : 0);
+      const pts = Array.from({length:65}, (_, a) => { const t = a / 64 * 2 * Math.PI; return project3(B, v3add(ctr, v3add(v3mul(e1, R * Math.cos(t)), v3mul(e2, R * Math.sin(t))))); }).filter(q => fin(q[0]));
+      return {
+        path: ctx2 => pts.forEach((q, k) => k ? ctx2.lineTo(q[0], q[1]) : ctx2.moveTo(q[0], q[1])),
+        dist: (mx, my) => pts.reduce((m, q, k) => k ? Math.min(m, segDist(mx, my, pts[k - 1][0], pts[k - 1][1], q[0], q[1])) : m, Infinity),
+      };
+    },
+  };
+}
+
+// JS version of the shader's walk, for clicking
+function pick3(px, py) {
+  const {B} = V3.geom, rd = rayFor(B, px, py), ro = B.pos, R = S.settings.worldR || 100;
+  let tA = 0, tB = Infinity;
+  if (S.settings.worldShape === 'sphere') {
+    const b = v3dot(ro, rd), disc = b * b - (v3dot(ro, ro) - R * R);
+    if (disc < 0) return -1;
+    tA = Math.max(tA, -b - Math.sqrt(disc)); tB = -b + Math.sqrt(disc);
+  } else {
+    for (let k = 0; k < 3; k++) {
+      if (Math.abs(rd[k]) < 1e-12) { if (Math.abs(ro[k]) > R) return -1; continue; }
+      const a = (-R - ro[k]) / rd[k], b = (R - ro[k]) / rd[k];
+      tA = Math.max(tA, Math.min(a, b)); tB = Math.min(tB, Math.max(a, b));
+    }
+  }
+  if ($('#cutaway').checked) {
+    const ax = {xy:2, xz:1, yz:0}[view.plane], side = ro[ax] >= view.slice ? 1 : -1;
+    const oc = (ro[ax] - view.slice) * side, dc = rd[ax] * side;
+    if (Math.abs(dc) < 1e-12) { if (oc > 0) return -1; }
+    else { const tc = -oc / dc; if (dc > 0) tB = Math.min(tB, tc); else tA = Math.max(tA, tc); }
+  }
+  if (tA >= tB) return -1;
+  const iv = S.parts.slice(0, MAXP3).map(p => {
+    const q = partUniform(p), o = v3sub(ro, q.c), lo = q.cols.map(m => v3dot(o, m)), ld = q.cols.map(m => v3dot(rd, m)), d = q.dims;
+    if (q.type === 0) { const b = v3dot(lo, ld), disc = b * b - (v3dot(lo, lo) - d[0] * d[0]); return disc < 0 ? null : [-b - Math.sqrt(disc), -b + Math.sqrt(disc)]; }
+    if (q.type === 1) {
+      let t0 = -Infinity, t1 = Infinity;
+      for (let k = 0; k < 3; k++) {
+        if (Math.abs(ld[k]) < 1e-12) { if (Math.abs(lo[k]) > d[k]) return null; continue; }
+        const a = (-d[k] - lo[k]) / ld[k], b = (d[k] - lo[k]) / ld[k];
+        t0 = Math.max(t0, Math.min(a, b)); t1 = Math.min(t1, Math.max(a, b));
+      }
+      return t0 > t1 ? null : [t0, t1];
+    }
+    const a = ld[0] ** 2 + ld[1] ** 2, b = lo[0] * ld[0] + lo[1] * ld[1], cc = lo[0] ** 2 + lo[1] ** 2 - d[0] ** 2;
+    let sa, sb, za, zb;
+    if (a < 1e-12) { if (cc > 0) return null; sa = -Infinity; sb = Infinity; }
+    else { const disc = b * b - a * cc; if (disc < 0) return null; sa = (-b - Math.sqrt(disc)) / a; sb = (-b + Math.sqrt(disc)) / a; }
+    if (Math.abs(ld[2]) < 1e-12) { if (Math.abs(lo[2]) > d[1]) return null; za = -Infinity; zb = Infinity; }
+    else { const q0 = (-d[1] - lo[2]) / ld[2], q1 = (d[1] - lo[2]) / ld[2]; za = Math.min(q0, q1); zb = Math.max(q0, q1); }
+    const t0 = Math.max(sa, za), t1 = Math.min(sb, zb);
+    return t0 > t1 ? null : [t0, t1];
+  });
+  let tc = tA;
+  for (let step = 0; step < 2 * iv.length + 2 && tc < tB; step++) {
+    let tn = tB;
+    iv.forEach(v => { if (!v) return; if (v[0] > tc + 1e-9 && v[0] < tn) tn = v[0]; if (v[1] > tc + 1e-9 && v[1] < tn) tn = v[1]; });
+    const tm = (tc + tn) / 2, own = iv.findIndex(v => v && v[0] < tm && tm < v[1]);
+    if (own >= 0 && matById(S.parts[own].material)) return own;
+    tc = tn;
+  }
+  return -1;
+}
+
+function focusSelection() {
+  const t = sel.kind === 'part' || sel.kind === 'source' ? getSel() : null;
+  if (!t) { CAM.target = [0, 0, 0]; CAM.dist = (S.settings.worldR || 100) * 3.2; }
+  else {
+    const c = sel.kind === 'part' ? [t.x, t.y, t.z] : targetCenter({kind:'source', o:t});
+    const ext = sel.kind === 'part' ? Math.max(...partHalfExtents(t)) : 10;
+    CAM.target = c; CAM.dist = Math.max(20, ext * 4.5);
+  }
+  schedule();
+}
+
 /* ───────── Viewport: a 2D slice through the CSG, sampled per pixel ───────── */
 const AX = {xy:['x', 'y', 'z'], xz:['x', 'z', 'y'], yz:['y', 'z', 'x']};
 const hexRgb = h => { const n = parseInt(String(h).slice(1), 16); return fin(n) ? [n >> 16 & 255, n >> 8 & 255, n & 255] : [180, 142, 173]; };
@@ -1577,6 +2738,13 @@ function drawViewport() {
   const cv = $('#vp'), wrap = $('#vpwrap');
   const W = wrap.clientWidth, H = wrap.clientHeight;
   if (!W || !H || !$('#docView').offsetParent) return;
+  const is3 = view.mode === '3d';
+  cv.hidden = is3; $('#vp3').hidden = !is3; $('#vp3o').hidden = !is3; $('#cutWrap').hidden = !is3;
+  if (is3) {
+    ['#vp3', '#vp3o'].forEach(sel3 => { $(sel3).style.width = W + 'px'; $(sel3).style.height = H + 'px'; });
+    draw3D();
+    return;
+  }
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
   const ctx = cv.getContext('2d');
@@ -1696,6 +2864,13 @@ function drawViewport() {
   ctx.fillText(`${view.plane.toUpperCase()} slice at ${AX[view.plane][2]} = ${view.slice} cm`, 10, 16);
   ctx.fillStyle = 'rgba(216,221,227,.62)';
   ctx.fillText(`→ ${ha} (cm)   ↑ ${va} (cm)`, 10, 31);
+  const tt = toolTarget();
+  vpGeom.handles = tt ? buildHandles(tt, adapter2D()) : [];
+  drawHandles(ctx, vpGeom.handles);
+  if (TOOL.mode !== 'select' && !tt) {
+    ctx.fillStyle = 'rgba(216,221,227,.7)';
+    ctx.fillText(TOOL.mode === 'move' ? 'Move: select a part or source' : `${TOOL.mode === 'scale' ? 'Scale' : 'Rotate'}: select a part`, 10, 46);
+  }
 }
 function hitAt(evt) {
   if (!vpGeom) return null;
@@ -1761,7 +2936,7 @@ function schedule() {
     const P = problems();
     renderTree(); renderTitle(P); renderProblems(P); renderLegend(); renderPropsTitle();
     if (sel.kind === 'source' || sel.kind === 'tally') refreshMcnp();
-    if (!$('#docCode').hidden) $('#code').innerHTML = highlight(generate(P));
+    renderPy(P); renderMcnp(P); liveMcnpTick(P);
     drawViewport();
     renderRibbonState();
     store();
@@ -1775,15 +2950,24 @@ function renderRibbonState() {
 }
 function renderAll() { renderRibbon(); renderProps(); syncViewControls(); schedule(); }
 function syncViewControls() {
+  document.querySelectorAll('[data-vmode]').forEach(b => b.setAttribute('aria-pressed', b.dataset.vmode === view.mode));
   document.querySelectorAll('[data-plane]').forEach(b => b.setAttribute('aria-pressed', b.dataset.plane === view.plane));
   $('#sliceAxis').textContent = `at ${AX[view.plane][2]} =`;
   $('#sliceIn').value = view.slice;
 }
-function setDocTab(which) { // 'view' | 'code' | 'mcnp'
+function setDocTab(which) { // 'view' | 'code' | 'mcnp'; in split view the viewport stays on the left
+  const split = VIEWSTATE.split;
+  if (split && which === 'view') which = VIEWSTATE.right;
+  if (which !== 'view') VIEWSTATE.right = which;
+  $('#docs').classList.toggle('split', split);
+  $('#splitBtn').setAttribute('aria-pressed', split);
+  $('#tabView').hidden = split;
   [['view', '#tabView', '#docView'], ['code', '#tabCode', '#docCode'], ['mcnp', '#tabMcnp', '#docMcnp']].forEach(([k, tab, doc]) => {
     $(tab).setAttribute('aria-selected', which === k);
-    $(doc).hidden = which !== k;
+    $(doc).hidden = !(which === k || (split && k === 'view'));
   });
+  scrollSelIntoView.py = scrollSelIntoView.mcnp = null;
+  saveViewState();
   schedule();
 }
 
@@ -1862,11 +3046,85 @@ $('#propFilter').addEventListener('input', applyPropFilter);
 $('#openFile').addEventListener('change', e => { const f = e.target.files[0]; if (f) openProject(f); e.target.value = ''; });
 document.querySelectorAll('[data-plane]').forEach(b => b.addEventListener('click', () => { view.plane = b.dataset.plane; view.slice = 0; syncViewControls(); schedule(); }));
 $('#sliceIn').addEventListener('input', e => { const v = parseFloat(e.target.value); if (fin(v)) { view.slice = v; schedule(); } });
-$('#zoomIn').addEventListener('click', () => { view.zoom = Math.min(view.zoom * 1.4, 20); schedule(); });
-$('#zoomOut').addEventListener('click', () => { view.zoom = Math.max(view.zoom / 1.4, .25); schedule(); });
-$('#zoomFit').addEventListener('click', () => { view.zoom = 1; schedule(); });
+$('#zoomIn').addEventListener('click', () => { if (view.mode === '3d') CAM.dist /= 1.4; else view.zoom = Math.min(view.zoom * 1.4, 20); schedule(); });
+$('#zoomOut').addEventListener('click', () => { if (view.mode === '3d') CAM.dist *= 1.4; else view.zoom = Math.max(view.zoom / 1.4, .25); schedule(); });
+$('#zoomFit').addEventListener('click', () => { if (view.mode === '3d') { CAM.target = [0, 0, 0]; CAM.dist = (S.settings.worldR || 100) * 3.2; } else view.zoom = 1; schedule(); });
+document.querySelectorAll('[data-vmode]').forEach(b => b.addEventListener('click', () => {
+  view.mode = b.dataset.vmode; VIEWSTATE.mode = view.mode; saveViewState(); THOVER = null; syncViewControls(); schedule();
+}));
+$('#cutaway').addEventListener('change', schedule);
+
+// 3D view: handles first; otherwise left-drag orbits, right/middle/Shift-drag pans, a click selects
+const v3Local = e => { const r = $('#vp3o').getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+$('#vp3o').addEventListener('contextmenu', e => e.preventDefault());
+$('#vp3o').addEventListener('pointerdown', e => {
+  const [mx, my] = v3Local(e);
+  $('#vp3o').setPointerCapture(e.pointerId);
+  const h = e.button === 0 && (V3.handles || []).length ? hitHandle(V3.handles, mx, my) : null, t = toolTarget();
+  if (h && t) {
+    beginTransform(h, t, mx, my, adapter3D());
+    TDRAG.pmx = mx; TDRAG.pmy = my;
+    V3.drag = {mode:'tool'};
+    return;
+  }
+  V3.drag = {mode:e.button === 0 && !e.shiftKey ? 'orbit' : 'pan', x0:mx, y0:my, yaw:CAM.yaw, pitch:CAM.pitch, target:CAM.target.slice(), moved:false};
+  $('#vp3o').style.cursor = 'grabbing';
+});
+$('#vp3o').addEventListener('pointermove', e => {
+  const [mx, my] = v3Local(e), d = V3.drag;
+  if (d && d.mode === 'tool' && TDRAG) { TDRAG.pmx = mx; TDRAG.pmy = my; applyTransform(mx, my); renderProps(); schedule(); return; }
+  if (d) {
+    const dx = mx - d.x0, dy = my - d.y0;
+    if (Math.hypot(dx, dy) > 3) d.moved = true;
+    if (d.mode === 'orbit') { CAM.yaw = d.yaw - dx * 0.008; CAM.pitch = Math.max(-1.5, Math.min(1.5, d.pitch + dy * 0.008)); }
+    else if (V3.geom) {
+      const B = V3.geom.B, k = CAM.dist / B.focal;
+      CAM.target = v3add(d.target, v3add(v3mul(B.r, -dx * k), v3mul(B.u, dy * k)));
+    }
+    schedule();
+    return;
+  }
+  const hh = (V3.handles || []).length ? hitHandle(V3.handles, mx, my) : null, key = hh ? hh.key : null;
+  if (key !== THOVER) { THOVER = key; $('#vp3o').style.cursor = hh ? (hh.type === 'ring' ? 'grab' : 'move') : 'grab'; schedule(); }
+  if (V3.geom) {
+    const i = pick3(mx, my);
+    $('#readout').textContent = i >= 0 ? `${S.parts[i].name} (${(matById(S.parts[i].material) || {name:'void'}).name})` : '3D view · drag to orbit';
+  }
+});
+$('#vp3o').addEventListener('pointerup', e => {
+  const d = V3.drag;
+  V3.drag = null;
+  $('#vp3o').style.cursor = 'grab';
+  if (!d) return;
+  if (d.mode === 'tool') { endTransform(false); return; }
+  if (d.moved || e.button !== 0) return;
+  const [mx, my] = v3Local(e);
+  const src = (V3.sources || []).find(q => Math.hypot(q.X - mx, q.Y - my) < 10);
+  if (src) { select('source', src.id); return; }
+  const i = pick3(mx, my);
+  if (i >= 0) select('part', S.parts[i].id);
+});
+$('#vp3o').addEventListener('pointercancel', () => { if (V3.drag && V3.drag.mode === 'tool') endTransform(true); V3.drag = null; });
+$('#vp3o').addEventListener('wheel', e => { e.preventDefault(); CAM.dist *= e.deltaY < 0 ? 1 / 1.12 : 1.12; schedule(); }, {passive:false});
 $('#vp').addEventListener('wheel', e => { e.preventDefault(); view.zoom = Math.min(20, Math.max(.25, view.zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15))); schedule(); }, {passive:false});
-$('#vp').addEventListener('mousemove', e => {
+const vpLocal = e => { const r = $('#vp').getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+$('#vp').addEventListener('pointerdown', e => {
+  if (e.button !== 0 || !vpGeom || !(vpGeom.handles || []).length) return;
+  const [mx, my] = vpLocal(e), h = hitHandle(vpGeom.handles, mx, my), t = toolTarget();
+  if (!h || !t) return;
+  e.preventDefault();
+  $('#vp').setPointerCapture(e.pointerId);
+  beginTransform(h, t, mx, my, adapter2D());
+  TDRAG.pmx = mx; TDRAG.pmy = my;
+  suppressVpClick = true;
+});
+$('#vp').addEventListener('pointerup', () => { if (TDRAG) endTransform(false); });
+$('#vp').addEventListener('pointercancel', () => { if (TDRAG) endTransform(true); });
+$('#vp').addEventListener('pointermove', e => {
+  const [mx, my] = vpLocal(e);
+  if (TDRAG) { TDRAG.pmx = mx; TDRAG.pmy = my; applyTransform(mx, my); renderProps(); schedule(); return; }
+  const hh = vpGeom && vpGeom.handles ? hitHandle(vpGeom.handles, mx, my) : null, key = hh ? hh.key : null;
+  if (key !== THOVER) { THOVER = key; $('#vp').style.cursor = hh ? (hh.type === 'ring' ? 'grab' : 'move') : 'crosshair'; schedule(); }
   const h = hitAt(e); if (!h) return;
   const what = h.src ? S.sources.find(s => s.id === h.src.id).name
     : h.cell === -2 ? 'outside the world' : h.cell === -1 ? `World (${(matById(S.settings.worldFill) || {name:'void'}).name})`
@@ -1874,6 +3132,7 @@ $('#vp').addEventListener('mousemove', e => {
   $('#readout').textContent = `x ${h.x.toFixed(1)}  y ${h.y.toFixed(1)}  z ${h.z.toFixed(1)} cm · ${what}`;
 });
 $('#vp').addEventListener('click', e => {
+  if (suppressVpClick) { suppressVpClick = false; return; }
   const h = hitAt(e); if (!h) return;
   if (pickTrack(e)) return;
   if (h.src) select('source', h.src.id);
@@ -1890,12 +3149,17 @@ document.addEventListener('keydown', e => {
     moveSelected(e.key === 'ArrowUp' ? -1 : 1);
     if (fromTree) setTimeout(() => { const b = document.querySelector('#tree .titem.is-sel'); if (b) b.focus(); }, 90);
   }
-  if (e.key === 'Escape') { $('#matMenu').hidden = true; if (drag) dragEnd({type:'pointercancel'}); }
+  if (e.key === 'Escape') { $('#matMenu').hidden = true; if (drag) dragEnd({type:'pointercancel'}); if (TDRAG) endTransform(true); }
+  if (!e.ctrlKey && !e.metaKey && !e.altKey && ['1', '2', '3', '4'].includes(e.key)) setTool(['select', 'move', 'scale', 'rotate'][+e.key - 1]);
+  if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'f' && view.mode === '3d') focusSelection();
 });
 new ResizeObserver(() => schedule()).observe($('#vpwrap'));
 
 log('info', loadStored() ? 'Restored your last model from this browser.' : 'Loaded the shielding demo: a 14.1 MeV D-T source inside polyethylene and lead, a He-3 detector and a concrete floor. Materials come from PNNL-15870 Rev. 1.');
 updateExportButtons();
 renderAll();
+view.mode = VIEWSTATE.mode === '3d' ? '3d' : 'slice';
+syncViewControls();
+setDocTab(VIEWSTATE.split ? VIEWSTATE.right : 'view');
 localInit();
 </script>

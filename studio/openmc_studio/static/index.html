@@ -50,17 +50,12 @@ button,input,select{font:inherit;color:inherit}
 .menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;border-radius:4px;padding:5px 8px;cursor:pointer}
 .menu button:hover,.menu button:focus-visible{background:var(--sel)}
 .menu small{margin-left:auto;color:var(--muted);font:11px var(--mono)}
-.snappop{min-width:0;width:264px;padding:10px 12px;box-sizing:border-box}
-.snappop h4{margin:0 0 8px;font:600 11px var(--ui);color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
-.snaprow{display:flex;align-items:center;gap:6px}
-.snaprow input[type=number]{width:96px}
-.snaprow .unit{margin-right:auto}
-.snapchips{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
-.snappop button.chip{display:inline-block;width:auto;padding:2px 8px;border:1px solid var(--line2);border-radius:99px;background:none;font:11.5px var(--mono);color:var(--text);cursor:pointer}
-.snappop button.chip:hover{border-color:var(--faint)}
-.snappop button.chip[aria-pressed="true"]{background:var(--sel);border-color:rgba(82,184,255,.55)}
-.snaperr{min-height:15px;margin:2px 0 0;color:var(--err);font-size:11.5px}
-.snaphint{margin:6px 0 0;color:var(--faint);font-size:11.5px}
+.snapgrid{display:grid;grid-template-columns:auto auto auto;align-items:center;gap:3px 6px;padding:3px 2px 0}
+.snapgrid .chk{font-size:11.5px;color:var(--text)}
+.snapgrid input[type=number]{width:64px;padding:2px 5px;font-size:11.5px}
+.snapgrid input[type=number]:disabled{opacity:.45}
+.snapgrid input.bad{border-color:var(--err)}
+.snapgrid .unit{min-width:14px}
 #matMenu{width:340px;max-width:calc(100vw - 16px);box-sizing:border-box;padding-top:0}
 .msearch{position:sticky;top:0;z-index:1;margin:0 -4px 4px;padding:6px;background:var(--panel2);border-bottom:1px solid var(--line)}
 .menu button.mcat{font-weight:500;color:var(--text)}
@@ -349,7 +344,6 @@ input[type=checkbox]{accent-color:var(--accent)}
 </div>
 <input type="file" id="openFile" accept=".json,application/json" hidden>
 <div class="menu" id="matMenu" hidden role="menu"></div>
-<div class="menu snappop" id="snapPop" hidden role="dialog" aria-labelledby="snapTitle"></div>
 <div class="dropline" id="dropLine" hidden></div>
 <script>
 "use strict";
@@ -1572,7 +1566,7 @@ function setOutTab(which) {
 const RIBBON = {
   Home:[
     {label:'Tools', btns:toolButtons()},
-    {label:'Snap', btns:snapButtons()},
+    {label:'Snap to grid', custom:snapControls},
     {label:'Edit', btns:[['undo', 'Undo', undo, () => HISTORY.undo.length > 0], ['redo', 'Redo', redo, () => HISTORY.redo.length > 0], ['duplicate', 'Duplicate', duplicateSelected, canEditSelection], ['del', 'Delete', removeSelected, canEditSelection]]},
     {label:'Group', btns:[['group', 'Group', groupSelected, () => selItems().length > 0], ['ungroup', 'Ungroup', ungroupSelected, () => sel.kind === 'group' || selItems().some(x => x.o.group)], pivotButton()]},
     {label:'Order', btns:[['up', 'Raise', () => moveSelected(-1), () => !!LISTS[sel.kind] || sel.kind === 'group'], ['down', 'Lower', () => moveSelected(1), () => !!LISTS[sel.kind] || sel.kind === 'group']]},
@@ -1580,6 +1574,7 @@ const RIBBON = {
   ],
   Model:[
     {label:'Tools', btns:toolButtons()},
+    {label:'Snap to grid', custom:snapControls},
     {label:'Group', btns:[['group', 'Group', groupSelected, () => selItems().length > 0], ['ungroup', 'Ungroup', ungroupSelected, () => sel.kind === 'group' || selItems().some(x => x.o.group)], pivotButton()]},
     {label:'Parts', btns:[['sphere', 'Sphere', () => addPart('sphere')], ['cylinder', 'Cylinder', () => addPart('cylinder')], ['box', 'Box', () => addPart('box')]]},
     {label:'Materials', btns:[['material', 'Material ▾', e => openMatMenu(e.currentTarget)]]},
@@ -1603,8 +1598,9 @@ function renderRibbon() {
   body.innerHTML = '';
   RIBBON[ribbonTab].forEach(g => {
     const grp = document.createElement('div'); grp.className = 'rgroup';
-    const row = document.createElement('div'); row.className = 'rbtns';
-    g.btns.forEach(([icon, labelOrFn, fn, enabled, active]) => {
+    const row = g.custom ? g.custom() : document.createElement('div');
+    if (!g.custom) row.className = 'rbtns';
+    (g.btns || []).forEach(([icon, labelOrFn, fn, enabled, active]) => {
       const label = typeof labelOrFn === 'function' ? labelOrFn() : labelOrFn;
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'rbtn'; b.innerHTML = ic(icon) + `<span>${label}</span>`;
@@ -1622,7 +1618,6 @@ const MATMENU = {open:new Set()}; // expanded categories while not searching
 function openMatMenu(btn, assign) {
   const menu = $('#matMenu');
   if (!menu.hidden) { const same = MATMENU.btn === btn || (MATMENU.btn && btn.id && MATMENU.btn.id === btn.id); menu.hidden = true; if (same) return; }
-  $('#snapPop').hidden = true;
   MATMENU.assign = assign || null;
   menu.innerHTML = '<div class="msearch"><input type="text" id="matSearch" placeholder="Search materials" aria-label="Search materials" spellcheck="false" autocomplete="off"></div><div id="matList"></div>';
   const r = btn.getBoundingClientRect();
@@ -2755,10 +2750,13 @@ $('#replayBtn').addEventListener('click', () => {
 /* ───────── Transform tools: Select / Move / Scale / Rotate (Roblox Studio style) ─────────
    Handles are built in screen space through a view adapter, so the 2D slice and the 3D view share the math:
    adapter = {toScreen([x,y,z]) → [px,py], axesShown:[world axis indices], ringAxes:[…], pxPerCm, rotSign(axis)}. */
-const TOOL = {mode:'select', moveSnap:1, moveSnapIn:0.25, rotSnap:15, pivot:'group'}; // moveSnap in cm, moveSnapIn in inches // pivot: 'group' (rigid) or 'each' (every part in place)
+const TOOL = {mode:'select', moveSnap:1, moveSnapIn:0.25, rotSnap:15, moveOn:true, rotOn:true, pivot:'group'}; // moveSnap in cm, moveSnapIn in inches // pivot: 'group' (rigid) or 'each' (every part in place)
 try { Object.assign(TOOL, JSON.parse(localStorage.getItem('openmc-studio-tool') || '{}')); } catch (e) {}
+// older saves stored "off" as a 0 step
+if (!(TOOL.rotSnap > 0)) { TOOL.rotSnap = 15; TOOL.rotOn = false; }
+if (!(TOOL.moveSnap > 0)) { TOOL.moveSnap = 1; TOOL.moveOn = false; }
+if (!(TOOL.moveSnapIn > 0)) TOOL.moveSnapIn = 0.25;
 const saveTool = () => { try { localStorage.setItem('openmc-studio-tool', JSON.stringify(TOOL)); } catch (e) {} };
-const MOVE_STEPS = [0, 0.1, 0.5, 1, 5, 10], ROT_STEPS = [0, 1, 5, 15, 45, 90];
 const AXCOL = ['#e5484d', '#3dbd5d', '#3b82f6']; // x red, y green, z blue
 const snapStep = (v, step) => step > 0 ? Math.round(v / step) * step : v;
 const tidy = v => { const r = Math.round(v * 1e9) / 1e9; return r === 0 ? 0 : r; };
@@ -2768,59 +2766,46 @@ function setTool(mode) {
   TOOL.mode = mode; saveTool(); THOVER = null;
   renderRibbon(); schedule();
 }
-// Move/Rotate snap: a small box to type any step, pick a common one, or turn snapping off.
-const moveStepCm = () => imperial() ? (TOOL.moveSnapIn || 0) * 2.54 : TOOL.moveSnap; // the step drags use, in cm
-const snapKey = key => key === 'moveSnap' && imperial() ? 'moveSnapIn' : key;
-const SNAP = {
-  moveSnapIn:{title:'Move and scale snap', unit:'in', picks:[0.125, 0.25, 0.5, 1, 6], max:400,
-    hint:'Drags move and resize in steps of this size. 0 or Off drags freely.'},
-  moveSnap:{title:'Move and scale snap', unit:'cm', picks:MOVE_STEPS.filter(Boolean), max:1000,
-    hint:'Drags move and resize in steps of this size. 0 or Off drags freely.'},
-  rotSnap:{title:'Rotation snap', unit:'°', picks:ROT_STEPS.filter(Boolean), max:360,
-    hint:'Ring drags turn in steps of this angle. 0 or Off turns freely.'}
-};
-function openSnapPop(key, btn) {
-  key = snapKey(key);
-  const pop = $('#snapPop'), cfg = SNAP[key];
-  if (!pop.hidden && pop.dataset.key === key) { pop.hidden = true; return; }
-  $('#matMenu').hidden = true;
-  pop.dataset.key = key;
-  const cur = TOOL[key];
-  pop.innerHTML = `<h4 id="snapTitle">${cfg.title}</h4>
-    <div class="snaprow"><input type="number" id="snapIn" min="0" max="${cfg.max}" step="any" value="${cur || ''}" placeholder="off" aria-label="${cfg.title} (${cfg.unit})"><span class="unit">${cfg.unit}</span>
-      <label class="chk"><input type="checkbox" id="snapOff"${cur ? '' : ' checked'}> Off</label></div>
-    <div class="snapchips">${cfg.picks.map(v => `<button type="button" class="chip" data-v="${v}" aria-pressed="${v === cur}">${withUnit(v, cfg.unit)}</button>`).join('')}</div>
-    <div class="snaprow"><button type="button" class="tbtn" id="snapApply">Apply</button></div>
-    <p class="snaperr" id="snapErr" role="alert"></p><p class="snaphint">${cfg.hint} Enter applies, Esc closes.</p>`;
-  const r = btn.getBoundingClientRect();
-  pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 272)) + 'px';
-  pop.style.top = (r.bottom + 4) + 'px';
-  pop.hidden = false;
-  const input = $('#snapIn'), off = $('#snapOff');
-  const close = () => { pop.hidden = true; btn.focus(); };
-  const apply = v => {
-    if (!Number.isFinite(v) || v < 0 || v > cfg.max) { $('#snapErr').textContent = `Enter a number from 0 to ${withUnit(cfg.max, cfg.unit)}.`; input.focus(); return; }
-    setSnap(key, v);
-    close();
-  };
-  input.addEventListener('input', () => { $('#snapErr').textContent = ''; off.checked = input.value === '' || +input.value === 0; });
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); apply(input.value === '' ? 0 : +input.value); }
-    else if (e.key === 'Escape') { e.preventDefault(); close(); }
+// Snap to grid, as in Roblox Studio: a checkbox and a step for Rotate and for Move (which also sets Scale's step).
+const moveStepCm = () => TOOL.moveOn ? (imperial() ? TOOL.moveSnapIn * 2.54 : TOOL.moveSnap) : 0; // the step drags use, in cm
+const rotStep = () => TOOL.rotOn ? TOOL.rotSnap : 0;
+function snapControls() {
+  const wrap = document.createElement('div');
+  wrap.className = 'snapgrid';
+  const moveKey = imperial() ? 'moveSnapIn' : 'moveSnap';
+  const rows = [
+    {on:'rotOn', key:'rotSnap', label:'Rotate', unit:'°', max:360, what:'Ring drags turn in steps of this angle.'},
+    {on:'moveOn', key:moveKey, label:'Move', unit:lenUnit(), max:imperial() ? 400 : 1000, what:'Move and Scale drags change sizes and positions in steps of this length.'}
+  ];
+  rows.forEach(r => {
+    const id = `snap-${r.key}`;
+    wrap.insertAdjacentHTML('beforeend',
+      `<label class="chk" title="${r.what} Untick to drag freely."><input type="checkbox" data-on="${r.on}"${TOOL[r.on] ? ' checked' : ''}> ${r.label}</label>` +
+      `<input type="number" id="${id}" min="0" max="${r.max}" step="any" value="${TOOL[r.key]}" aria-label="${r.label} snap step (${r.unit})" title="${r.what}"${TOOL[r.on] ? '' : ' disabled'}>` +
+      `<span class="unit">${r.unit}</span>`);
   });
-  off.addEventListener('change', () => { if (off.checked) apply(0); else { input.value = cfg.picks[Math.floor(cfg.picks.length / 2)]; input.focus(); input.select(); } });
-  pop.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => apply(+c.dataset.v)));
-  $('#snapApply').addEventListener('click', () => apply(off.checked ? 0 : (input.value === '' ? 0 : +input.value)));
-  pop.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
-  input.focus(); input.select();
+  wrap.addEventListener('change', e => {
+    const t = e.target;
+    if (t.dataset.on) {
+      TOOL[t.dataset.on] = t.checked; saveTool();
+      const input = t.closest('.chk').nextElementSibling;
+      input.disabled = !t.checked;
+      if (t.checked) { input.focus(); input.select(); }
+      const r = rows.find(x => x.on === t.dataset.on);
+      log('info', t.checked ? `${r.label} snap on: ${TOOL[r.key]} ${r.unit}.` : `${r.label} snap off: drags ${r.label === 'Rotate' ? 'turn' : 'move'} freely.`);
+      return;
+    }
+    const r = rows.find(x => `snap-${x.key}` === t.id);
+    if (!r) return;
+    const v = parseFloat(t.value);
+    if (!(v > 0 && v <= r.max)) { t.classList.add('bad'); t.title = `Enter a number above 0 and up to ${r.max} ${r.unit}.`; log('warn', `${r.label} snap needs a number above 0 and up to ${r.max} ${r.unit}.`); t.value = TOOL[r.key]; return; }
+    t.classList.remove('bad'); t.title = r.what;
+    TOOL[r.key] = +v.toPrecision(12); saveTool();
+    log('info', `${r.label} snap: ${TOOL[r.key]} ${r.unit}.`);
+  });
+  wrap.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.type === 'number') e.target.blur(); });
+  return wrap;
 }
-function setSnap(key, v) {
-  TOOL[key] = v > 0 ? +(+v).toPrecision(12) : 0;
-  saveTool(); renderRibbon();
-  log('info', TOOL[key] ? `${key === 'rotSnap' ? 'Rotation snap' : 'Move and scale snap'}: ${withUnit(TOOL[key], SNAP[key].unit)}.` : `${key === 'rotSnap' ? 'Rotation' : 'Move and scale'} snapping off.`);
-}
-const withUnit = (v, unit) => unit === '°' ? `${v}°` : `${v} ${unit}`;
-const snapLabel = (v, unit) => v ? withUnit(v, unit) : 'Off';
 
 function axisRotation(i, deg) { return i === 0 ? rotXYZ(deg, 0, 0) : i === 1 ? rotXYZ(0, deg, 0) : rotXYZ(0, 0, deg); }
 function eulerFrom(R) { // inverse of rotXYZ (R = Rz·Ry·Rx), degrees
@@ -2935,7 +2920,7 @@ function applyTransform(mx, my) {
       let da = a - TDRAG.last;
       if (da > Math.PI) da -= 2 * Math.PI; else if (da < -Math.PI) da += 2 * Math.PI;
       TDRAG.acc += da; TDRAG.last = a;
-      const deg = snapStep(TDRAG.plane ? TDRAG.acc / DEG : -TDRAG.acc / DEG * A.rotSign(h.axis), TOOL.rotSnap);
+      const deg = snapStep(TDRAG.plane ? TDRAG.acc / DEG : -TDRAG.acc / DEG * A.rotSign(h.axis), rotStep());
       const each = TOOL.pivot === 'each';
       const err = rotateItems(t.items, s0.items, axisRotation(h.axis, deg), c0, each);
       if (err) { restoreSet(t, s0); TDRAG.readout = `Can't turn: ${err}`; return; }
@@ -2980,7 +2965,7 @@ function applyTransform(mx, my) {
     if (da > Math.PI) da -= 2 * Math.PI; else if (da < -Math.PI) da += 2 * Math.PI;
     TDRAG.acc += da; TDRAG.last = a;
     // on screen, y points down, so a counter-clockwise drag is a negative atan2 change
-    const deg = snapStep(TDRAG.plane ? TDRAG.acc / DEG : -TDRAG.acc / DEG * A.rotSign(h.axis), TOOL.rotSnap);
+    const deg = snapStep(TDRAG.plane ? TDRAG.acc / DEG : -TDRAG.acc / DEG * A.rotSign(h.axis), rotStep());
     const R = mat3mul(axisRotation(h.axis, deg), rotXYZ(s0.rx || 0, s0.ry || 0, s0.rz || 0));
     [o.rx, o.ry, o.rz] = eulerFrom(R);
     TDRAG.readout = `${fmtNum(deg)}° about ${'xyz'[h.axis]}`;
@@ -3069,10 +3054,6 @@ function pivotButton() {
     TOOL.pivot = TOOL.pivot === 'each' ? 'group' : 'each'; saveTool(); renderRibbon(); renderProps(); schedule();
     log('info', TOOL.pivot === 'each' ? 'Rotating a group or selection now turns each part about its own center; positions stay put.' : 'Rotating a group or selection now turns it as one piece about its pivot: parts orbit the pivot and turn with it.');
   }, null, () => TOOL.pivot === 'each'];
-}
-function snapButtons() {
-  return [['grid', () => imperial() ? `Move ${snapLabel(TOOL.moveSnapIn, 'in')}` : `Move ${snapLabel(TOOL.moveSnap, 'cm')}`, e => openSnapPop('moveSnap', e.currentTarget)],
-          ['rotstep', () => `Rotate ${snapLabel(TOOL.rotSnap, '°')}`, e => openSnapPop('rotSnap', e.currentTarget)]];
 }
 
 /* ───────── 3D view: WebGL ray tracing of Studio's own CSG (no libraries) ─────────
@@ -3899,7 +3880,6 @@ $('#matMenu').addEventListener('keydown', e => { // arrow keys move through the 
 });
 document.addEventListener('mousedown', e => {
   const m = $('#matMenu'); if (!m.hidden && !m.contains(e.target) && !e.target.closest('.rbtn, .matpick')) m.hidden = true;
-  const p = $('#snapPop'); if (!p.hidden && !p.contains(e.target) && !e.target.closest('.rbtn')) p.hidden = true;
 });
 let drag = null, justDragged = false;
 $('#tree').addEventListener('click', e => {
@@ -4093,7 +4073,7 @@ document.addEventListener('keydown', e => {
     moveSelected(e.key === 'ArrowUp' ? -1 : 1);
     if (fromTree) setTimeout(() => { const b = document.querySelector('#tree .titem.is-sel'); if (b) b.focus(); }, 90);
   }
-  if (e.key === 'Escape') { $('#matMenu').hidden = true; $('#snapPop').hidden = true; if (drag) dragEnd({type:'pointercancel'}); if (TDRAG) endTransform(true); else if (sel.kind === 'multi') select('settings'); }
+  if (e.key === 'Escape') { $('#matMenu').hidden = true; if (drag) dragEnd({type:'pointercancel'}); if (TDRAG) endTransform(true); else if (sel.kind === 'multi') select('settings'); }
   if (!e.ctrlKey && !e.metaKey && !e.altKey && ['1', '2', '3', '4'].includes(e.key)) setTool(['select', 'move', 'scale', 'rotate'][+e.key - 1]);
   if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'f' && view.mode === '3d') focusSelection();
 });

@@ -2689,8 +2689,8 @@
  "settings": {
   "name": "NE403 graphite pile",
   "runMode": "fixed source",
-  "particles": 20000,
-  "batches": 10,
+  "particles": 2000,
+  "batches": 5,
   "inactive": 0,
   "seed": 12345,
   "maxTracks": 20,

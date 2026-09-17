@@ -1049,10 +1049,15 @@ function buildScript(probs, mark) {
   owner = null;
   if (S.parts.length) push('');
   const fill = id => id === 'void' || !mv[id] ? 'None' : mv[id];
+  // A part only needs to exclude earlier parts it can overlap: bounding boxes that don't overlap can't share
+  // any volume. (Subtracting every earlier part made models with many small parts, like 132 apertures, slow to
+  // translate to MCNP and slow to track in OpenMC.)
+  const boxes = S.parts.map(p => { const h = partHalfExtents(p); return [[p.x - h[0], p.y - h[1], p.z - h[2]], [p.x + h[0], p.y + h[1], p.z + h[2]]]; });
+  const overlaps = (a, b) => [0, 1, 2].every(k => a[0][k] < b[1][k] - SURF_TOL && b[0][k] < a[1][k] - SURF_TOL);
   S.parts.forEach((p, i) => {
     owner = {kind:'part', id:p.id};
     const v = cv[p.id] = name('cell', p.name);
-    const earlier = S.parts.slice(0, i).map(q => shapeVar[q.id]);
+    const earlier = S.parts.slice(0, i).filter((q, j) => overlaps(boxes[i], boxes[j])).map(q => shapeVar[q.id]);
     const region = `${shapeVar[p.id]} & world` + (earlier.length ? ` & ~(${earlier.join(' | ')})` : '');
     push(`${v} = openmc.Cell(name=${pyStr(p.name)}, fill=${fill(p.material)}, region=${region})`);
   });
@@ -3075,7 +3080,7 @@ function snapButtons() {
    then walked front to back: the first stretch whose highest-priority part (Explorer order) has a
    material is what you see. Void parts and the world fill are see-through, like cavities. The
    optional cutaway removes everything beyond the slice plane, so cross-sections show their colors. */
-const MAXP_BUCKETS = [32, 64, 128]; // shader sizes; the largest one the graphics card's uniform limit allows is the cap
+const MAXP_BUCKETS = [32, 64, 128, 192]; // shader sizes; the largest one the graphics card's uniform limit allows is the cap
 const CAM = {target:[0, 0, 0], yaw:-0.9, pitch:0.45, dist:0, fov:45 * DEG};
 const V3 = {gl:null, prog:null, loc:null, ok:null, err:'', geom:null, drag:null, maxp:32, buckets:[32], progs:{}, depth:null, depthBuf:null};
 
@@ -3104,8 +3109,9 @@ precision highp float;
 #define MAXP ${maxp}
 uniform vec2 uRes; uniform vec3 uCam; uniform vec3 uR; uniform vec3 uU; uniform vec3 uF; uniform float uFocal;
 uniform int uN;
-uniform vec3 uC[MAXP]; uniform vec3 uM0[MAXP]; uniform vec3 uM1[MAXP]; uniform vec3 uM2[MAXP];
-uniform vec3 uD[MAXP]; uniform vec4 uCol[MAXP]; uniform float uType[MAXP];
+// per part: center + shape type (w), two frame columns (the third is their cross product), half sizes, color
+uniform vec4 uC[MAXP]; uniform vec3 uM0[MAXP]; uniform vec3 uM1[MAXP];
+uniform vec3 uD[MAXP]; uniform vec4 uCol[MAXP];
 uniform float uWorldR; uniform float uWorldSphere;
 uniform float uCut; uniform float uCutAxis; uniform float uCutAt; uniform float uCutSide;
 uniform float uSel;
@@ -3194,7 +3200,7 @@ void main() {
     T0[i] = BIG; T1[i] = -BIG; N0[i] = vec3(0.0); N1[i] = vec3(0.0);
     if (i >= uN) continue;
     float a0, a1; vec3 b0, b1;
-    if (part(uC[i], uM0[i], uM1[i], uM2[i], uD[i], uType[i], ro, rd, a0, a1, b0, b1)) { T0[i] = a0; T1[i] = a1; N0[i] = b0; N1[i] = b1; }
+    if (part(uC[i].xyz, uM0[i], uM1[i], cross(uM0[i], uM1[i]), uD[i], uC[i].w, ro, rd, a0, a1, b0, b1)) { T0[i] = a0; T1[i] = a1; N0[i] = b0; N1[i] = b1; }
   }
   float tc = tA; vec3 nc = nA; float fromCut = srcA > 1.5 ? 1.0 : 0.0;
   for (int stepi = 0; stepi < 2 * MAXP + 2; stepi++) {
@@ -3238,10 +3244,10 @@ function v3init() {
   const buf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
-  // each part uses 7 uniform vectors (center, 3 frame columns, sizes, color, type), plus about 24 for the camera and settings
+  // each part uses 5 uniform vectors (center and type, 2 frame columns, sizes, color), plus about 24 for the camera and settings
   const vecs = gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS) || 64;
-  V3.buckets = MAXP_BUCKETS.filter(b => 7 * b + 24 <= vecs);
-  if (!V3.buckets.length) V3.buckets = [Math.max(1, Math.floor((vecs - 24) / 7))];
+  V3.buckets = MAXP_BUCKETS.filter(b => 5 * b + 24 <= vecs);
+  if (!V3.buckets.length) V3.buckets = [Math.max(1, Math.floor((vecs - 24) / 5))];
   Object.assign(V3, {gl, ok:true});
   if (!v3program(V3.buckets[0])) V3.ok = false;
   return V3.ok;
@@ -3259,7 +3265,7 @@ function v3program(maxp) {
       if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
       const names = ['uRes', 'uCam', 'uR', 'uU', 'uF', 'uFocal', 'uN', 'uWorldR', 'uWorldSphere', 'uCut', 'uCutAxis', 'uCutAt', 'uCutSide', 'uSel', 'uDepth', 'uTMax'];
       const loc = Object.fromEntries(names.map(n => [n, gl.getUniformLocation(prog, n)]));
-      ['uC', 'uM0', 'uM1', 'uM2', 'uD', 'uCol', 'uType'].forEach(n => { loc[n] = gl.getUniformLocation(prog, n + '[0]'); });
+      ['uC', 'uM0', 'uM1', 'uD', 'uCol'].forEach(n => { loc[n] = gl.getUniformLocation(prog, n + '[0]'); });
       V3.progs[maxp] = {prog, loc};
     } catch (e) {
       V3.progs[maxp] = null; V3.err = `The 3D view couldn't start: ${e.message}`;
@@ -3317,8 +3323,8 @@ function draw3D() {
   gl.uniform3fv(L.uCam, B.pos); gl.uniform3fv(L.uR, B.r); gl.uniform3fv(L.uU, B.u); gl.uniform3fv(L.uF, B.f);
   gl.uniform1f(L.uFocal, B.focal * scale);
   gl.uniform1i(L.uN, parts.length);
-  gl.uniform3fv(L.uC, flat(parts, q => q.c));
-  gl.uniform3fv(L.uM0, flat(parts, q => q.cols[0])); gl.uniform3fv(L.uM1, flat(parts, q => q.cols[1])); gl.uniform3fv(L.uM2, flat(parts, q => q.cols[2]));
+  gl.uniform4fv(L.uC, new Float32Array(Array.from({length:V3.maxp}, (_, i) => i < parts.length ? [...parts[i].c, parts[i].type] : [0, 0, 0, 0]).flat()));
+  gl.uniform3fv(L.uM0, flat(parts, q => q.cols[0])); gl.uniform3fv(L.uM1, flat(parts, q => q.cols[1]));
   gl.uniform3fv(L.uD, flat(parts, q => q.dims));
   const selParts = new Set(selItems().filter(x => x.kind === 'part').map(x => x.o.id));
   gl.uniform4fv(L.uCol, new Float32Array(Array.from({length:V3.maxp}, (_, i) => {
@@ -3327,7 +3333,6 @@ function draw3D() {
     const [r, g, b] = hexRgb(m.color);
     return [r / 255, g / 255, b / 255, selParts.has(p.id) ? 2 : 1]; // alpha 2 = selected
   }).flat()));
-  gl.uniform1fv(L.uType, new Float32Array(Array.from({length:V3.maxp}, (_, i) => i < parts.length ? parts[i].type : 0)));
   gl.uniform1f(L.uWorldR, S.settings.worldR || 100);
   gl.uniform1f(L.uWorldSphere, S.settings.worldShape === 'sphere' ? 1 : 0);
   const cut = $('#cutaway').checked;
@@ -3623,11 +3628,30 @@ function drawViewport() {
   const edges = new ImageData(W, H), ex = edges.data; // outlines only, redrawn above result overlays
   const colors = S.parts.map(p => { const m = matById(p.material); return m ? hexRgb(m.color) : [34, 39, 45]; });
   const fillM = matById(S.settings.worldFill), worldRgb = fillM ? hexRgb(fillM.color) : [30, 34, 39], outside = [14, 16, 19];
+  // Same answer as cellIndexAt, but each pixel only tests parts that cross the slice plane and whose bounding
+  // box covers it (a model like a graphite pile with 130 apertures is otherwise seconds per frame).
+  const [uA, vA, wA] = {xy:[0, 1, 2], xz:[0, 2, 1], yz:[1, 2, 0]}[view.plane];
+  const cand = [];
+  S.parts.forEach((p, k) => {
+    const h = partHalfExtents(p), c = [p.x, p.y, p.z];
+    if (!(c[wA] - h[wA] <= view.slice && view.slice <= c[wA] + h[wA])) return;
+    cand.push({p, k, M:p.shape === 'sphere' ? null : partFrame(p).M, ulo:c[uA] - h[uA], uhi:c[uA] + h[uA], vlo:c[vA] - h[vA], vhi:c[vA] + h[vA]});
+  });
+  const inPart = ({p, M}, x, y, z) => {
+    const dx = x - p.x, dy = y - p.y, dz = z - p.z;
+    if (!M) return dx * dx + dy * dy + dz * dz < p.r * p.r;
+    const lx = M[0][0] * dx + M[1][0] * dy + M[2][0] * dz, ly = M[0][1] * dx + M[1][1] * dy + M[2][1] * dz, lz = M[0][2] * dx + M[1][2] * dy + M[2][2] * dz;
+    if (p.shape === 'cylinder') return lx * lx + ly * ly < p.r * p.r && Math.abs(lz) < p.h / 2;
+    return Math.abs(lx) < p.sx / 2 && Math.abs(ly) < p.sy / 2 && Math.abs(lz) < p.sz / 2;
+  };
   for (let j = 0; j < H; j++) {
-    const v = (cy - j - 0.5) / scale;
+    const v = (cy - j - 0.5) / scale, row = cand.filter(q => q.vlo <= v && v <= q.vhi);
     for (let i = 0; i < W; i++) {
-      const [x, y, z] = toWorld((i + 0.5 - cx) / scale, v);
-      idx[j * W + i] = cellIndexAt(x, y, z);
+      const u = (i + 0.5 - cx) / scale, [x, y, z] = toWorld(u, v);
+      let hit = -1;
+      if (!inWorld(x, y, z)) hit = -2;
+      else for (let n = 0; n < row.length; n++) { const q = row[n]; if (u >= q.ulo && u <= q.uhi && inPart(q, x, y, z)) { hit = q.k; break; } }
+      idx[j * W + i] = hit;
     }
   }
   const selIdx = new Set(selItems().filter(x => x.kind === 'part').map(x => S.parts.indexOf(x.o)));

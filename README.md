@@ -38,10 +38,10 @@ Select a part, pick a tool, and drag its handles in the slice view or the 3D vie
 - **Rotate**: drag a ring to turn the part about that axis (boxes and cylinders).
   In 3D the angle follows the pointer around the ring from any viewing angle.
   Rotation is also in Properties as degrees about x, then y, then z.
-- **Snap** (Home tab): click **Move 1 cm** or **Rotate 15°** to set the step. Type any value and
-  press Enter, click a quick pick (0.1–10 cm, 1–90°), or tick **Off** to drag freely. Esc closes the
-  box without changing anything. The step is remembered in this browser. Esc also cancels a drag
-  in progress.
+- **Snap to grid** (Home and Model tabs, like Roblox Studio): a checkbox and a step for **Rotate**
+  (degrees) and **Move** (cm, or inches with imperial units; Scale uses the same step). Type a value
+  and press Enter; untick the box to drag freely while keeping the value. Remembered in this
+  browser. Esc cancels a drag in progress.
 - **Undo / Redo**: **Ctrl+Z** and **Ctrl+Y** (or Ctrl+Shift+Z; Cmd on the Mac), or the
   buttons on the Home tab. Each drag, code-tab edit or burst of typing is one step
   (the last 100 are kept). In a text box, Ctrl+Z undoes the typing instead.
@@ -122,8 +122,11 @@ model.py or model.mcnp on the right.
   you stop editing. Edits to geometry or materials take about 10 s, because MCNPy
   has to translate again; other edits reuse the last translation and take about
   1 s. The status line says **✓ Validated**, what to fix, or why a model can't be
-  exported. It needs `~/openmc-mcnp-project` on the computer (or
-  `OPENMC_MCNP_PROJECT` set to it).
+  exported. It needs openmc-mcnp-project on the computer. Studio uses
+  `OPENMC_MCNP_PROJECT` if set, then the folder it found last time, then looks in
+  `~/openmc-mcnp-project` and `~/Developer`, `~/Projects`, `~/Documents`, `~/code`,
+  `~/git` or `~/repos`. A folder set once with `OPENMC_MCNP_PROJECT` is remembered
+  (in the runs folder), so each computer only needs it once.
 - **Numbers with a dotted underline can be edited in place.** Click one, type,
   press Enter (Esc cancels). The change goes to the part, material, source, tally
   or setting it came from, and the viewport and both tabs update. Moving a plane

@@ -116,7 +116,7 @@ def main():
         "groups": [{"id": "g_apertures", "name": "Apertures", "x": aperture_center[0], "y": aperture_center[1], "z": aperture_center[2]}],
         "sources": [source],
         "tallies": tallies,
-        "settings": {"name": "NE403 graphite pile", "runMode": "fixed source", "particles": 20000, "batches": 10,
+        "settings": {"name": "NE403 graphite pile", "runMode": "fixed source", "particles": 2000, "batches": 5,
                      "inactive": 0, "seed": 12345, "maxTracks": 20, "track": "", "photon": False,
                      "worldShape": "box", "worldR": r(HEIGHT / 2 + 1 * FT), "worldBC": "vacuum", "worldFill": "void"},
     }

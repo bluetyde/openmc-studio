@@ -25,6 +25,63 @@ If the env has no nuclear data set, Studio uses the library on this drive.
 If the Mac says the `.command` file can't be opened, run it once from Terminal:
 `bash "/Volumes/Extreme SSD/OpenMC/Start OpenMC Studio.command"`.
 
+## Moving, scaling and rotating parts
+
+**Tools** (Home and Model tabs, or keys **1–4**): **Select**, **Move**, **Scale**, **Rotate**.
+Select a part, pick a tool, and drag its handles in the slice view or the 3D view:
+
+- **Move**: drag a red / green / blue arrow to slide along x / y / z. In the slice
+  view, drag the white center ring to move freely in that plane. Sources can be moved too.
+- **Scale**: drag a ball on a face. That face moves and the opposite face stays put,
+  along the part's own (possibly rotated) axes. On a cylinder the side balls change the
+  radius and the end balls change the height; a sphere has radius balls.
+- **Rotate**: drag a ring to turn the part about that axis (boxes and cylinders).
+  Rotation is also in Properties as degrees about x, then y, then z.
+- **Snap** (Home tab): click to cycle the move/scale step (off, 0.1–10 cm) and the
+  rotation step (off, 1–90°). Esc cancels a drag in progress.
+
+Rotations in 90° steps are written as ordinary planes and cylinders. Other angles are
+written as tilted planes (MCNP `P`) and general quadrics (MCNP `GQ`); the MCNP export
+and its geometry check handle both. Those tilted surfaces' numbers are read-only in the
+code tabs; change the rotation instead.
+
+## 3D view
+
+Switch **Slice / 3D** in the viewport toolbar. The 3D view draws the real geometry (same
+overlap rules as the model, void parts see-through) with the transform handles, sources,
+neutron tracks and the world boundary.
+
+- Drag to orbit, right-drag or Shift+drag to pan, wheel to zoom, **F** to focus on the
+  selection, **Fit** to reset. Click a part to select it.
+- **Cutaway** cuts the model open at the slice plane (XY / XZ / YZ and the position box),
+  removing the half facing you, so cross-sections show their materials.
+- The first 32 parts are drawn in 3D.
+
+## Editing in the code tabs
+
+The tabs above the viewport are **Viewport**, **model.py** and **model.mcnp**.
+**Split** (right end of the tab bar) keeps the viewport on the left and shows
+model.py or model.mcnp on the right.
+
+- **model.py** is the OpenMC script Studio writes, updated as you edit.
+- **model.mcnp** is the MCNP input from openmc-mcnp-project (MCNPy translation,
+  remediation, validation and the geometry check), refreshed about a second after
+  you stop editing. Edits to geometry or materials take about 10 s, because MCNPy
+  has to translate again; other edits reuse the last translation and take about
+  1 s. The status line says **✓ Validated**, what to fix, or why a model can't be
+  exported. It needs `~/openmc-mcnp-project` on the computer (or
+  `OPENMC_MCNP_PROJECT` set to it).
+- **Numbers with a dotted underline can be edited in place.** Click one, type,
+  press Enter (Esc cancels). The change goes to the part, material, source, tally
+  or setting it came from, and the viewport and both tabs update. Moving a plane
+  moves every face on it, including a touching part or the world boundary.
+- **Click any line** to select what it belongs to in the Explorer and Properties.
+  Selecting something highlights its lines in both tabs.
+- Derived numbers (MCNP isotope fractions, NPS, normalized beam directions) aren't
+  editable; change their source in Properties.
+- While model.mcnp is refreshing it's dimmed and not editable, so an edit never
+  lands on an out-of-date line.
+
 ## What's here
 
 ```
@@ -33,7 +90,8 @@ OpenMC/
 ├── Start OpenMC Studio.command   Mac launcher
 ├── studio/
 │   ├── start.sh                  shared start script: finds conda, activates the env, starts the server
-│   └── openmc_studio/            the local server (Python standard library + OpenMC) and the page
+│   └── openmc_studio/            the local server (Python standard library + OpenMC), the page,
+│                                 and mcnp_worker.py (keeps MCNPy loaded for the live model.mcnp tab)
 ├── nuclear_data/
 │   ├── endfb-viii.0-hdf5/        ENDF/B-VIII.0 for OpenMC (13 GB)
 │   │   ├── cross_sections.xml    ← OPENMC_CROSS_SECTIONS points here

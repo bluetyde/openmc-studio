@@ -7,6 +7,7 @@ cross-origin POSTs, and requires a per-launch token on every /api call except
 """
 import json
 import os
+import queue
 import re
 import secrets
 import signal
@@ -64,6 +65,7 @@ class Studio:
         self.runs = {}
         self.active = None
         self.lock = threading.Lock()
+        self.mcnp = McnpWorker(self.root)
 
     # ── runs ──
     def start(self, script, project, name):
@@ -97,36 +99,20 @@ class Studio:
         run.finish(run.proc.wait())
 
     def export_mcnp(self, script, project, name):
-        """Write model.py, export model.xml, and run openmc-mcnp-project's export_mcnp.py on it."""
-        proj = Path(os.environ.get("OPENMC_MCNP_PROJECT", "~/openmc-mcnp-project")).expanduser()
-        exporter = proj / "src" / "export_mcnp.py"
-        if not exporter.exists():
-            return {"ok": False, "error": f"Can't find {exporter}. Clone openmc-mcnp-project to ~/openmc-mcnp-project "
-                                          f"or set OPENMC_MCNP_PROJECT to its folder."}
+        """Export button: validated deck into a new ~/OpenMC-runs/mcnp-exports/<time>-<name>/ folder."""
         slug = re.sub(r"[^a-z0-9]+", "-", (name or "model").lower()).strip("-")[:40] or "model"
         folder = self.root / "mcnp-exports" / (time.strftime("%Y%m%d-%H%M%S") + "-" + slug)
         folder.mkdir(parents=True, exist_ok=False)
-        (folder / "model.py").write_text(script, encoding="utf-8")
         (folder / "project.json").write_text(json.dumps(project, indent=2), encoding="utf-8")
-        env = dict(os.environ, PYTHONUNBUFFERED="1")
-        xml = subprocess.run([sys.executable, "model.py", "--export-xml"], cwd=folder, env=env,
-                             capture_output=True, text=True, timeout=120)
-        if xml.returncode != 0 or not (folder / "model.xml").exists():
-            return {"ok": False, "folder": str(folder), "error": "model.py couldn't export model.xml: " + (xml.stderr or xml.stdout)[-2000:]}
-        try:
-            run = subprocess.run([sys.executable, str(exporter), "model.xml", "--name", slug, "--report", "report.json"],
-                                 cwd=folder, env=env, capture_output=True, text=True, timeout=600)
-        except subprocess.TimeoutExpired:
-            return {"ok": False, "folder": str(folder), "error": "The MCNP export took longer than 10 minutes and was stopped."}
-        (folder / "export.log").write_text(run.stdout + run.stderr, encoding="utf-8")
-        try:
-            report = json.loads((folder / "report.json").read_text())
-        except (OSError, ValueError):
-            return {"ok": False, "folder": str(folder), "error": "The exporter didn't write a report: " + (run.stderr or run.stdout)[-2000:]}
-        deck_path = folder / f"{slug}_runnable.mcnp"
-        report.update(folder=str(folder), name=slug,
-                      deck=deck_path.read_text() if deck_path.exists() else None)
-        report.pop("traceback", None)
+        report = self.mcnp.run(script, slug, folder, seq=None)
+        report.update(folder=str(folder), name=slug)
+        return report
+
+    def mcnp_live(self, script, name, seq, client=""):
+        """Live model.mcnp tab: same worker, one reused folder; stale requests are skipped."""
+        slug = re.sub(r"[^a-z0-9]+", "-", (name or "model").lower()).strip("-")[:40] or "model"
+        report = self.mcnp.run(script, slug, self.root / "mcnp-live", seq=seq, client=client)
+        report.update(name=slug)
         return report
 
     def stop(self, rid):
@@ -162,6 +148,91 @@ class Studio:
             return None
         p = self.root / rid
         return p if p.is_dir() else None
+
+
+class McnpWorker:
+    """One long-running `python -m openmc_studio.mcnp_worker` process (MCNPy's Java bridge stays up).
+
+    Jobs run one at a time. Live-tab requests carry a sequence number; a request that is
+    still waiting when a newer one arrives returns {"superseded": true} without running.
+    """
+
+    def __init__(self, runs_root):
+        self.runs_root = Path(runs_root)
+        self.proc = None
+        self.results = None
+        self.lock = threading.Lock()
+        self.latest = {}  # page-load id -> newest sequence number seen (numbers restart on reload)
+        self.job = 0
+
+    def _project(self):
+        return Path(os.environ.get("OPENMC_MCNP_PROJECT", "~/openmc-mcnp-project")).expanduser()
+
+    def _reader(self, proc, results):
+        for line in proc.stdout:
+            if line.startswith("@@RESULT "):
+                try:
+                    results.put(json.loads(line[len("@@RESULT "):]))
+                except ValueError:
+                    pass
+        results.put(None)  # process ended
+
+    def _start(self):
+        project = self._project()
+        if not (project / "src" / "export_mcnp.py").exists():
+            return f"Can't find {project / 'src' / 'export_mcnp.py'}. Clone openmc-mcnp-project to ~/openmc-mcnp-project or set OPENMC_MCNP_PROJECT."
+        env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONDONTWRITEBYTECODE="1")
+        log = open(self.runs_root / "mcnp-worker.log", "a", encoding="utf-8")
+        self.proc = subprocess.Popen([sys.executable, "-W", "ignore", "-m", "openmc_studio.mcnp_worker", str(project)],
+                                     cwd=str(Path(__file__).resolve().parent.parent), env=env, text=True, bufsize=1,
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, start_new_session=True)
+        self.results = queue.Queue()
+        threading.Thread(target=self._reader, args=(self.proc, self.results), daemon=True).start()
+        try:
+            ready = self.results.get(timeout=180)
+        except queue.Empty:
+            ready = None
+        if not ready or not ready.get("ready"):
+            self.stop()
+            return (ready or {}).get("error") or "The MCNP worker didn't start (see mcnp-worker.log in the runs folder)."
+        return None
+
+    def stop(self):
+        if self.proc and self.proc.poll() is None:
+            try:
+                os.killpg(self.proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+        self.proc = None
+
+    def run(self, script, name, folder, seq, client=""):
+        if seq is not None:
+            if len(self.latest) > 50:
+                self.latest.clear()
+            self.latest[client] = max(self.latest.get(client, 0), seq)
+        with self.lock:
+            if seq is not None and seq < self.latest.get(client, 0):
+                return {"superseded": True, "seq": seq}
+            if self.proc is None or self.proc.poll() is not None:
+                err = self._start()
+                if err:
+                    return {"ok": False, "error": err, "seq": seq}
+            folder = Path(folder)
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / "model.py").write_text(script, encoding="utf-8")
+            self.job += 1
+            job = {"id": self.job, "folder": str(folder), "name": name, "samples": 20000}
+            try:
+                self.proc.stdin.write(json.dumps(job) + "\n")
+                self.proc.stdin.flush()
+                result = self.results.get(timeout=600)
+            except (BrokenPipeError, OSError, queue.Empty):
+                result = None
+            if not result or result.get("id") != job["id"]:
+                self.stop()
+                return {"ok": False, "error": "The MCNP worker stopped or took over 10 minutes; it will restart on the next request.", "seq": seq}
+            result["seq"] = seq
+            return result
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -263,6 +334,12 @@ class Handler(BaseHTTPRequestHandler):
             except RuntimeError as e:
                 return self._error(409, str(e))
             return self._send(200, run.meta())
+        if url.path == "/api/mcnp-live":
+            script = body.get("script")
+            if not isinstance(script, str) or not script.strip():
+                return self._error(400, "No script.")
+            return self._send(200, self.studio.mcnp_live(script, str(body.get("name") or "model"), int(body.get("seq") or 0),
+                                                         str(body.get("client") or "")[:64]))
         if url.path == "/api/export-mcnp":
             script = body.get("script")
             if not isinstance(script, str) or not script.strip():
@@ -343,5 +420,6 @@ def serve(port, runs_dir, token, open_browser=True):
     finally:
         if studio.active and studio.active.status == "running":
             studio.stop(studio.active.id)
+        studio.mcnp.stop()
         httpd.server_close()
         print("OpenMC Studio stopped.", flush=True)

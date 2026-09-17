@@ -50,6 +50,35 @@ and its geometry check handle both. In the code tabs a tilted plane's position (
 in model.py, the last number on a `P` card) can be edited like any other plane; the
 normal and the `GQ` coefficients are read-only, so change the rotation for those.
 
+## Selecting several parts, and groups
+
+- **Select several**: Ctrl+click (Cmd+click on the Mac) adds or removes a part or source; Shift+click
+  in the Explorer selects everything between the last click and this one. Ctrl+click in the viewport
+  works too. Duplicate, Delete, Move, Rotate and the shared Material work on the whole selection.
+- **Group** (Ctrl+G, or Home/Model ▸ Group) turns the selection into a folder in the Explorer.
+  **Ungroup** is Ctrl+Shift+G. A group's parts always stay next to each other, so the group is one
+  priority block: drag the folder (or Alt+↑/↓) to move the block. Dragging a part out of the block
+  removes it from the group; dropping a part between two members adds it.
+- **Selecting a group**: click its folder, or click one of its parts in the viewport. Click that part
+  again to select just the part. Click the folder's arrow to show or hide its parts.
+- **Pivot**: every group has a pivot point (Properties ▸ Pivot). It starts at the center of the group
+  and moves when you move the group. **Center pivot on parts** puts it back in the middle.
+- **Rotating a group or selection**:
+  - **Pivot: Group** (the default) turns everything as one piece: each part orbits the pivot and
+    turns with it, so the assembly keeps its shape. A selection that isn't a group turns about the
+    center of the selection.
+  - **Pivot: Each** turns every part about its own center; nothing moves.
+  - Properties ▸ **Rotate by** applies a typed turn (degrees about x, then y, then z).
+  - Sources in a group move with it and a beam direction turns too. A box source can only turn in
+    90° steps and a cylinder source only about z; other turns are refused with a message.
+- **In the outputs** groups change nothing in the geometry. model.py lists them as
+  `groups = {"Shield": [cell_source_cavity, ...]}` and model.mcnp as comment cards,
+  `c Group: Shield = cells 2 3 4`. The project file keeps each group and its pivot.
+
+Faces that should touch are written as one shared surface even after rotations leave tiny rounding
+differences (surfaces closer than 1e-7 cm are merged), so rotated assemblies don't create nearly
+coincident surfaces.
+
 ## 3D view
 
 Switch **Slice / 3D** in the viewport toolbar. The 3D view draws the real geometry (same

@@ -47,6 +47,33 @@ def geometry_key(model_xml):
     return h.hexdigest()
 
 
+def add_group_comments(deck_path, groups):
+    """Studio groups (model.py's `groups = {name: [cells]}`) as comment cards right after the title card:
+    c Group: Shield = cells 2 3 4. They name cells for the reader and change nothing in the problem."""
+    if not isinstance(groups, dict) or not groups:
+        return
+    cards = []
+    for name, cells in groups.items():
+        ids = [str(c.id) for c in (cells or []) if hasattr(c, "id")]
+        if not ids:
+            continue
+        label = str(name).encode("ascii", "replace").decode("ascii").replace("=", "-")
+        line = f"c Group: {label} = cells"
+        for i in ids:  # MCNP input lines stay within 80 columns
+            if len(line) + 1 + len(i) > 80:
+                cards.append(line)
+                line = "c     " + i
+            else:
+                line += " " + i
+        cards.append(line)
+    if not cards:
+        return
+    with open(deck_path) as f:
+        lines = f.read().split("\n")
+    with open(deck_path, "w") as f:
+        f.write("\n".join(lines[:1] + cards + lines[1:]))
+
+
 def main():
     project = os.path.abspath(os.path.expanduser(sys.argv[1]))
     sys.path.insert(0, os.path.join(project, "src"))
@@ -107,6 +134,7 @@ def main():
 
                 report["stage"] = "remediate"
                 report.update(remediate(translated, model, runnable))
+                add_group_comments(runnable, ns.get("groups"))
 
                 report["stage"] = "validate"
                 buf = io.StringIO()

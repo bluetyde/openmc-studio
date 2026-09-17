@@ -87,6 +87,13 @@ button,input,select{font:inherit;color:inherit}
 .tname{flex:0 1 auto;min-width:4ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tmeta{flex:0 1 auto;min-width:0;max-width:48%;margin-left:auto;padding-left:8px;color:var(--faint);font:11px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .titem.is-sel .tmeta{color:#a9c6de}
+.titem.in-sel{background:rgba(28,74,112,.42)}
+.titem.tin{padding-left:44px}
+.titem.tgrp .glyph{color:var(--accent)}
+.gtog{flex:none;display:grid;place-items:center;width:14px;height:14px;margin-left:-4px;color:var(--faint)}
+.gtog svg{transition:transform .12s}
+.gtog[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.pbtns{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px}
 .grip{flex:none;width:10px;height:14px;margin-left:-18px;margin-right:-2px;color:var(--faint);opacity:0;cursor:grab;touch-action:none;display:grid;place-items:center}
 .titem:hover .grip,.titem.is-sel .grip{opacity:1}
 .titem[data-kind="part"]{cursor:grab}
@@ -356,6 +363,9 @@ const ICON = {
   rotate:'<path d="M15 9.5A6 6 0 1 1 9 3.5"/><path d="M8.2 1.2L10.6 3.5 8.2 5.8"/>',
   grid:'<path d="M2.5 6.5h13M2.5 11.5h13M6.5 2.5v13M11.5 2.5v13"/>',
   rotstep:'<path d="M2.5 15.5h13M2.5 15.5l9-10"/><path d="M8.5 15.5a6 6 0 0 0-1.8-4.2"/>',
+  group:'<path d="M2.5 5.5a1 1 0 0 1 1-1h3.2l1.5 1.6h6.3a1 1 0 0 1 1 1v7.4a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/>',
+  ungroup:'<rect x="2.5" y="2.5" width="6" height="6" rx="1"/><rect x="9.5" y="9.5" width="6" height="6" rx="1"/>',
+  pivot:'<circle cx="9" cy="9" r="2.2"/><path d="M9 1.8v3.6M9 12.6v3.6M1.8 9h3.6M12.6 9h3.6"/>',
   settings:'<path d="M3 5h12M3 9h12M3 13h12"/><circle cx="6" cy="5" r="1.7" fill="#1b1e22"/><circle cx="12" cy="9" r="1.7" fill="#1b1e22"/><circle cx="8" cy="13" r="1.7" fill="#1b1e22"/>'
 };
 const ic = (n, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
@@ -488,6 +498,7 @@ function sampleModel() {
       part('p4', 'Lead shield', 'sphere', {r:32, material:'m2'}),
       part('p5', 'Floor slab', 'box', {z:-85, sx:200, sy:200, sz:30, material:'m4'})
     ],
+    groups:[],
     sources:[newSource('s1', 'D-T generator')],
     tallies:[
       {id:'t1', name:'Detector spectrum', kind:'cell', cells:['p1'], scores:['flux','(n,p)'], ebins:'0, 5e-7, 0.1, 20',
@@ -503,7 +514,28 @@ const STORE_KEY = 'openmc-studio-v1';
 function normalizeProject(o) { // fill fields added in later versions
   o.settings = {...DEFAULT_SETTINGS, ...o.settings};
   (o.parts || []).forEach(p => ['rx', 'ry', 'rz'].forEach(k => { if (p[k] === undefined || p[k] === null) p[k] = 0; }));
+  o.groups = Array.isArray(o.groups) ? o.groups.filter(g => g && typeof g.id === 'string') : [];
+  o.groups.forEach(g => { ['x', 'y', 'z'].forEach(k => { if (!Number.isFinite(g[k])) g[k] = 0; }); if (typeof g.name !== 'string') g.name = 'Group'; });
+  compactGroups(o);
   return o;
+}
+/* Groups: {id, name, x, y, z} in model.groups, where x/y/z is the pivot the group turns about. Parts and sources
+   join with a `group` field. A group's parts always sit next to each other in the Explorer, so the group is one
+   priority block; this keeps that true after any edit and drops groups nothing belongs to. */
+function compactGroups(m) {
+  if (!Array.isArray(m.groups)) m.groups = [];
+  const known = new Set(m.groups.map(g => g.id));
+  [...(m.parts || []), ...(m.sources || [])].forEach(x => { if (x.group !== undefined && !known.has(x.group)) delete x.group; });
+  const out = [], done = new Set();
+  (m.parts || []).forEach(p => {
+    if (!p.group) { out.push(p); return; }
+    if (done.has(p.group)) return;
+    done.add(p.group);
+    m.parts.forEach(q => { if (q.group === p.group) out.push(q); });
+  });
+  if (m.parts) m.parts.splice(0, m.parts.length, ...out);
+  const used = new Set([...(m.parts || []), ...(m.sources || [])].map(x => x.group).filter(Boolean));
+  m.groups = m.groups.filter(g => used.has(g.id));
 }
 function validProject(o) {
   return !!o && Array.isArray(o.materials) && Array.isArray(o.parts) && Array.isArray(o.sources) &&
@@ -540,6 +572,7 @@ function historyRestore(json, label) {
   const o = normalizeProject(JSON.parse(json));
   S = o;
   if (!getSel()) sel = {kind:'settings'};
+  if (sel.kind === 'multi') sel.items = selItems().map(x => ({kind:x.kind, id:x.o.id}));
   HISTORY.current = JSON.stringify(S); HISTORY.boundary = true;
   renderAll();
   log('info', `${label}. ${HISTORY.undo.length} undo step${HISTORY.undo.length === 1 ? '' : 's'} left, ${HISTORY.redo.length} redo.`);
@@ -659,6 +692,59 @@ function partHalfExtents(p) { // half-widths of the world-axis bounding box
   if (p.shape === 'box') { const hs = [p.sx/2, p.sy/2, p.sz/2]; return [0, 1, 2].map(i => Math.abs(M[i][0]) * hs[0] + Math.abs(M[i][1]) * hs[1] + Math.abs(M[i][2]) * hs[2]); }
   return [0, 1, 2].map(i => Math.abs(M[i][2]) * p.h / 2 + p.r * Math.sqrt(Math.max(0, 1 - M[i][2] * M[i][2])));
 }
+// World-axis bounding box of a part or source, as [lo, hi].
+function itemBounds(kind, o) {
+  if (kind === 'part') { const h = partHalfExtents(o); return [[o.x - h[0], o.y - h[1], o.z - h[2]], [o.x + h[0], o.y + h[1], o.z + h[2]]]; }
+  if (o.space === 'box') return [[o.x0, o.y0, o.z0], [o.x1, o.y1, o.z1]];
+  const r = o.space === 'sphere' || o.space === 'cylinder' ? o.r : 0, hz = o.space === 'cylinder' ? o.h / 2 : r;
+  return [[o.x - r, o.y - r, o.z - hz], [o.x + r, o.y + r, o.z + hz]];
+}
+function itemsCenter(items) { // center of the bounding box around every item
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  items.forEach(({kind, o}) => { const [a, b] = itemBounds(kind, o); for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], a[i]); hi[i] = Math.max(hi[i], b[i]); } });
+  return lo.every(Number.isFinite) ? lo.map((v, i) => (v + hi[i]) / 2) : [0, 0, 0];
+}
+const itemCenter = (kind, o) => kind === 'source' && o.space === 'box' ? [(o.x0 + o.x1) / 2, (o.y0 + o.y1) / 2, (o.z0 + o.z1) / 2] : [o.x, o.y, o.z];
+// Turn items (fresh copies from `before`) by the world rotation Rg. Rigid: every item orbits `pivot` and turns with it,
+// so an assembly keeps its shape. Each part: items turn about their own centers and stay where they are.
+// Returns an error message and changes nothing when a source can't take that rotation.
+function rotateItems(items, before, Rg, pivot, eachInPlace) {
+  const perm = Rg.every(r => r.every(v => Math.abs(v) < 1e-9 || Math.abs(Math.abs(v) - 1) < 1e-9));
+  for (let i = 0; i < items.length; i++) {
+    const {kind} = items[i], s = before[i];
+    if (kind !== 'source') continue;
+    if (s.space === 'box' && !perm) return `${s.name} is a box source, which can only turn in 90° steps`;
+    if (s.space === 'cylinder' && Math.abs(Math.abs(Rg[2][2]) - 1) > 1e-9) return `${s.name} is a cylinder source along z, which can only turn about z`;
+  }
+  const mv = (M, v) => M.map(r => r[0] * v[0] + r[1] * v[1] + r[2] * v[2]);
+  // Turns in steps (45° then 45°) carry rounding from step to step; land back on round numbers (1e-6 cm grid).
+  const nice = v => { const r = Math.round(v * 1e6) / 1e6; return Math.abs(r - v) < 1e-8 ? (r === 0 ? 0 : r) : tidy(v); };
+  items.forEach(({kind, o}, i) => {
+    const s = before[i], c0 = itemCenter(kind, s);
+    const c = eachInPlace ? c0 : mv(Rg, c0.map((v, k) => v - pivot[k])).map((v, k) => nice(pivot[k] + v));
+    Object.assign(o, clone(s));
+    if (kind === 'part') {
+      [o.x, o.y, o.z] = c;
+      if (o.shape !== 'sphere') [o.rx, o.ry, o.rz] = eulerFrom(mat3mul(Rg, rotXYZ(s.rx || 0, s.ry || 0, s.rz || 0)));
+      return;
+    }
+    if (s.space === 'box') {
+      const h = mv(Rg.map(r => r.map(Math.abs)), [(s.x1 - s.x0) / 2, (s.y1 - s.y0) / 2, (s.z1 - s.z0) / 2]);
+      ['x', 'y', 'z'].forEach((a, k) => { o[a + '0'] = nice(c[k] - h[k]); o[a + '1'] = nice(c[k] + h[k]); });
+    } else [o.x, o.y, o.z] = c;
+    if (s.angle === 'mono') [o.u, o.v, o.w] = mv(Rg, [s.u, s.v, s.w]).map(nice);
+  });
+  return null;
+}
+// Shift items (fresh copies from `before`) by d.
+function moveItems(items, before, d) {
+  items.forEach(({kind, o}, i) => {
+    const s = before[i];
+    Object.assign(o, clone(s));
+    if (kind === 'source' && s.space === 'box') ['x', 'y', 'z'].forEach((a, k) => { o[a + '0'] = tidy(s[a + '0'] + d[k]); o[a + '1'] = tidy(s[a + '1'] + d[k]); });
+    else ['x', 'y', 'z'].forEach((a, k) => { o[a] = tidy(s[a] + d[k]); });
+  });
+}
 function partLeavesWorld(p) {
   const [hx, hy, hz] = partHalfExtents(p), R = S.settings.worldR, eps = 1e-9;
   if (S.settings.worldShape === 'box') return Math.abs(p.x) + hx > R + eps || Math.abs(p.y) + hy > R + eps || Math.abs(p.z) + hz > R + eps;
@@ -774,7 +860,7 @@ const pyStr = s => JSON.stringify(String(s));
 const vec3 = (a, b, c) => `(${num(a)}, ${num(b)}, ${num(c)})`;
 
 function makeNamer() {
-  const taken = new Set(['openmc', 'model', 'settings', 'geometry', 'materials', 'tallies', 'world', 'cell_world']);
+  const taken = new Set(['openmc', 'model', 'settings', 'geometry', 'materials', 'tallies', 'world', 'cell_world', 'groups']);
   return (prefix, name) => {
     let base = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'item';
     let id = `${prefix}_${base}`, i = 2;
@@ -787,6 +873,7 @@ function makeNamer() {
 // Builds model.py. With mark=true, every editable number is wrapped as \u0001<ref>\u0002text\u0003 and
 // the result carries a source map (map[ref] says which field the number came from), the owner object
 // of every line, and the surfaces in creation order (OpenMC IDs 1, 2, 3… = MCNP surface numbers).
+const SURF_TOL = 1e-7, SURF_BUCKET = 1e-5; // cm
 function buildScript(probs, mark) {
   const st = S.settings, eig = st.runMode === 'eigenvalue', L = [], OWN = [], MAP = [], SURF = [], name = makeNamer();
   let owner = null;
@@ -833,21 +920,27 @@ function buildScript(probs, mark) {
     '# Parts listed first win where shapes overlap (same order as the Explorer).');
   const R = st.worldR, bc = `boundary_type=${pyStr(st.worldBC)}`, surfs = new Map();
   const tag = v => (v < 0 ? 'm' : '') + num(Math.abs(v)).replace(/\.0$/, '').replace(/[^0-9a-z]/gi, 'p');
-  const surface = (key, prefix, label, ctorFn, desc, isWorld) => {
-    if (!surfs.has(key)) {
-      const v = name(prefix, label);
-      surfs.set(key, v);
-      SURF.push({...desc, owner});
-      const ctor = ctorFn();
-      push(`${v} = ${ctor.slice(0, -1)}${isWorld ? (ctor.endsWith('()') ? bc : ', ' + bc) : ''})`);
+  // Surfaces within SURF_TOL of each other are one surface. Rotations and moves leave rounding noise
+  // (~1e-10 cm), and two faces that should touch must not become two nearly coincident surfaces.
+  const surface = (family, params, prefix, label, ctorFn, desc, isWorld) => {
+    const b = Math.round(params[params.length - 1] / SURF_BUCKET), scale = q => family === 'Q' ? 1 + Math.abs(q) : 1;
+    for (let k = b - 1; k <= b + 1; k++) {
+      const hit = (surfs.get(`${family}|${k}`) || []).find(s => s.params.every((q, i) => Math.abs(q - params[i]) <= SURF_TOL * scale(q)));
+      if (hit) return hit.v;
     }
-    return surfs.get(key);
+    const v = name(prefix, label);
+    const key = `${family}|${b}`;
+    surfs.set(key, [...(surfs.get(key) || []), {params, v}]);
+    SURF.push({...desc, owner});
+    const ctor = ctorFn();
+    push(`${v} = ${ctor.slice(0, -1)}${isWorld ? (ctor.endsWith('()') ? bc : ', ' + bc) : ''})`);
+    return v;
   };
-  const plane = (ax, v, isWorld) => surface(`P${ax}:${num(v)}`, `${ax}plane`, tag(v),
+  const plane = (ax, v, isWorld) => surface(`P${ax}`, [v], `${ax}plane`, tag(v),
     () => `openmc.${ax.toUpperCase()}Plane(${E(num(v), {t:'plane', ax, value:v})})`, {kind:'plane', ax, value:v}, isWorld);
   const sphere = (x, y, z, r, isWorld) => {
     const ref = which => ({t:'sphere', x, y, z, r, which});
-    return surface(`S:${[x, y, z, r].map(num)}`, 'sphere', `r${tag(r)}`,
+    return surface('S', [x, y, z, r], 'sphere', `r${tag(r)}`,
       () => x || y || z
         ? `openmc.Sphere(x0=${E(num(x), ref('x'))}, y0=${E(num(y), ref('y'))}, z0=${E(num(z), ref('z'))}, r=${E(num(r), ref('r'))})`
         : `openmc.Sphere(r=${E(num(r), ref('r'))})`,
@@ -861,7 +954,7 @@ function buildScript(probs, mark) {
     const nn = flip ? n.map(v => -v) : n, dd = flip ? -d : d;
     if (nn[k] === 1 && nn.every((v, i) => i === k || v === 0)) // axis-aligned normal: share the ordinary X/Y/ZPlane
       return `${(sense === '+') !== flip ? '+' : '-'}${plane('xyz'[k], dd)}`;
-    const v = surface(`G:${[...nn, dd].map(num)}`, 'plane', 'tilted',
+    const v = surface('G', [...nn, dd], 'plane', 'tilted',
       () => `openmc.Plane(a=${num(nn[0])}, b=${num(nn[1])}, c=${num(nn[2])}, d=${E(num(dd), {t:'gplane', n:nn, value:dd})})`, {kind:'gplane', n:nn, value:dd});
     return `${(sense === '+') !== flip ? '+' : '-'}${v}`;
   };
@@ -872,7 +965,7 @@ function buildScript(probs, mark) {
     const P = [0, 1, 2].map(i => [0, 1, 2].map(j => (i === j ? 1 : 0) - u[i] * u[j]));
     const Pc = P.map(row => dot3(row, c)), co = [P[0][0], P[1][1], P[2][2], 2 * P[0][1], 2 * P[1][2], 2 * P[0][2], -2 * Pc[0], -2 * Pc[1], -2 * Pc[2], dot3(c, Pc) - r * r];
     const names = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'j', 'k'];
-    return surface(`Q:${co.map(num)}`, 'quadric', 'cyl', () => `openmc.Quadric(${co.map((v, i) => `${names[i]}=${num(v)}`).join(', ')})`, {kind:'quadric'});
+    return surface('Q', co, 'quadric', 'cyl', () => `openmc.Quadric(${co.map((v, i) => `${names[i]}=${num(v)}`).join(', ')})`, {kind:'quadric'});
   };
   owner = {kind:'world'};
   if (st.worldShape === 'sphere') push(`world = -${sphere(0, 0, 0, R, true)}`);
@@ -898,7 +991,7 @@ function buildScript(probs, mark) {
       const ax = fr.axis, [a, b] = {x:['y', 'z'], y:['x', 'z'], z:['x', 'y']}[ax];
       const av = p[a], bv = p[b], rv = p.r;
       const ref = which => ({t:'cyl', ax, a:av, b:bv, r:rv, which});
-      const cyl = surface(`C${ax}:${[av, bv, rv].map(num)}`, `${ax}cyl`, `r${tag(rv)}`,
+      const cyl = surface(`C${ax}`, [av, bv, rv], `${ax}cyl`, `r${tag(rv)}`,
         () => `openmc.${ax.toUpperCase()}Cylinder(${a}0=${E(num(av), ref('a'))}, ${b}0=${E(num(bv), ref('b'))}, r=${E(num(rv), ref('r'))})`,
         {kind:'cyl', ax, a:av, b:bv, r:rv});
       expr = `-${cyl} & ${slab(ax, p[ax] - p.h / 2, p[ax] + p.h / 2)}`;
@@ -921,6 +1014,18 @@ function buildScript(probs, mark) {
   const all = S.parts.map(q => shapeVar[q.id]);
   push(`cell_world = openmc.Cell(name="World", fill=${fill(st.worldFill)}, region=world${all.length ? ` & ~(${all.join(' | ')})` : ''})`);
   owner = null;
+  const groupsUsed = (S.groups || []).filter(g => S.parts.some(p => p.group === g.id) || S.sources.some(s => s.group === g.id));
+  if (groupsUsed.length) {
+    push('', '# Groups from OpenMC Studio: named sets of cells (and sources) that move together in the editor.',
+      '# They don\'t change the geometry; model.mcnp lists them as "c Group:" comment cards.', 'groups = {');
+    groupsUsed.forEach(g => {
+      owner = {kind:'group', id:g.id};
+      const srcs = S.sources.filter(s => s.group === g.id).map(s => s.name);
+      push(`    ${pyStr(g.name)}: [${S.parts.filter(p => p.group === g.id).map(p => cv[p.id]).join(', ')}],  # pivot (${[g.x, g.y, g.z].map(num).join(', ')}) cm${srcs.length ? `; sources: ${srcs.join(', ')}` : ''}`);
+    });
+    owner = null;
+    push('}');
+  }
   push(`geometry = openmc.Geometry([${S.parts.map(p => cv[p.id]).concat('cell_world').join(', ')}])`, '');
 
   push('# ── Sources ────────────────────────────────────────────────');
@@ -1057,10 +1162,55 @@ const LISTS = {material:'materials', part:'parts', source:'sources', tally:'tall
 function getSel() {
   if (sel.kind === 'settings') return S.settings;
   if (sel.kind === 'world') return S.settings;
+  if (sel.kind === 'group') return S.groups.find(g => g.id === sel.id) || null;
+  if (sel.kind === 'multi') return selItems().length ? sel : null;
   const list = S[LISTS[sel.kind]];
   return list ? list.find(x => x.id === sel.id) || null : null;
 }
-function select(kind, id) { sel = {kind, id}; renderProps(); schedule(); }
+const MOVABLE = {part:1, source:1};
+function select(kind, id) { sel = {kind, id, anchor:MOVABLE[kind] ? {kind, id} : undefined}; renderProps(); schedule(); }
+const groupById = id => S.groups.find(g => g.id === id);
+function groupMembers(gid) {
+  return [...S.parts.filter(p => p.group === gid).map(o => ({kind:'part', o})), ...S.sources.filter(s => s.group === gid).map(o => ({kind:'source', o}))];
+}
+// The parts and sources the selection covers (a group's members, a multi-selection, or one part or source).
+function selItems() {
+  if (sel.kind === 'group') return groupMembers(sel.id);
+  if (sel.kind === 'multi') return sel.items.map(({kind, id}) => ({kind, o:S[LISTS[kind]].find(x => x.id === id)})).filter(x => x.o);
+  if (MOVABLE[sel.kind]) { const o = getSel(); return o ? [{kind:sel.kind, o}] : []; }
+  return [];
+}
+const isSelected = (kind, id) => selItems().some(x => x.kind === kind && x.o.id === id);
+const canEditSelection = () => !!LISTS[sel.kind] || ((sel.kind === 'group' || sel.kind === 'multi') && selItems().length > 0);
+function setSelection(items, anchor) {
+  if (!items.length) return select('settings');
+  if (items.length === 1) { select(items[0].kind, items[0].id); if (anchor) sel.anchor = anchor; return; }
+  sel = {kind:'multi', items, anchor}; renderProps(); schedule();
+}
+// Ctrl/Cmd+click: add or remove one part or source (a group header adds or removes all its members).
+function toggleSelect(kind, id) {
+  const now = selItems().map(x => ({kind:x.kind, id:x.o.id}));
+  const add = kind === 'group' ? groupMembers(id).map(x => ({kind:x.kind, id:x.o.id})) : MOVABLE[kind] ? [{kind, id}] : null;
+  if (!add) return select(kind, id);
+  const has = x => now.some(y => y.kind === x.kind && y.id === x.id);
+  const next = add.every(has) ? now.filter(y => !add.some(x => x.kind === y.kind && x.id === y.id)) : [...now, ...add.filter(x => !has(x))];
+  setSelection(next, MOVABLE[kind] ? {kind, id} : sel.anchor);
+}
+// Shift+click: everything between the last clicked item and this one, in Explorer order.
+function rangeSelect(kind, id) {
+  const a = sel.anchor;
+  if (!MOVABLE[kind] || !a || a.kind !== kind) return toggleSelect(kind, id);
+  const list = S[LISTS[kind]], i = list.findIndex(x => x.id === a.id), j = list.findIndex(x => x.id === id);
+  if (i < 0 || j < 0) return select(kind, id);
+  setSelection(list.slice(Math.min(i, j), Math.max(i, j) + 1).map(x => ({kind, id:x.id})), a);
+}
+// A click in the viewport on a grouped part selects its group; a second click on it selects the part itself.
+function selectFromView(kind, id, e) {
+  if (e && (e.ctrlKey || e.metaKey || e.shiftKey)) return toggleSelect(kind, id);
+  const o = S[LISTS[kind]].find(x => x.id === id);
+  if (o && o.group && !(sel.kind === 'group' && sel.id === o.group) && !(sel.kind === kind && sel.id === id)) return select('group', o.group);
+  select(kind, id);
+}
 
 function addPart(shape) {
   const label = {sphere:'Sphere', cylinder:'Cylinder', box:'Box'}[shape];
@@ -1092,6 +1242,18 @@ function addTally(kind) {
   select('tally', t.id);
 }
 function removeSelected() {
+  if (sel.kind === 'group' || sel.kind === 'multi') {
+    const items = selItems(), label = sel.kind === 'group' ? `group ${(groupById(sel.id) || {}).name}` : `${items.length} items`;
+    if (!items.length) return;
+    items.forEach(({kind, o}) => {
+      const list = S[LISTS[kind]];
+      list.splice(list.indexOf(o), 1);
+      if (kind === 'part') S.tallies.forEach(t => { t.cells = t.cells.filter(c => c !== o.id); });
+    });
+    compactGroups(S);
+    log('info', `Deleted ${esc(label)} (${items.map(x => esc(x.o.name)).join(', ')}).`);
+    return select('settings');
+  }
   const list = S[LISTS[sel.kind]];
   if (!list) return;
   const i = list.findIndex(x => x.id === sel.id);
@@ -1102,11 +1264,34 @@ function removeSelected() {
     if (S.settings.worldFill === gone.id) S.settings.worldFill = 'void';
   }
   if (sel.kind === 'part') S.tallies.forEach(t => { t.cells = t.cells.filter(c => c !== gone.id); });
+  compactGroups(S);
   log('info', `Deleted ${gone.name}.`);
   const next = list[Math.min(i, list.length - 1)];
   next ? select(sel.kind, next.id) : select('settings');
 }
 function duplicateSelected() {
+  if (sel.kind === 'group') {
+    const g = groupById(sel.id), members = groupMembers(sel.id);
+    if (!g || !members.length) return;
+    const g2 = {...clone(g), id:newId('g'), name:uniqueName(S.groups, g.name + ' copy')};
+    S.groups.push(g2);
+    const first = S.parts.findIndex(p => p.group === g.id);
+    const copies = members.map(({kind, o}) => ({kind, o:{...clone(o), id:newId(kind[0]), name:uniqueName(S[LISTS[kind]], o.name + ' copy'), group:g2.id}}));
+    S.parts.splice(first < 0 ? 0 : first, 0, ...copies.filter(x => x.kind === 'part').map(x => x.o)); // the copy block sits just above, so it wins overlaps
+    S.sources.push(...copies.filter(x => x.kind === 'source').map(x => x.o));
+    compactGroups(S);
+    log('info', `Duplicated group ${esc(g.name)} as ${esc(g2.name)}.`);
+    return select('group', g2.id);
+  }
+  if (sel.kind === 'multi') {
+    const copies = selItems().map(({kind, o}) => {
+      const list = S[LISTS[kind]], c = {...clone(o), id:newId(kind[0]), name:uniqueName(list, o.name + ' copy')};
+      list.splice(list.indexOf(o), 0, c);
+      return {kind, id:c.id};
+    });
+    compactGroups(S);
+    return setSelection(copies);
+  }
   const list = S[LISTS[sel.kind]];
   const obj = getSel();
   if (!list || !obj) return;
@@ -1114,23 +1299,106 @@ function duplicateSelected() {
   list.splice(list.indexOf(obj), 0, copy); // copy sits just above, so it takes priority like a fresh part
   select(sel.kind, copy.id);
 }
+// Move parts (kept in their order) so they start at gap `slot` of the part list.
+function reorderParts(ids, slot) {
+  const moving = S.parts.filter(p => ids.includes(p.id));
+  const before = S.parts.slice(0, slot).filter(p => ids.includes(p.id)).length;
+  const rest = S.parts.filter(p => !ids.includes(p.id));
+  rest.splice(Math.max(0, Math.min(rest.length, slot - before)), 0, ...moving);
+  S.parts.splice(0, S.parts.length, ...rest);
+}
+// After a part moves in the Explorer: dropped between two members of a group it joins that group;
+// dropped away from its own group's members it leaves the group.
+function settleMembership(p) {
+  const i = S.parts.indexOf(p), prev = S.parts[i - 1], next = S.parts[i + 1];
+  const was = p.group;
+  if (prev && next && prev.group && prev.group === next.group) p.group = prev.group;
+  else if (p.group && !((prev && prev.group === p.group) || (next && next.group === p.group))) delete p.group;
+  if (p.group !== was) log('info', p.group ? `${esc(p.name)} joined group ${esc(groupById(p.group).name)}.` : `${esc(p.name)} left group ${esc((groupById(was) || {}).name || '')}.`);
+  compactGroups(S);
+}
 function moveSelected(dir) {
+  if (sel.kind === 'group') {
+    const idx = S.parts.map((p, i) => p.group === sel.id ? i : -1).filter(i => i >= 0);
+    if (!idx.length) return;
+    const s = idx[0], e = idx[idx.length - 1], n = S.parts.length;
+    const blockStart = gid => S.parts.findIndex(p => p.group === gid), blockEnd = gid => S.parts.length - [...S.parts].reverse().findIndex(p => p.group === gid);
+    let slot;
+    if (dir < 0) { if (s === 0) return; const q = S.parts[s - 1]; slot = q.group ? blockStart(q.group) : s - 1; }
+    else { if (e === n - 1) return; const q = S.parts[e + 1]; slot = q.group ? blockEnd(q.group) : e + 2; }
+    reorderParts(idx.map(i => S.parts[i].id), slot);
+    renderProps(); schedule();
+    return;
+  }
   const list = S[LISTS[sel.kind]], obj = getSel();
   if (!list || !obj) return;
   const i = list.indexOf(obj), j = i + dir;
   if (j < 0 || j >= list.length) return;
   [list[i], list[j]] = [list[j], list[i]];
+  if (sel.kind === 'part') settleMembership(obj);
   renderProps(); schedule();
 }
 function moveTo(kind, id, slot) { // slot = gap index 0..n in the current list
+  if (kind === 'group') {
+    const ids = S.parts.filter(p => p.group === id).map(p => p.id);
+    if (!ids.length || slot === undefined) return;
+    reorderParts(ids, slot);
+    return select('group', id);
+  }
   const list = S[LISTS[kind]], from = list.findIndex(x => x.id === id);
   if (from < 0 || slot === undefined) return;
   const to = slot > from ? slot - 1 : slot;
   if (to === from) return;
   const [it] = list.splice(from, 1);
   list.splice(to, 0, it);
-  if (kind === 'part') log('info', `Moved ${esc(it.name)} to priority ${to + 1} of ${list.length}.`);
+  if (kind === 'part') { settleMembership(it); log('info', `Moved ${esc(it.name)} to priority ${list.indexOf(it) + 1} of ${list.length}.`); }
   select(kind, id);
+}
+function groupSelected() {
+  const items = selItems();
+  if (!items.length) { log('warn', 'Select parts or sources to group: Ctrl+click or Shift+click them in the Explorer.'); return; }
+  const c = itemsCenter(items).map(tidy);
+  const g = {id:newId('g'), name:uniqueName(S.groups, 'Group'), x:c[0], y:c[1], z:c[2]};
+  S.groups.push(g);
+  items.forEach(({o}) => { o.group = g.id; });
+  compactGroups(S);
+  log('ok', `Grouped ${items.map(x => esc(x.o.name)).join(', ')} as ${esc(g.name)}. Its parts stay together in the Explorer and turn about the pivot (${c.map(fmtNum).join(', ')}) cm.`);
+  select('group', g.id);
+}
+function ungroupSelected() {
+  if (sel.kind === 'group') {
+    const g = groupById(sel.id), items = groupMembers(sel.id);
+    items.forEach(({o}) => { delete o.group; });
+    compactGroups(S);
+    log('info', `Ungrouped ${esc(g ? g.name : 'group')}.`);
+    return setSelection(items.map(x => ({kind:x.kind, id:x.o.id})));
+  }
+  const items = selItems().filter(x => x.o.group);
+  if (!items.length) return;
+  items.forEach(({o}) => { delete o.group; });
+  compactGroups(S);
+  log('info', `Removed ${items.map(x => esc(x.o.name)).join(', ')} from ${items.length === 1 ? 'its group' : 'their groups'}.`);
+  renderProps(); schedule();
+}
+// Properties ▸ Rotate by: the same turn a ring drag makes, typed in (degrees about x, then y, then z).
+const ROTATE_BY = {rx:0, ry:0, rz:0};
+function rotateSelectionBy() {
+  const items = selItems();
+  if (!items.length) return;
+  const Rg = rotXYZ(ROTATE_BY.rx || 0, ROTATE_BY.ry || 0, ROTATE_BY.rz || 0), g = sel.kind === 'group' ? groupById(sel.id) : null;
+  const pivot = g ? [g.x, g.y, g.z] : itemsCenter(items), before = items.map(x => clone(x.o));
+  HISTORY.boundary = true;
+  const err = rotateItems(items, before, Rg, pivot, TOOL.pivot === 'each');
+  if (err) { log('warn', `Not rotated: ${esc(err)}.`); return; }
+  log('ok', `Rotated ${esc(g ? g.name : `${items.length} items`)} by (${[ROTATE_BY.rx, ROTATE_BY.ry, ROTATE_BY.rz].map(v => fmtNum(v || 0)).join(', ')})° ${TOOL.pivot === 'each' ? 'each about its own center' : `about the pivot (${pivot.map(fmtNum).join(', ')}) cm`}.`);
+  HISTORY.boundary = true;
+  renderProps(); schedule();
+}
+function recenterPivot() {
+  const g = groupById(sel.id);
+  if (!g) return;
+  [g.x, g.y, g.z] = itemsCenter(groupMembers(g.id)).map(tidy);
+  renderProps(); schedule();
 }
 function newSeed() {
   S.settings.seed = 1 + Math.floor(Math.random() * 2147483646);
@@ -1224,12 +1492,14 @@ const RIBBON = {
   Home:[
     {label:'Tools', btns:toolButtons()},
     {label:'Snap', btns:snapButtons()},
-    {label:'Edit', btns:[['undo', 'Undo', undo, () => HISTORY.undo.length > 0], ['redo', 'Redo', redo, () => HISTORY.redo.length > 0], ['duplicate', 'Duplicate', duplicateSelected, () => !!LISTS[sel.kind]], ['del', 'Delete', removeSelected, () => !!LISTS[sel.kind]]]},
-    {label:'Order', btns:[['up', 'Raise', () => moveSelected(-1), () => !!LISTS[sel.kind]], ['down', 'Lower', () => moveSelected(1), () => !!LISTS[sel.kind]]]},
+    {label:'Edit', btns:[['undo', 'Undo', undo, () => HISTORY.undo.length > 0], ['redo', 'Redo', redo, () => HISTORY.redo.length > 0], ['duplicate', 'Duplicate', duplicateSelected, canEditSelection], ['del', 'Delete', removeSelected, canEditSelection]]},
+    {label:'Group', btns:[['group', 'Group', groupSelected, () => selItems().length > 0], ['ungroup', 'Ungroup', ungroupSelected, () => sel.kind === 'group' || selItems().some(x => x.o.group)], pivotButton()]},
+    {label:'Order', btns:[['up', 'Raise', () => moveSelected(-1), () => !!LISTS[sel.kind] || sel.kind === 'group'], ['down', 'Lower', () => moveSelected(1), () => !!LISTS[sel.kind] || sel.kind === 'group']]},
     {label:'Project', btns:[['reset', 'Demo model', resetSample]]}
   ],
   Model:[
     {label:'Tools', btns:toolButtons()},
+    {label:'Group', btns:[['group', 'Group', groupSelected, () => selItems().length > 0], ['ungroup', 'Ungroup', ungroupSelected, () => sel.kind === 'group' || selItems().some(x => x.o.group)], pivotButton()]},
     {label:'Parts', btns:[['sphere', 'Sphere', () => addPart('sphere')], ['cylinder', 'Cylinder', () => addPart('cylinder')], ['box', 'Box', () => addPart('box')]]},
     {label:'Materials', btns:[['material', 'Material ▾', e => openMatMenu(e.currentTarget)]]},
     {label:'Boundary', btns:[['world', 'World', () => select('world')]]}
@@ -1332,10 +1602,21 @@ function energyMeta(s) {
   return {watt:'Watt', maxwell:'Maxwell', uniform:'uniform'}[s.energy];
 }
 function renderTree() {
-  const item = (kind, id, glyph, label, meta) =>
-    `<button type="button" class="titem${sel.kind === kind && (id === undefined || sel.id === id) ? ' is-sel' : ''}" data-kind="${kind}" data-id="${id || ''}"` +
-    (LISTS[kind] ? ` title="Drag to reorder · Alt+↑/↓">` + `<span class="grip" aria-hidden="true"><svg width="8" height="12" viewBox="0 0 8 12" fill="currentColor"><circle cx="2" cy="2" r="1"/><circle cx="6" cy="2" r="1"/><circle cx="2" cy="6" r="1"/><circle cx="6" cy="6" r="1"/><circle cx="2" cy="10" r="1"/><circle cx="6" cy="10" r="1"/></svg></span>` : '>') +
-    `<span class="glyph">${glyph}</span><span class="tname">${esc(label)}</span><span class="tmeta">${esc(meta || '')}</span></button>`;
+  const selNow = new Set(selItems().map(x => `${x.kind}:${x.o.id}`));
+  const grip = '<span class="grip" aria-hidden="true"><svg width="8" height="12" viewBox="0 0 8 12" fill="currentColor"><circle cx="2" cy="2" r="1"/><circle cx="6" cy="2" r="1"/><circle cx="2" cy="6" r="1"/><circle cx="6" cy="6" r="1"/><circle cx="2" cy="10" r="1"/><circle cx="6" cy="10" r="1"/></svg></span>';
+  const item = (kind, id, glyph, label, meta, extra = {}) => {
+    const on = (sel.kind === kind && (id === undefined || sel.id === id)) || (MOVABLE[kind] && selNow.has(`${kind}:${id}`) && sel.kind === 'multi');
+    const soft = !on && MOVABLE[kind] && selNow.has(`${kind}:${id}`);
+    return `<button type="button" class="titem${on ? ' is-sel' : ''}${soft ? ' in-sel' : ''}${extra.cls || ''}" data-kind="${kind}" data-id="${id || ''}"${extra.attrs || ''}${extra.hidden ? ' hidden' : ''}` +
+      (LISTS[kind] || kind === 'group' ? ` title="Drag to reorder · Alt+↑/↓ · Ctrl+click or Shift+click to select several">${grip}` : '>') +
+      `${extra.pre || ''}<span class="glyph">${glyph}</span><span class="tname">${esc(label)}</span><span class="tmeta">${esc(meta || '')}</span></button>`;
+  };
+  const gcaret = gid => `<span class="gtog" data-gtoggle="${gid}" role="button" aria-label="Show or hide the group's parts" aria-expanded="${!collapsed['g:' + gid]}"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" fill="none"/></svg></span>`;
+  const groupRow = g => {
+    const n = groupMembers(g.id).length, idx = S.parts.map((p, i) => p.group === g.id ? i : -1).filter(i => i >= 0);
+    return item('group', g.id, ic('group', 14), g.name, `${n} item${n === 1 ? '' : 's'}`,
+      {cls:' tgrp', pre:gcaret(g.id), attrs:idx.length ? ` data-idx="${idx[0]}" data-end="${idx[idx.length - 1] + 1}"` : ''});
+  };
   const group = (key, title, count, addTitle, body) => {
     const open = !collapsed[key];
     return `<div class="tgroup"><div class="thead"><button type="button" class="ttoggle" data-group="${key}" aria-expanded="${open}">` +
@@ -1348,11 +1629,17 @@ function renderTree() {
   let h = '';
   h += group('materials', 'Materials', S.materials.length, 'Add material',
     S.materials.map(m => item('material', m.id, `<span class="swatch" style="background:${esc(m.color)}"></span>`, m.name, `${m.density < 0.01 ? m.density.toExponential(1) : m.density}`)).join('') || empty('No materials yet'));
+  const shown = new Set();
+  const partRows = S.parts.map((p, i) => {
+    let row = '';
+    if (p.group && !shown.has(p.group) && groupById(p.group)) { shown.add(p.group); row += groupRow(groupById(p.group)); }
+    return row + item('part', p.id, ic(p.shape, 14), p.name, matName(p.material),
+      {attrs:` data-idx="${i}"`, cls:p.group ? ' tin' : '', hidden:p.group && collapsed['g:' + p.group]});
+  }).join('') + S.groups.filter(g => !shown.has(g.id)).map(groupRow).join(''); // groups of sources only
   h += group('parts', 'Geometry', S.parts.length + 1, 'Add sphere',
-    S.parts.map(p => item('part', p.id, ic(p.shape, 14), p.name, matName(p.material))).join('') +
-    item('world', undefined, ic('world', 14), 'World boundary', `${S.settings.worldShape} ${S.settings.worldR}`));
+    partRows + item('world', undefined, ic('world', 14), 'World boundary', `${S.settings.worldShape} ${S.settings.worldR}`));
   h += group('sources', 'Sources', S.sources.length, 'Add neutron source',
-    S.sources.map(s => item('source', s.id, ic('source', 14), s.name, energyMeta(s))).join('') || empty('Add a source to run'));
+    S.sources.map((s, i) => item('source', s.id, ic('source', 14), s.name, s.group && groupById(s.group) ? `in ${groupById(s.group).name}` : energyMeta(s), {attrs:` data-idx="${i}"`})).join('') || empty('Add a source to run'));
   h += group('tallies', 'Tallies', S.tallies.length, 'Add cell tally',
     S.tallies.map(t => item('tally', t.id, ic(t.kind === 'mesh' ? 'meshTally' : 'cellTally', 14), t.name, t.kind === 'mesh' ? `${t.nx}×${t.ny}×${t.nz}` : `${t.cells.length} cell${t.cells.length === 1 ? '' : 's'}`)).join('') || empty('No tallies'));
   h += group('settings', 'Run', 1, null, item('settings', undefined, ic('settings', 14), 'Settings', `seed ${S.settings.seed}`));
@@ -1378,6 +1665,33 @@ function specFor(kind, o) {
         note(o.ref ? `Source: <code>${esc(o.ref)}</code>${o.ref.startsWith('PNNL') ? ' — PNNL-15870 Rev. 1.' : ''}` : 'Custom material.')
       ]}
     ];
+  }
+  if (kind === 'group' || kind === 'multi') {
+    const items = selItems(), parts = items.filter(x => x.kind === 'part'), nS = items.length - parts.length;
+    const each = TOOL.pivot === 'each';
+    const shared = {};
+    Object.defineProperty(shared, 'material', {
+      get: () => { const m = [...new Set(parts.map(x => x.o.material))]; return m.length === 1 ? m[0] : ''; },
+      set: v => { if (v) parts.forEach(x => { x.o.material = v; }); }
+    });
+    const what = `${parts.length} part${parts.length === 1 ? '' : 's'}${nS ? ` and ${nS} source${nS === 1 ? '' : 's'}` : ''}`;
+    const secs = [];
+    if (kind === 'group') secs.push({title:'Group', fields:[F('text', 'name', 'Name'),
+      note(`${what}: ${items.map(x => esc(x.o.name)).join(', ')}. The parts stay together in the Explorer as one priority block. Click a part in the Explorer to edit it on its own.`),
+      {type:'buttons', btns:[['Select parts', () => setSelection(items.map(x => ({kind:x.kind, id:x.o.id})))], ['Ungroup', ungroupSelected], ['Duplicate', duplicateSelected], ['Delete', removeSelected]]}]});
+    else secs.push({title:'Selection', fields:[
+      note(`${what}: ${items.map(x => esc(x.o.name)).join(', ')}. Ctrl+click adds or removes one; Shift+click selects a range.`),
+      {type:'buttons', btns:[['Group (Ctrl+G)', groupSelected], ['Duplicate', duplicateSelected], ['Delete', removeSelected]]}]});
+    if (parts.length) secs[0].fields.splice(kind === 'group' ? 1 : 0, 0, F('select', 'material', 'Material', {obj:shared,
+      options:() => [...(shared.material ? [] : [['', '— mixed —']]), ...matOptions()], hint:'Sets the material of every selected part.'}));
+    secs.push({title:'Transform', fields:[
+      ...(kind === 'group' ? [F('vec', null, 'Pivot', {keys:['x', 'y', 'z'], unit:'cm', hint:'Where the group turns about. Editing it doesn\'t move the parts; Move moves the pivot with them.'}),
+        {type:'buttons', btns:[['Center pivot on parts', recenterPivot]]}] : []),
+      F('vec', null, 'Rotate by', {keys:['rx', 'ry', 'rz'], unit:'°', obj:ROTATE_BY,
+        hint:each ? 'Each part turns about its own center (Pivot: Each part on the Home or Model tab).' : `Everything turns together about ${kind === 'group' ? 'the pivot' : 'the selection\'s center'}: parts orbit it and turn with it. Degrees about x, then y, then z.`}),
+      {type:'buttons', btns:[['Apply rotation', rotateSelectionBy]]}
+    ]});
+    return secs;
   }
   if (kind === 'part') {
     const i = S.parts.indexOf(o), cyl = () => o.shape === 'cylinder', sph = () => o.shape === 'sphere', box = () => o.shape === 'box';
@@ -1474,6 +1788,14 @@ function fieldEl(f, obj) {
   row.dataset.label = (f.label || '').toLowerCase();
   if (f.type === 'note') { row.classList.add('note'); row.innerHTML = `<p>${f.html}</p>`; return row; }
   if (f.type === 'mcnp') { row.classList.add('note'); row.dataset.label = 'mcnp'; row.innerHTML = `<pre class="mcnp">${esc(f.text())}</pre>`; return row; }
+  if (f.type === 'buttons') {
+    row.classList.add('note'); row.dataset.label = f.btns.map(b => b[0]).join(' ').toLowerCase();
+    const wrap = document.createElement('div'); wrap.className = 'pbtns';
+    f.btns.forEach(([label, fn]) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'tbtn'; b.textContent = label; b.addEventListener('click', fn); wrap.appendChild(b); });
+    row.appendChild(wrap);
+    return row;
+  }
+  if (f.obj) obj = f.obj;
   const fid = `f-${sel.kind}-${f.key || f.keys.join('')}`;
   const lab = document.createElement('label');
   lab.textContent = f.label; lab.htmlFor = fid;
@@ -1555,6 +1877,7 @@ function fieldEl(f, obj) {
   return row;
 }
 function renderProps() {
+  if (sel.kind === 'multi' && selItems().length === 1) { const only = selItems()[0]; sel = {kind:only.kind, id:only.o.id, anchor:sel.anchor}; }
   const box = $('#props'), obj = getSel();
   if (!obj) { box.innerHTML = '<p class="empty">Select something in the Explorer or click the viewport.</p>'; $('#propsTitle').textContent = ''; return; }
   box.innerHTML = '';
@@ -1573,7 +1896,7 @@ function refreshMcnp() {
 }
 function renderPropsTitle() {
   const obj = getSel();
-  const t = sel.kind === 'world' ? 'World boundary' : sel.kind === 'settings' ? 'Settings' : obj ? obj.name : '';
+  const t = sel.kind === 'world' ? 'World boundary' : sel.kind === 'settings' ? 'Settings' : sel.kind === 'multi' ? `${selItems().length} selected` : obj ? obj.name : '';
   $('#propsTitle').textContent = t ? `— ${t}` : '';
 }
 function applyPropFilter() {
@@ -1730,12 +2053,13 @@ $('#runs').addEventListener('click', async e => {
 const CODEVIEW = {py:null, mcnp:null};   // {owners, refs} for what's on screen
 const EDITING = {pane:null};             // an inline edit is open in this pane
 const LIVE = {seq:0, client:Math.random().toString(36).slice(2) + Date.now().toString(36), sentScript:null, ctx:null, report:null, timer:null, loggedFor:null};
-const same = (a, b) => num(a) === num(b);
+const same = (a, b) => num(a) === num(b) || Math.abs(a - b) <= SURF_TOL;
 const fmtNum = x => String(+(+x).toPrecision(12));
 
 function ownerMatchesSel(o) {
   if (!o) return false;
   if (o.kind === 'world' || o.kind === 'settings') return sel.kind === o.kind;
+  if (MOVABLE[o.kind]) return isSelected(o.kind, o.id);
   return sel.kind === o.kind && sel.id === o.id;
 }
 function selectOwner(o) {
@@ -1745,7 +2069,7 @@ function selectOwner(o) {
 }
 
 // Apply an edited number to the model field it came from. Returns an error message, or null.
-const nearly = (a, b) => same(a, b) || Math.abs(a - b) <= 1e-9 * (1 + Math.abs(a));
+const nearly = (a, b) => same(a, b) || Math.abs(a - b) <= SURF_TOL * (1 + Math.abs(a));
 // Move every part face lying on the plane n·x = old to n·x = nw (the opposite face stays put).
 // Works for axis-aligned planes (n = unit axis) and tilted planes alike.
 function movePlaneFaces(n, old, nw) {
@@ -1909,7 +2233,7 @@ function mcnpContext(P, built) {
   }
   const tallyScores = [];
   S.tallies.forEach(t => t.scores.forEach(() => tallyScores.push(t)));
-  return {surfaces: built.surfaces, materials: built.materials, parts: S.parts.slice(), source: src, dists, tallyScores};
+  return {surfaces: built.surfaces, materials: built.materials, parts: S.parts.slice(), source: src, dists, tallyScores, groups: (S.groups || []).map(g => ({id:g.id, name:g.name}))};
 }
 function annotateMcnp(deck, ctx, editable) {
   const owners = [], refs = [];
@@ -1921,7 +2245,12 @@ function annotateMcnp(deck, ctx, editable) {
   const html = deck.replace(/\n$/, '').split('\n').map((line, li) => {
     const trimmed = line.trim();
     if (!trimmed) { block++; card = null; owners.push(null); return '<span class="ln"> </span>'; }
-    if (li === 0 || /^(\$|c(\s|$))/i.test(trimmed)) { owners.push(null); return `<span class="ln"><span class="t-mcom">${esc(line)}</span></span>`; }
+    if (li === 0 || /^(\$|c(\s|$))/i.test(trimmed)) {
+      const gm = trimmed.match(/^c Group: (.*) = cells /i), g = gm && (ctx.groups || []).find(x => x.name === gm[1]);
+      const own = g ? {kind:'group', id:g.id} : null;
+      owners.push(own);
+      return `<span class="ln${ownerMatchesSel(own) ? ' sel' : ''}" data-line="${li}"><span class="t-mcom">${esc(line)}</span></span>`;
+    }
     const cont = /^\s/.test(line);
     const parts = line.split(/(\s+)/);
     let out = '';
@@ -2308,7 +2637,7 @@ $('#replayBtn').addEventListener('click', () => {
 /* ───────── Transform tools: Select / Move / Scale / Rotate (Roblox Studio style) ─────────
    Handles are built in screen space through a view adapter, so the 2D slice and the 3D view share the math:
    adapter = {toScreen([x,y,z]) → [px,py], axesShown:[world axis indices], ringAxes:[…], pxPerCm, rotSign(axis)}. */
-const TOOL = {mode:'select', moveSnap:1, rotSnap:15};
+const TOOL = {mode:'select', moveSnap:1, rotSnap:15, pivot:'group'}; // pivot: 'group' (rigid) or 'each' (every part in place)
 try { Object.assign(TOOL, JSON.parse(localStorage.getItem('openmc-studio-tool') || '{}')); } catch (e) {}
 const saveTool = () => { try { localStorage.setItem('openmc-studio-tool', JSON.stringify(TOOL)); } catch (e) {} };
 const MOVE_STEPS = [0, 0.1, 0.5, 1, 5, 10], ROT_STEPS = [0, 1, 5, 15, 45, 90];
@@ -2339,6 +2668,12 @@ function eulerFrom(R) { // inverse of rotXYZ (R = Rz·Ry·Rx), degrees
 
 function toolTarget() {
   if (TOOL.mode === 'select') return null;
+  if (sel.kind === 'group' || sel.kind === 'multi') {
+    const items = selItems();
+    if (!items.length || TOOL.mode === 'scale') return null;
+    const group = sel.kind === 'group' ? groupById(sel.id) : null;
+    return {kind:'set', items, group, o:{name:group ? group.name : `${items.length} items`}};
+  }
   const o = getSel();
   if (!o) return null;
   if (sel.kind === 'part') return {kind:'part', o};
@@ -2346,6 +2681,7 @@ function toolTarget() {
   return null;
 }
 function targetCenter(t) {
+  if (t.kind === 'set') return t.group ? [t.group.x, t.group.y, t.group.z] : itemsCenter(t.items);
   const o = t.o;
   return t.kind === 'source' && o.space === 'box' ? [(o.x0 + o.x1) / 2, (o.y0 + o.y1) / 2, (o.z0 + o.z1) / 2] : [o.x, o.y, o.z];
 }
@@ -2380,7 +2716,7 @@ function buildHandles(t, A) {
         [1, -1].forEach(s => H.push({type:'size', key:`size${k}${s}`, k, sign:s, d, w, x0:sx, y0:sy, x:sx + s * w[0] * half, y:sy + s * w[1] * half, color:AXCOL[main]}));
       });
     }
-  } else if (TOOL.mode === 'rotate' && t.kind === 'part' && t.o.shape !== 'sphere') {
+  } else if (TOOL.mode === 'rotate' && (t.kind === 'set' || (t.kind === 'part' && t.o.shape !== 'sphere'))) {
     A.ringAxes.forEach(i => H.push({type:'ring', key:`ring${i}`, axis:i, x:sx, y:sy, R:A.ringRadius ? A.ringRadius(i) : 64, color:AXCOL[i],
       ellipse:A.ringEllipse ? A.ringEllipse(i, c) : null}));
   }
@@ -2405,13 +2741,43 @@ function hitHandle(H, mx, my) {
 
 function beginTransform(h, t, mx, my, adapter) {
   HISTORY.boundary = true;
-  const a0 = h.type === 'ring' && adapter.ringAngle ? adapter.ringAngle(h.axis, targetCenter(t), mx, my) : null;
-  TDRAG = {h, t, mx, my, s0:clone(t.o), adapter, acc:0, last:a0 !== null ? a0 : Math.atan2(my - h.y, mx - h.x), plane:a0 !== null, readout:''};
+  const c0 = targetCenter(t); // fixed for the whole drag: a set's bounding box changes shape as it turns
+  const a0 = h.type === 'ring' && adapter.ringAngle ? adapter.ringAngle(h.axis, c0, mx, my) : null;
+  const s0 = t.kind === 'set' ? {items:t.items.map(x => clone(x.o)), group:t.group ? clone(t.group) : null} : clone(t.o);
+  TDRAG = {h, t, mx, my, s0, c0, adapter, acc:0, last:a0 !== null ? a0 : Math.atan2(my - h.y, mx - h.x), plane:a0 !== null, readout:''};
+}
+function restoreSet(t, s0) {
+  t.items.forEach((x, i) => Object.assign(x.o, clone(s0.items[i])));
+  if (t.group && s0.group) Object.assign(t.group, s0.group);
 }
 function applyTransform(mx, my) {
   const {h, t, s0, adapter:A} = TDRAG, o = t.o, dx = mx - TDRAG.mx, dy = my - TDRAG.my, step = TOOL.moveSnap;
   const along = w => (dx * w[0] + dy * w[1]) / (w[0] * w[0] + w[1] * w[1]); // cm moved along the direction imaged as w
   const minSize = step > 0 ? step : 0.01;
+  if (t.kind === 'set') {
+    const c0 = TDRAG.c0, who = t.group ? t.group.name : `${t.items.length} items`;
+    if (h.type === 'move' || h.type === 'free') {
+      const delta = [0, 0, 0];
+      if (h.type === 'move') delta[h.axis] = along(h.w);
+      else A.axesShown.forEach(i => { const e = A.toScreen([1, 0, 0].map((v, k) => k === i ? 1 : 0)), z = A.toScreen([0, 0, 0]); delta[i] = along([e[0] - z[0], e[1] - z[1]]); });
+      const d = delta.map((v, i) => v ? snapStep(c0[i] + v, step) - c0[i] : 0); // the pivot snaps; the parts keep their spacing
+      moveItems(t.items, s0.items, d);
+      if (t.group) ['x', 'y', 'z'].forEach((a, i) => { t.group[a] = tidy(s0.group[a] + d[i]); });
+      TDRAG.readout = h.type === 'move' ? `${who}: ${'xyz'[h.axis]} ${d[h.axis] >= 0 ? '+' : ''}${fmtNum(d[h.axis])} cm` : `${who}: (${d.map(fmtNum).join(', ')}) cm`;
+    } else if (h.type === 'ring') {
+      const a = TDRAG.plane ? A.ringAngle(h.axis, c0, mx, my) : Math.atan2(my - h.y, mx - h.x);
+      if (a === null) return;
+      let da = a - TDRAG.last;
+      if (da > Math.PI) da -= 2 * Math.PI; else if (da < -Math.PI) da += 2 * Math.PI;
+      TDRAG.acc += da; TDRAG.last = a;
+      const deg = snapStep(TDRAG.plane ? TDRAG.acc / DEG : -TDRAG.acc / DEG * A.rotSign(h.axis), TOOL.rotSnap);
+      const each = TOOL.pivot === 'each';
+      const err = rotateItems(t.items, s0.items, axisRotation(h.axis, deg), c0, each);
+      if (err) { restoreSet(t, s0); TDRAG.readout = `Can't turn: ${err}`; return; }
+      TDRAG.readout = `${who}: ${fmtNum(deg)}° about ${'xyz'[h.axis]}${each ? ', each part in place' : ''}`;
+    }
+    return;
+  }
   if (h.type === 'move' || h.type === 'free') {
     const delta = [0, 0, 0];
     if (h.type === 'move') delta[h.axis] = along(h.w);
@@ -2443,7 +2809,7 @@ function applyTransform(mx, my) {
   } else if (h.type === 'ring') {
     // 3D: angle of the point where the mouse ray meets the ring's plane (right-handed about the axis).
     // 2D: angle around the ring's center on screen.
-    const a = TDRAG.plane ? A.ringAngle(h.axis, targetCenter(t), mx, my) : Math.atan2(my - h.y, mx - h.x);
+    const a = TDRAG.plane ? A.ringAngle(h.axis, TDRAG.c0, mx, my) : Math.atan2(my - h.y, mx - h.x);
     if (a === null) return; // ray parallel to the ring's plane: keep the last angle
     let da = a - TDRAG.last;
     if (da > Math.PI) da -= 2 * Math.PI; else if (da < -Math.PI) da += 2 * Math.PI;
@@ -2458,7 +2824,14 @@ function applyTransform(mx, my) {
 function endTransform(cancel) {
   if (!TDRAG) return;
   const {t, s0} = TDRAG;
-  if (cancel) Object.assign(t.o, s0);
+  if (t.kind === 'set') {
+    if (cancel || /^Can't/.test(TDRAG.readout)) restoreSet(t, s0);
+    else if (JSON.stringify(t.items.map(x => x.o)) !== JSON.stringify(s0.items)) {
+      const verb = {move:'Moved', free:'Moved', ring:'Rotated'}[TDRAG.h.type];
+      log('ok', `${verb} ${esc(TDRAG.readout)}.`);
+    }
+    if (!cancel && /^Can't/.test(TDRAG.readout)) log('warn', `${esc(TDRAG.readout)}.`);
+  } else if (cancel) Object.assign(t.o, s0);
   else if (JSON.stringify(t.o) !== JSON.stringify(s0)) {
     const verb = {move:'Moved', free:'Moved', radius:'Resized', size:'Resized', ring:'Rotated'}[TDRAG.h.type];
     log('ok', `${verb} ${esc(t.o.name)}: ${esc(TDRAG.readout)}.`);
@@ -2525,6 +2898,12 @@ function toolButtons() {
           ['move', 'Move', () => setTool('move'), null, () => TOOL.mode === 'move'],
           ['scale', 'Scale', () => setTool('scale'), null, () => TOOL.mode === 'scale'],
           ['rotate', 'Rotate', () => setTool('rotate'), null, () => TOOL.mode === 'rotate']];
+}
+function pivotButton() {
+  return ['pivot', () => TOOL.pivot === 'each' ? 'Pivot: Each' : 'Pivot: Group', () => {
+    TOOL.pivot = TOOL.pivot === 'each' ? 'group' : 'each'; saveTool(); renderRibbon(); renderProps(); schedule();
+    log('info', TOOL.pivot === 'each' ? 'Rotating a group or selection now turns each part about its own center; positions stay put.' : 'Rotating a group or selection now turns it as one piece about its pivot: parts orbit the pivot and turn with it.');
+  }, null, () => TOOL.pivot === 'each'];
 }
 function snapButtons() {
   return [['grid', () => `Move ${snapLabel(TOOL.moveSnap, 'cm')}`, () => cycleSnap('moveSnap', MOVE_STEPS, 'cm')],
@@ -2683,7 +3062,7 @@ void main() {
       float lam = 0.30 + 0.70 * max(dot(n, -rd), 0.0);
       vec3 col = ownCol.rgb * lam;
       if (fromCut > 0.5) col = ownCol.rgb * 0.82 + 0.05;              // flat, slightly lifted cross-section
-      if (abs(float(own) - uSel) < 0.5) col = mix(col, vec3(0.32, 0.72, 1.0), 0.28);
+      if (ownCol.a > 1.5) col = mix(col, vec3(0.32, 0.72, 1.0), 0.28); // selected
       gl_FragColor = vec4(col, 1.0);
       return;
     }
@@ -2781,11 +3160,12 @@ function draw3D() {
   gl.uniform3fv(L.uC, flat(parts, q => q.c));
   gl.uniform3fv(L.uM0, flat(parts, q => q.cols[0])); gl.uniform3fv(L.uM1, flat(parts, q => q.cols[1])); gl.uniform3fv(L.uM2, flat(parts, q => q.cols[2]));
   gl.uniform3fv(L.uD, flat(parts, q => q.dims));
+  const selParts = new Set(selItems().filter(x => x.kind === 'part').map(x => x.o.id));
   gl.uniform4fv(L.uCol, new Float32Array(Array.from({length:V3.maxp}, (_, i) => {
     const p = S.parts[i], m = p && matById(p.material);
     if (!m) return [0, 0, 0, 0];
     const [r, g, b] = hexRgb(m.color);
-    return [r / 255, g / 255, b / 255, 1];
+    return [r / 255, g / 255, b / 255, selParts.has(p.id) ? 2 : 1]; // alpha 2 = selected
   }).flat()));
   gl.uniform1fv(L.uType, new Float32Array(Array.from({length:V3.maxp}, (_, i) => i < parts.length ? parts[i].type : 0)));
   gl.uniform1f(L.uWorldR, S.settings.worldR || 100);
@@ -2796,7 +3176,7 @@ function draw3D() {
   gl.uniform1f(L.uCutAt, view.slice);
   const cutAx = {xy:2, xz:1, yz:0}[view.plane], cutSide = B.pos[cutAx] >= view.slice ? 1 : -1;
   gl.uniform1f(L.uCutSide, cutSide);
-  gl.uniform1f(L.uSel, sel.kind === 'part' ? S.parts.findIndex(p => p.id === sel.id) : -1);
+  gl.uniform1f(L.uSel, -1);
   // Depth pass, only when something is drawn over the geometry: distance to the visible surface per pixel.
   const res = LOCAL.results;
   const meshT = res && $('#showMesh').checked ? res.tallies.filter(x => x.kind === 'mesh')[+($('#meshPick').value || 0)] : null;
@@ -2837,7 +3217,7 @@ function draw3D() {
   S.sources.forEach(s => {
     const c = s.space === 'box' ? [(s.x0 + s.x1) / 2, (s.y0 + s.y1) / 2, (s.z0 + s.z1) / 2] : [s.x, s.y, s.z], q = P(c);
     if (!fin(q[0])) return;
-    const col = s.particle === 'photon' ? '255,214,102' : '82,184,255', on = sel.kind === 'source' && sel.id === s.id;
+    const col = s.particle === 'photon' ? '255,214,102' : '82,184,255', on = isSelected('source', s.id);
     const g = ctx.createRadialGradient(q[0], q[1], 0, q[0], q[1], 16);
     g.addColorStop(0, `rgba(${col},.6)`); g.addColorStop(1, `rgba(${col},0)`);
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(q[0], q[1], 16, 0, 2 * Math.PI); ctx.fill();
@@ -3031,6 +3411,15 @@ function pick3(px, py) {
 }
 
 function focusSelection() {
+  if (sel.kind === 'group' || sel.kind === 'multi') {
+    const items = selItems();
+    if (items.length) {
+      const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+      items.forEach(({kind, o}) => { const [a, b] = itemBounds(kind, o); for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], a[i]); hi[i] = Math.max(hi[i], b[i]); } });
+      CAM.target = lo.map((v, i) => (v + hi[i]) / 2); CAM.dist = Math.max(20, Math.max(...hi.map((v, i) => v - lo[i])) / 2 * 4.5);
+      return schedule();
+    }
+  }
   const t = sel.kind === 'part' || sel.kind === 'source' ? getSel() : null;
   if (!t) { CAM.target = [0, 0, 0]; CAM.dist = (S.settings.worldR || 100) * 3.2; }
   else {
@@ -3081,14 +3470,15 @@ function drawViewport() {
       idx[j * W + i] = cellIndexAt(x, y, z);
     }
   }
-  const selPart = sel.kind === 'part' ? S.parts.findIndex(p => p.id === sel.id) : sel.kind === 'world' ? -1 : -99;
+  const selIdx = new Set(selItems().filter(x => x.kind === 'part').map(x => S.parts.indexOf(x.o)));
+  if (sel.kind === 'world') selIdx.add(-1);
   for (let k = 0; k < W * H; k++) {
     const c = idx[k], col = c >= 0 ? colors[c] : c === -1 ? worldRgb : outside, o = k * 4;
     let r = col[0], g = col[1], b = col[2];
     const i = k % W, right = i < W - 1 ? idx[k + 1] : c, down = k + W < W * H ? idx[k + W] : c;
     const left = i > 0 ? idx[k - 1] : c, up = k >= W ? idx[k - W] : c;
     const edge = c !== right || c !== down;
-    if (selPart !== -99 && c === selPart && (c !== right || c !== down || c !== left || c !== up)) { r = 82; g = 184; b = 255; ex[o] = r; ex[o + 1] = g; ex[o + 2] = b; ex[o + 3] = 255; }
+    if (selIdx.has(c) && (c !== right || c !== down || c !== left || c !== up)) { r = 82; g = 184; b = 255; ex[o] = r; ex[o + 1] = g; ex[o + 2] = b; ex[o + 3] = 255; }
     else if (edge) { r = r * .35 + 235 * .65; g = g * .35 + 238 * .65; b = b * .35 + 242 * .65; ex[o] = 225; ex[o + 1] = 230; ex[o + 2] = 236; ex[o + 3] = 170; }
     else if (c >= 0 && S.parts[c].material === 'void') { const stripe = ((i + Math.floor(k / W)) % 7) === 0; if (stripe) { r += 14; g += 16; b += 18; } }
     px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = 255;
@@ -3123,7 +3513,7 @@ function drawViewport() {
   // sources
   vpGeom.sources = [];
   S.sources.forEach(s => {
-    const on = sel.kind === 'source' && sel.id === s.id;
+    const on = isSelected('source', s.id);
     const c = s.space === 'box' ? [(s.x0 + s.x1) / 2, (s.y0 + s.y1) / 2, (s.z0 + s.z1) / 2] : [s.x, s.y, s.z];
     if (!c.every(fin)) return;
     const [u, v, d] = project(...c), X = U(u), Y = V(v);
@@ -3251,6 +3641,7 @@ function schedule() {
   const flush = () => {
     if (!pending) return;
     pending = false;
+    compactGroups(S);
     const P = problems();
     renderTree(); renderTitle(P); renderProblems(P); renderLegend(); renderPropsTitle();
     if (sel.kind === 'source' || sel.kind === 'tally') refreshMcnp();
@@ -3263,7 +3654,7 @@ function schedule() {
   setTimeout(flush, 60);
 }
 function renderRibbonState() {
-  const key = `${sel.kind}|${!!downloads}|${HISTORY.undo.length > 0}|${HISTORY.redo.length > 0}`;
+  const key = `${sel.kind}|${sel.id}|${selItems().length}|${!!downloads}|${HISTORY.undo.length > 0}|${HISTORY.redo.length > 0}`;
   if (renderRibbonState.last !== key) { renderRibbonState.last = key; renderRibbon(); }
 }
 function renderAll() { renderRibbon(); renderProps(); syncViewControls(); schedule(); }
@@ -3313,12 +3704,18 @@ $('#tree').addEventListener('click', e => {
   if (t) { collapsed[t.dataset.group] = !collapsed[t.dataset.group]; renderTree(); return; }
   const a = e.target.closest('[data-add]');
   if (a) { ({materials:() => addMaterial('custom'), parts:() => addPart('sphere'), sources:() => addSource('neutron'), tallies:() => addTally('cell')})[a.dataset.add](); return; }
+  const gt = e.target.closest('[data-gtoggle]');
+  if (gt) { const k = 'g:' + gt.dataset.gtoggle; collapsed[k] = !collapsed[k]; renderTree(); return; }
   const it = e.target.closest('.titem');
-  if (it) select(it.dataset.kind, it.dataset.id || undefined);
+  if (!it) return;
+  const kind = it.dataset.kind, id = it.dataset.id || undefined;
+  if ((e.ctrlKey || e.metaKey) && (MOVABLE[kind] || kind === 'group')) toggleSelect(kind, id);
+  else if (e.shiftKey && MOVABLE[kind]) rangeSelect(kind, id);
+  else select(kind, id);
 });
 $('#tree').addEventListener('pointerdown', e => {
   const it = e.target.closest('.titem');
-  if (!it || e.button !== 0 || !LISTS[it.dataset.kind]) return;
+  if (!it || e.button !== 0 || !(LISTS[it.dataset.kind] || it.dataset.kind === 'group') || e.shiftKey || e.ctrlKey || e.metaKey) return;
   if (e.pointerType !== 'mouse' && !e.target.closest('.grip')) return; // touch drags from the grip so the tree still scrolls
   drag = {it, kind:it.dataset.kind, id:it.dataset.id, x:e.clientX, y:e.clientY, active:false, slot:undefined};
 });
@@ -3332,14 +3729,22 @@ function dragMove(e) {
   }
   e.preventDefault();
   const tree = $('#tree'), tr = tree.getBoundingClientRect();
-  const items = [...tree.querySelectorAll(`.titem[data-kind="${drag.kind}"]`)];
+  // parts and groups share one order (slot = gap in S.parts); other lists use their own rows
+  const byParts = drag.kind === 'part' || drag.kind === 'group';
+  const items = [...tree.querySelectorAll(byParts ? '.titem[data-kind="part"], .titem[data-kind="group"][data-idx]' : `.titem[data-kind="${drag.kind}"]`)].filter(x => !x.hidden);
   if (!items.length) return;
-  let slot = items.length;
-  for (let i = 0; i < items.length; i++) { const r = items[i].getBoundingClientRect(); if (e.clientY < r.top + r.height / 2) { slot = i; break; } }
+  const listLen = byParts ? S.parts.length : items.length;
+  let slot = listLen, refEl = items[items.length - 1], above = false;
+  for (let i = 0; i < items.length; i++) {
+    const r = items[i].getBoundingClientRect();
+    if (e.clientY < r.top + r.height / 2) { slot = byParts ? +items[i].dataset.idx : i; refEl = items[i]; above = true; break; }
+  }
+  // dropping a part or group inside another group's block isn't allowed for a group; snap to the block's edge
+  if (drag.kind === 'group' && slot < listLen) { const q = S.parts[slot], prev = S.parts[slot - 1]; if (q && prev && q.group && q.group === prev.group && q.group !== drag.id) { slot = S.parts.findIndex(p => p.group === q.group); refEl = tree.querySelector(`.titem[data-kind="group"][data-id="${q.group}"]`) || refEl; above = true; } }
   drag.slot = slot;
-  const ref = items[Math.min(slot, items.length - 1)].getBoundingClientRect();
+  const ref = refEl.getBoundingClientRect();
   const line = $('#dropLine');
-  line.style.top = ((slot < items.length ? ref.top : ref.bottom) - 1) + 'px';
+  line.style.top = ((above ? ref.top : ref.bottom) - 1) + 'px';
   line.style.left = (tr.left + 22) + 'px';
   line.style.width = (tr.width - 30) + 'px';
   line.hidden = false;
@@ -3431,9 +3836,9 @@ $('#vp3o').addEventListener('pointerup', e => {
   if (d.moved || e.button !== 0) return;
   const [mx, my] = v3Local(e);
   const src = (V3.sources || []).find(q => Math.hypot(q.X - mx, q.Y - my) < 10);
-  if (src) { select('source', src.id); return; }
+  if (src) { selectFromView('source', src.id, e); return; }
   const i = pick3(mx, my);
-  if (i >= 0) select('part', S.parts[i].id);
+  if (i >= 0) selectFromView('part', S.parts[i].id, e);
 });
 $('#vp3o').addEventListener('pointercancel', () => { if (V3.drag && V3.drag.mode === 'tool') endTransform(true); V3.drag = null; });
 $('#vp3o').addEventListener('wheel', e => { e.preventDefault(); CAM.dist *= e.deltaY < 0 ? 1 / 1.12 : 1.12; schedule(); }, {passive:false});
@@ -3466,23 +3871,24 @@ $('#vp').addEventListener('click', e => {
   if (suppressVpClick) { suppressVpClick = false; return; }
   const h = hitAt(e); if (!h) return;
   if (pickTrack(e)) return;
-  if (h.src) select('source', h.src.id);
-  else if (h.cell >= 0) select('part', S.parts[h.cell].id);
+  if (h.src) selectFromView('source', h.src.id, e);
+  else if (h.cell >= 0) selectFromView('part', S.parts[h.cell].id, e);
   else if (h.cell === -1) select('world');
 });
 document.addEventListener('keydown', e => {
   if (e.target.closest('input, select, textarea')) return;
-  if ((e.key === 'Delete') && LISTS[sel.kind]) { e.preventDefault(); removeSelected(); }
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && LISTS[sel.kind]) { e.preventDefault(); duplicateSelected(); }
+  if ((e.key === 'Delete') && canEditSelection()) { e.preventDefault(); removeSelected(); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && canEditSelection()) { e.preventDefault(); duplicateSelected(); }
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'g') { e.preventDefault(); e.shiftKey ? ungroupSelected() : groupSelected(); }
   if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
   if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
-  if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && LISTS[sel.kind]) {
+  if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && (LISTS[sel.kind] || sel.kind === 'group')) {
     e.preventDefault();
     const fromTree = !!e.target.closest('#tree');
     moveSelected(e.key === 'ArrowUp' ? -1 : 1);
     if (fromTree) setTimeout(() => { const b = document.querySelector('#tree .titem.is-sel'); if (b) b.focus(); }, 90);
   }
-  if (e.key === 'Escape') { $('#matMenu').hidden = true; if (drag) dragEnd({type:'pointercancel'}); if (TDRAG) endTransform(true); }
+  if (e.key === 'Escape') { $('#matMenu').hidden = true; if (drag) dragEnd({type:'pointercancel'}); if (TDRAG) endTransform(true); else if (sel.kind === 'multi') select('settings'); }
   if (!e.ctrlKey && !e.metaKey && !e.altKey && ['1', '2', '3', '4'].includes(e.key)) setTool(['select', 'move', 'scale', 'rotate'][+e.key - 1]);
   if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'f' && view.mode === '3d') focusSelection();
 });

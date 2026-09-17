@@ -50,6 +50,17 @@ button,input,select{font:inherit;color:inherit}
 .menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;border-radius:4px;padding:5px 8px;cursor:pointer}
 .menu button:hover,.menu button:focus-visible{background:var(--sel)}
 .menu small{margin-left:auto;color:var(--muted);font:11px var(--mono)}
+.snappop{min-width:0;width:264px;padding:10px 12px;box-sizing:border-box}
+.snappop h4{margin:0 0 8px;font:600 11px var(--ui);color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.snaprow{display:flex;align-items:center;gap:6px}
+.snaprow input[type=number]{width:96px}
+.snaprow .unit{margin-right:auto}
+.snapchips{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
+.snappop button.chip{display:inline-block;width:auto;padding:2px 8px;border:1px solid var(--line2);border-radius:99px;background:none;font:11.5px var(--mono);color:var(--text);cursor:pointer}
+.snappop button.chip:hover{border-color:var(--faint)}
+.snappop button.chip[aria-pressed="true"]{background:var(--sel);border-color:rgba(82,184,255,.55)}
+.snaperr{min-height:15px;margin:2px 0 0;color:var(--err);font-size:11.5px}
+.snaphint{margin:6px 0 0;color:var(--faint);font-size:11.5px}
 #matMenu{width:340px;max-width:calc(100vw - 16px);box-sizing:border-box;padding-top:0}
 .msearch{position:sticky;top:0;z-index:1;margin:0 -4px 4px;padding:6px;background:var(--panel2);border-bottom:1px solid var(--line)}
 .menu button.mcat{font-weight:500;color:var(--text)}
@@ -94,6 +105,10 @@ button,input,select{font:inherit;color:inherit}
 .gtog svg{transition:transform .12s}
 .gtog[aria-expanded="false"] svg{transform:rotate(-90deg)}
 .pbtns{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px}
+.tbtn.matpick{width:100%;min-width:0;box-sizing:border-box;justify-content:flex-start;padding:3px 6px}
+.matpick .mname{flex:1;min-width:0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.matpick .caret{color:var(--muted)}
+.titem .tmeta.unused{color:var(--warn)}
 .grip{flex:none;width:10px;height:14px;margin-left:-18px;margin-right:-2px;color:var(--faint);opacity:0;cursor:grab;touch-action:none;display:grid;place-items:center}
 .titem:hover .grip,.titem.is-sel .grip{opacity:1}
 .titem[data-kind="part"]{cursor:grab}
@@ -266,7 +281,7 @@ input[type=checkbox]{accent-color:var(--accent)}
           <div class="seg" role="group" aria-label="Slice plane">
             <button type="button" data-plane="xy">XY</button><button type="button" data-plane="xz">XZ</button><button type="button" data-plane="yz">YZ</button>
           </div>
-          <label class="tlabel" for="sliceIn"><span id="sliceAxis">at y =</span> <input type="number" id="sliceIn" step="any" value="0"> cm</label>
+          <label class="tlabel" for="sliceIn"><span id="sliceAxis">at y =</span> <input type="number" id="sliceIn" step="any" value="0"> <span id="sliceUnit">cm</span></label>
           <div class="seg" role="group" aria-label="Zoom">
             <button type="button" id="zoomOut" aria-label="Zoom out">−</button><button type="button" id="zoomFit">Fit</button><button type="button" id="zoomIn" aria-label="Zoom in">+</button>
           </div>
@@ -289,7 +304,7 @@ input[type=checkbox]{accent-color:var(--accent)}
 
       <div class="doc" id="docCode" hidden>
         <div class="toolbar">
-          <span class="tlabel">Updates as you edit. Click a <span class="ed">dotted number</span> to change it, or a line to select its part.</span>
+          <span class="tlabel">Updates as you edit. Click a <span class="ed">dotted number</span> to change it, or a line to select its part.<span class="unitsnote" hidden> Numbers here are always cm and g/cm³.</span></span>
           <span class="spacer"></span>
           <button class="tbtn" type="button" id="copyCode">Copy</button>
           <button class="tbtn" type="button" id="saveCode">Save model.py</button>
@@ -300,6 +315,7 @@ input[type=checkbox]{accent-color:var(--accent)}
       <div class="doc" id="docMcnp" hidden>
         <div class="toolbar">
           <span class="mstatus" id="mcnpStatus">MCNP input from openmc-mcnp-project, validated as you edit.</span>
+          <span class="tlabel unitsnote" hidden>cm, g/cm³</span>
           <span class="spacer"></span>
           <button class="tbtn" type="button" id="copyMcnp">Copy</button>
           <button class="tbtn" type="button" id="saveMcnp">Save .mcnp</button>
@@ -333,6 +349,7 @@ input[type=checkbox]{accent-color:var(--accent)}
 </div>
 <input type="file" id="openFile" accept=".json,application/json" hidden>
 <div class="menu" id="matMenu" hidden role="menu"></div>
+<div class="menu snappop" id="snapPop" hidden role="dialog" aria-labelledby="snapTitle"></div>
 <div class="dropline" id="dropLine" hidden></div>
 <script>
 "use strict";
@@ -473,8 +490,13 @@ function uniqueName(list, base) {
 function presetMat(key, id) {
   const m = clone(PRESETS.find(x => x.key === key) || LIBRARY.items.find(x => x.key === key));
   delete m.key; delete m.num; delete m.category; m.id = id;
+  m.lib = key; m.pristine = matSig(m);
   return m;
 }
+// A material copied from the library remembers how it looked when added (`pristine`). While it still looks
+// like that and nothing uses it, Studio removes it; an edited or Custom material is kept even when unused.
+function matSig(m) { return JSON.stringify([m.name, m.color, m.density, m.frac, m.comps, m.sab]); }
+const isUntouchedCopy = m => !!m.pristine && m.pristine === matSig(m);
 
 const DEFAULT_SETTINGS = {name:'Shielding demo', runMode:'fixed source', particles:10000, batches:10, inactive:0, seed:12345,
   maxTracks:50, track:'', photon:false, worldShape:'box', worldR:100, worldBC:'vacuum', worldFill:'void'};
@@ -591,6 +613,31 @@ function redo() {
 let S = loadStored() || sampleModel();
 let sel = {kind:'source', id:(S.sources[0] || {}).id};
 const view = {plane:'xz', slice:0, zoom:1, mode:'slice'};
+
+/* ───────── Display units ─────────
+   The model is always stored in cm and g/cm³, and model.py / model.mcnp are always written that way (OpenMC and MCNP
+   need them). The Units setting only changes what Properties, the viewport, readouts and snap steps show and accept. */
+const UNITS = {system:'metric'};
+try { if (localStorage.getItem('openmc-studio-units') === 'imperial') UNITS.system = 'imperial'; } catch (e) {}
+const imperial = () => UNITS.system === 'imperial';
+const UNITS_FIELD = {};
+Object.defineProperty(UNITS_FIELD, 'system', {get: () => UNITS.system, set: v => setUnits(v)});
+const DIMS = {
+  len:  () => imperial() ? {unit:'in', f:1 / 2.54} : {unit:'cm', f:1},
+  dens: () => imperial() ? {unit:'lb/ft³', f:62.42796057614461} : {unit:'g/cm³', f:1}   // 1 g/cm³ = 62.428 lb/ft³
+};
+const toShown = (v, dim = 'len') => Number.isFinite(v) ? +(v * DIMS[dim]().f).toPrecision(10) : v;
+const fromShown = (v, dim = 'len') => v / DIMS[dim]().f;
+const lenUnit = () => DIMS.len().unit;
+const showLen = v => `${fmtNum(toShown(v))} ${lenUnit()}`;
+const showVec = c => `(${c.map(v => fmtNum(toShown(v))).join(', ')}) ${lenUnit()}`;
+const shortLen = v => Number.isFinite(v) ? String(+(+toShown(v)).toPrecision(4)) : '?';
+function setUnits(system) {
+  UNITS.system = system === 'imperial' ? 'imperial' : 'metric';
+  try { localStorage.setItem('openmc-studio-units', UNITS.system); } catch (e) {}
+  log('info', imperial() ? 'Showing inches and lb/ft³. The model, model.py and model.mcnp stay in cm and g/cm³.' : 'Showing cm and g/cm³.');
+  renderRibbon(); renderProps(); syncViewControls(); schedule();
+}
 
 /* ───────── Parsing helpers ───────── */
 const fin = Number.isFinite;
@@ -1219,11 +1266,40 @@ function addPart(shape) {
   log('info', `Added ${p.name} at the top of Geometry, so it wins where it overlaps other parts.`);
   select('part', p.id);
 }
-function addMaterial(key) {
+function createMaterial(key) {
   const m = key === 'custom' ? {...clone(CUSTOM_MAT), id:newId('m')} : presetMat(key, newId('m'));
   m.name = uniqueName(S.materials, m.name);
+  if (m.pristine) m.pristine = matSig(m);
   S.materials.push(m);
-  if (sel.kind === 'part') { const p = getSel(); if (p && p.material === 'void') { p.material = m.id; log('info', `Added ${m.name} and assigned it to ${p.name}.`); } }
+  return m;
+}
+// The project material for a menu pick: an untouched copy of that library entry if there is one, otherwise a new copy.
+function materialForKey(key) {
+  const have = key !== 'custom' && S.materials.find(m => m.lib === key && isUntouchedCopy(m));
+  return have ? {m:have, added:false} : {m:createMaterial(key), added:true};
+}
+function pruneMaterials() {
+  const used = new Set(S.parts.map(p => p.material).concat(S.settings.worldFill));
+  const gone = S.materials.filter(m => !used.has(m.id) && isUntouchedCopy(m) && !(sel.kind === 'material' && sel.id === m.id));
+  if (!gone.length) return;
+  S.materials.splice(0, S.materials.length, ...S.materials.filter(m => !gone.includes(m)));
+  const one = gone.length === 1;
+  log('info', `Removed ${gone.map(m => esc(m.name)).join(', ')}: nothing uses ${one ? 'it' : 'them'} and ${one ? 'it wasn\'t' : 'they weren\'t'} edited. Ctrl+Z brings ${one ? 'it' : 'them'} back.`);
+}
+// Ribbon ▸ Material: with parts selected, give them the material (like the Properties picker) and keep them selected;
+// otherwise add it and open it in Properties. An untouched library copy nothing uses is removed once you select something else.
+function addMaterial(key) {
+  const parts = selItems().filter(x => x.kind === 'part');
+  if (parts.length) {
+    HISTORY.boundary = true;
+    const {m, added} = materialForKey(key);
+    parts.forEach(x => { x.o.material = m.id; });
+    log('info', `${added ? 'Added' : 'Used'} ${esc(m.name)} for ${parts.map(x => esc(x.o.name)).join(', ')}.`);
+    renderProps(); schedule();
+    return;
+  }
+  const m = createMaterial(key);
+  log('info', `Added ${esc(m.name)}.${m.pristine ? ' Give it to a part, or edit it, to keep it in the project.' : ''}`);
   select('material', m.id);
 }
 function addSource(particle) {
@@ -1362,7 +1438,7 @@ function groupSelected() {
   S.groups.push(g);
   items.forEach(({o}) => { o.group = g.id; });
   compactGroups(S);
-  log('ok', `Grouped ${items.map(x => esc(x.o.name)).join(', ')} as ${esc(g.name)}. Its parts stay together in the Explorer and turn about the pivot (${c.map(fmtNum).join(', ')}) cm.`);
+  log('ok', `Grouped ${items.map(x => esc(x.o.name)).join(', ')} as ${esc(g.name)}. Its parts stay together in the Explorer and turn about the pivot ${showVec(c)}.`);
   select('group', g.id);
 }
 function ungroupSelected() {
@@ -1390,7 +1466,7 @@ function rotateSelectionBy() {
   HISTORY.boundary = true;
   const err = rotateItems(items, before, Rg, pivot, TOOL.pivot === 'each');
   if (err) { log('warn', `Not rotated: ${esc(err)}.`); return; }
-  log('ok', `Rotated ${esc(g ? g.name : `${items.length} items`)} by (${[ROTATE_BY.rx, ROTATE_BY.ry, ROTATE_BY.rz].map(v => fmtNum(v || 0)).join(', ')})° ${TOOL.pivot === 'each' ? 'each about its own center' : `about the pivot (${pivot.map(fmtNum).join(', ')}) cm`}.`);
+  log('ok', `Rotated ${esc(g ? g.name : `${items.length} items`)} by (${[ROTATE_BY.rx, ROTATE_BY.ry, ROTATE_BY.rz].map(v => fmtNum(v || 0)).join(', ')})° ${TOOL.pivot === 'each' ? 'each about its own center' : `about the pivot ${showVec(pivot)}`}.`);
   HISTORY.boundary = true;
   renderProps(); schedule();
 }
@@ -1538,9 +1614,11 @@ function renderRibbon() {
   });
 }
 const MATMENU = {open:new Set()}; // expanded categories while not searching
-function openMatMenu(btn) {
+function openMatMenu(btn, assign) {
   const menu = $('#matMenu');
-  if (!menu.hidden) { menu.hidden = true; return; }
+  if (!menu.hidden) { const same = MATMENU.btn === btn || (MATMENU.btn && btn.id && MATMENU.btn.id === btn.id); menu.hidden = true; if (same) return; }
+  $('#snapPop').hidden = true;
+  MATMENU.assign = assign || null;
   menu.innerHTML = '<div class="msearch"><input type="text" id="matSearch" placeholder="Search materials" aria-label="Search materials" spellcheck="false" autocomplete="off"></div><div id="matList"></div>';
   const r = btn.getBoundingClientRect();
   menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 348)) + 'px';
@@ -1551,7 +1629,7 @@ function openMatMenu(btn) {
   const q = $('#matSearch');
   q.addEventListener('input', () => { renderMatList(q.value); menu.scrollTop = 0; });
   q.addEventListener('keydown', e => {
-    const first = $('#matList [data-key]');
+    const first = $('#matList [data-key], #matList [data-mat]');
     if (e.key === 'Escape') { e.preventDefault(); menu.hidden = true; btn.focus(); }
     else if (e.key === 'Enter' && first && q.value.trim()) { e.preventDefault(); first.click(); }
     else if (e.key === 'ArrowDown') { const b = $('#matList button'); if (b) { e.preventDefault(); b.focus(); } }
@@ -1560,14 +1638,22 @@ function openMatMenu(btn) {
 }
 function renderMatList(query) {
   const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
-  const dens = d => d < 0.01 ? d.toExponential(2) : +d.toFixed(3);
-  const item = p => `<button type="button" role="menuitem" class="mitem" data-key="${esc(p.key)}" title="${esc(p.ref)}${p.category ? ' · ' + esc(p.category) : ''}"><span class="swatch" style="background:${esc(p.color)}"></span><span class="mname">${esc(p.name)}</span><small>${dens(p.density)} g/cm³</small></button>`;
+  const dens = d => { const v = toShown(d, 'dens'); return `${v < 0.01 ? v.toExponential(2) : +(+v).toPrecision(4)} ${DIMS.dens().unit}`; };
+  const item = p => `<button type="button" role="menuitem" class="mitem" data-key="${esc(p.key)}" title="${esc(p.ref)}${p.category ? ' · ' + esc(p.category) : ''}"><span class="swatch" style="background:${esc(p.color)}"></span><span class="mname">${esc(p.name)}</span><small>${dens(p.density)}</small></button>`;
   const custom = '<button type="button" role="menuitem" data-key="custom"><span class="swatch" style="background:#b48ead"></span>Custom material</button>';
   const lib = LIBRARY.items, cats = MAT_CATEGORIES.map(c => c[0]);
   const note = LIBRARY.state === 'ok' ? `${lib.length} materials from materials.jsonl (PNNL-15870 Rev. 1)${LIBRARY.skipped.length ? `, ${LIBRARY.skipped.length} unreadable line${LIBRARY.skipped.length === 1 ? '' : 's'} skipped` : ''}.`
     : LIBRARY.state === 'loading' ? 'Loading the material library…'
     : 'No material library (materials.jsonl) here, so only the common materials are listed.';
   let h = '';
+  if (MATMENU.assign) { // Properties: what's already in the project comes first, then everything that can be added
+    const dens2 = m => fin(m.density) ? dens(m.density) : '';
+    const mine = S.materials.filter(m => !words.length || words.every(w => m.name.toLowerCase().includes(w)));
+    const voidHit = !words.length || words.every(w => 'void empty'.includes(w));
+    h += '<h4>In this project</h4>' + (voidHit ? '<button type="button" role="menuitem" class="mitem" data-mat="void"><span class="swatch" style="background:#22272d"></span><span class="mname">Void (empty)</span></button>' : '') +
+      mine.map(m => `<button type="button" role="menuitem" class="mitem" data-mat="${esc(m.id)}"><span class="swatch" style="background:${esc(m.color)}"></span><span class="mname">${esc(m.name)}</span><small>${dens2(m)}</small></button>`).join('');
+    if (!voidHit && !mine.length) h = '';
+  }
   if (!words.length) {
     h += '<h4>Common</h4>' + PRESETS.map(item).join('');
     cats.forEach(c => {
@@ -1592,11 +1678,13 @@ function renderMatList(query) {
 /* ───────── Explorer tree ───────── */
 const collapsed = {};
 function shapeMeta(p) {
-  if (isRotated(p)) return `${p.shape === 'box' ? `${p.sx}×${p.sy}×${p.sz}` : `r ${p.r} · ${p.h}`} ↻`;
-  if (p.shape === 'sphere') return `r ${p.r}`;
-  if (p.shape === 'cylinder') return `r ${p.r} · ${p.h}`;
-  return `${p.sx}×${p.sy}×${p.sz}`;
+  const l = shortLen;
+  if (isRotated(p)) return `${p.shape === 'box' ? `${l(p.sx)}×${l(p.sy)}×${l(p.sz)}` : `r ${l(p.r)} · ${l(p.h)}`} ↻`;
+  if (p.shape === 'sphere') return `r ${l(p.r)}`;
+  if (p.shape === 'cylinder') return `r ${l(p.r)} · ${l(p.h)}`;
+  return `${l(p.sx)}×${l(p.sy)}×${l(p.sz)}`;
 }
+const shortDens = d => { const v = toShown(d, 'dens'); return v < 0.01 ? v.toExponential(1) : String(+(+v).toPrecision(4)); };
 function energyMeta(s) {
   if (s.energy === 'lines') { const ls = parseLines(s.lines).out; return ls.length === 1 ? `${ls[0].e} MeV` : `${ls.length} lines`; }
   return {watt:'Watt', maxwell:'Maxwell', uniform:'uniform'}[s.energy];
@@ -1609,7 +1697,7 @@ function renderTree() {
     const soft = !on && MOVABLE[kind] && selNow.has(`${kind}:${id}`);
     return `<button type="button" class="titem${on ? ' is-sel' : ''}${soft ? ' in-sel' : ''}${extra.cls || ''}" data-kind="${kind}" data-id="${id || ''}"${extra.attrs || ''}${extra.hidden ? ' hidden' : ''}` +
       (LISTS[kind] || kind === 'group' ? ` title="Drag to reorder · Alt+↑/↓ · Ctrl+click or Shift+click to select several">${grip}` : '>') +
-      `${extra.pre || ''}<span class="glyph">${glyph}</span><span class="tname">${esc(label)}</span><span class="tmeta">${esc(meta || '')}</span></button>`;
+      `${extra.pre || ''}<span class="glyph">${glyph}</span><span class="tname">${esc(label)}</span><span class="tmeta${meta === 'unused' && kind === 'material' ? ' unused' : ''}">${esc(meta || '')}</span></button>`;
   };
   const gcaret = gid => `<span class="gtog" data-gtoggle="${gid}" role="button" aria-label="Show or hide the group's parts" aria-expanded="${!collapsed['g:' + gid]}"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" fill="none"/></svg></span>`;
   const groupRow = g => {
@@ -1626,9 +1714,11 @@ function renderTree() {
   };
   const empty = t => `<div class="tempty">${t}</div>`;
   const matName = id => id === 'void' ? 'void' : ((matById(id) || {}).name || 'missing');
+  const usedMats = new Set(S.parts.map(p => p.material).concat(S.settings.worldFill));
   let h = '';
   h += group('materials', 'Materials', S.materials.length, 'Add material',
-    S.materials.map(m => item('material', m.id, `<span class="swatch" style="background:${esc(m.color)}"></span>`, m.name, `${m.density < 0.01 ? m.density.toExponential(1) : m.density}`)).join('') || empty('No materials yet'));
+    S.materials.map(m => item('material', m.id, `<span class="swatch" style="background:${esc(m.color)}"></span>`, m.name,
+      usedMats.has(m.id) ? shortDens(m.density) : 'unused')).join('') || empty('Pick a material for a part in Properties'));
   const shown = new Set();
   const partRows = S.parts.map((p, i) => {
     let row = '';
@@ -1637,7 +1727,7 @@ function renderTree() {
       {attrs:` data-idx="${i}"`, cls:p.group ? ' tin' : '', hidden:p.group && collapsed['g:' + p.group]});
   }).join('') + S.groups.filter(g => !shown.has(g.id)).map(groupRow).join(''); // groups of sources only
   h += group('parts', 'Geometry', S.parts.length + 1, 'Add sphere',
-    partRows + item('world', undefined, ic('world', 14), 'World boundary', `${S.settings.worldShape} ${S.settings.worldR}`));
+    partRows + item('world', undefined, ic('world', 14), 'World boundary', `${S.settings.worldShape} ${shortLen(S.settings.worldR)}`));
   h += group('sources', 'Sources', S.sources.length, 'Add neutron source',
     S.sources.map((s, i) => item('source', s.id, ic('source', 14), s.name, s.group && groupById(s.group) ? `in ${groupById(s.group).name}` : energyMeta(s), {attrs:` data-idx="${i}"`})).join('') || empty('Add a source to run'));
   h += group('tallies', 'Tallies', S.tallies.length, 'Add cell tally',
@@ -1649,7 +1739,6 @@ function renderTree() {
 /* ───────── Properties ───────── */
 const F = (type, key, label, o = {}) => ({type, key, label, ...o});
 const note = html => ({type:'note', html});
-const matOptions = () => [['void', 'Void (empty)'], ...S.materials.map(m => [m.id, m.name])];
 function specFor(kind, o) {
   const st = S.settings;
   if (kind === 'material') {
@@ -1682,8 +1771,8 @@ function specFor(kind, o) {
     else secs.push({title:'Selection', fields:[
       note(`${what}: ${items.map(x => esc(x.o.name)).join(', ')}. Ctrl+click adds or removes one; Shift+click selects a range.`),
       {type:'buttons', btns:[['Group (Ctrl+G)', groupSelected], ['Duplicate', duplicateSelected], ['Delete', removeSelected]]}]});
-    if (parts.length) secs[0].fields.splice(kind === 'group' ? 1 : 0, 0, F('select', 'material', 'Material', {obj:shared,
-      options:() => [...(shared.material ? [] : [['', '— mixed —']]), ...matOptions()], hint:'Sets the material of every selected part.'}));
+    if (parts.length) secs[0].fields.splice(kind === 'group' ? 1 : 0, 0, F('material', 'material', 'Material', {obj:shared,
+      hint:'Sets the material of every selected part. Pick from the project or the library; library materials are added as needed.'}));
     secs.push({title:'Transform', fields:[
       ...(kind === 'group' ? [F('vec', null, 'Pivot', {keys:['x', 'y', 'z'], unit:'cm', hint:'Where the group turns about. Editing it doesn\'t move the parts; Move moves the pivot with them.'}),
         {type:'buttons', btns:[['Center pivot on parts', recenterPivot]]}] : []),
@@ -1696,7 +1785,7 @@ function specFor(kind, o) {
   if (kind === 'part') {
     const i = S.parts.indexOf(o), cyl = () => o.shape === 'cylinder', sph = () => o.shape === 'sphere', box = () => o.shape === 'box';
     return [
-      {title:'Part', fields:[F('text', 'name', 'Name'), F('select', 'material', 'Material', {options:matOptions}),
+      {title:'Part', fields:[F('text', 'name', 'Name'), F('material', 'material', 'Material'),
         note(`Priority ${i + 1} of ${S.parts.length}. Parts higher in the Explorer win where shapes overlap. Drag it in the Explorer, or press Alt+↑/↓. MCNP cell ${i + 1}.`)]},
       {title:'Shape', fields:[
         F('select', 'shape', 'Shape', {options:() => [['sphere', 'Sphere (SPH)'], ['cylinder', 'Cylinder (RCC)'], ['box', 'Box (RPP)']]}),
@@ -1760,7 +1849,7 @@ function specFor(kind, o) {
       F('select', 'worldShape', 'Shape', {options:() => [['box', 'Cube'], ['sphere', 'Sphere']]}),
       F('num', 'worldR', st.worldShape === 'box' ? 'Half-width' : 'Radius', {unit:'cm'}),
       F('select', 'worldBC', 'Boundary', {options:() => [['vacuum', 'Vacuum (particles escape)'], ['reflective', 'Reflective']]}),
-      F('select', 'worldFill', 'Fill', {options:matOptions, hint:'What fills the world outside every part. Vacuum boundary is the IMP:N=0 graveyard in MCNP.'})
+      F('material', 'worldFill', 'Fill', {hint:'What fills the world outside every part. Vacuum boundary is the IMP:N=0 graveyard in MCNP.'})
     ]}];
   }
   return [
@@ -1774,6 +1863,10 @@ function specFor(kind, o) {
     ]},
     {title:'Random numbers', fields:[
       F('seed', 'seed', 'Seed', {hint:'Same seed and same model give the same particle histories, so a run can be repeated exactly.'})
+    ]},
+    {title:'Display', fields:[
+      F('select', 'system', 'Units', {obj:UNITS_FIELD, options:() => [['metric', 'Metric (cm, g/cm³)'], ['imperial', 'Imperial (in, lb/ft³)']],
+        hint:'Only what Studio shows and accepts changes. The model, model.py and model.mcnp stay in cm and g/cm³. Saved in this browser.'})
     ]},
     {title:'Particle tracks', fields:[
       F('int', 'maxTracks', 'Write first', {unit:'tracks', hint:'Saves the paths of N particles to tracks.h5. Which N depends on thread timing, but each one is still reproducible. 0 turns it off.'}),
@@ -1801,15 +1894,21 @@ function fieldEl(f, obj) {
   lab.textContent = f.label; lab.htmlFor = fid;
   const ctl = document.createElement('div'); ctl.className = 'pctl';
   row.append(lab, ctl);
+  const dim = f.unit === 'cm' ? 'len' : f.unit === 'g/cm³' ? 'dens' : null; // shown in the chosen units, stored in cm, g/cm³
+  const shownUnit = dim ? DIMS[dim]().unit : f.unit;
   const numIn = (id, key, isInt, aria) => {
     const i = document.createElement('input');
     i.type = 'number'; i.id = id; i.step = isInt ? '1' : 'any';
-    i.value = fin(obj[key]) ? obj[key] : '';
+    i.value = fin(obj[key]) ? (dim ? toShown(obj[key], dim) : obj[key]) : '';
     if (aria) i.setAttribute('aria-label', aria);
-    i.addEventListener('input', () => { obj[key] = i.value === '' ? NaN : (isInt ? Number(i.value) : parseFloat(i.value)); schedule(); });
+    i.addEventListener('input', () => {
+      const v = i.value === '' ? NaN : (isInt ? Number(i.value) : parseFloat(i.value));
+      obj[key] = dim && fin(v) ? fromShown(v, dim) : v;
+      schedule();
+    });
     return i;
   };
-  const unit = () => { if (f.unit) ctl.insertAdjacentHTML('beforeend', `<span class="unit">${f.unit}</span>`); };
+  const unit = () => { if (shownUnit) ctl.insertAdjacentHTML('beforeend', `<span class="unit">${shownUnit}</span>`); };
   switch (f.type) {
     case 'text': {
       const i = document.createElement('input');
@@ -1828,8 +1927,22 @@ function fieldEl(f, obj) {
         w.appendChild(numIn(j ? `${fid}-${j}` : fid, k, f.int, `${f.label} ${'xyz'[j]}`));
         ctl.appendChild(w);
       });
-      if (f.unit) row.querySelector('label').textContent = `${f.label} (${f.unit})`;
+      if (shownUnit) row.querySelector('label').textContent = `${f.label} (${shownUnit})`;
       break;
+    }
+    case 'material': {
+      const cur = obj[f.key], m = matById(cur);
+      const b = document.createElement('button'); b.type = 'button'; b.id = fid; b.className = 'tbtn matpick';
+      b.setAttribute('aria-haspopup', 'menu');
+      const label = cur === '' ? '— mixed —' : cur === 'void' ? 'Void (empty)' : m ? m.name : 'missing material';
+      b.innerHTML = `<span class="swatch" style="background:${m ? esc(m.color) : '#22272d'}"></span><span class="mname">${esc(label)}</span><span class="caret" aria-hidden="true">▾</span>`;
+      b.addEventListener('click', () => openMatMenu(b, id => {
+        HISTORY.boundary = true;
+        obj[f.key] = id;
+        renderProps(); schedule();
+        const again = document.getElementById(fid); if (again) again.focus();
+      }));
+      ctl.appendChild(b); break;
     }
     case 'select': {
       const s = document.createElement('select'); s.id = fid;
@@ -2637,7 +2750,7 @@ $('#replayBtn').addEventListener('click', () => {
 /* ───────── Transform tools: Select / Move / Scale / Rotate (Roblox Studio style) ─────────
    Handles are built in screen space through a view adapter, so the 2D slice and the 3D view share the math:
    adapter = {toScreen([x,y,z]) → [px,py], axesShown:[world axis indices], ringAxes:[…], pxPerCm, rotSign(axis)}. */
-const TOOL = {mode:'select', moveSnap:1, rotSnap:15, pivot:'group'}; // pivot: 'group' (rigid) or 'each' (every part in place)
+const TOOL = {mode:'select', moveSnap:1, moveSnapIn:0.25, rotSnap:15, pivot:'group'}; // moveSnap in cm, moveSnapIn in inches // pivot: 'group' (rigid) or 'each' (every part in place)
 try { Object.assign(TOOL, JSON.parse(localStorage.getItem('openmc-studio-tool') || '{}')); } catch (e) {}
 const saveTool = () => { try { localStorage.setItem('openmc-studio-tool', JSON.stringify(TOOL)); } catch (e) {} };
 const MOVE_STEPS = [0, 0.1, 0.5, 1, 5, 10], ROT_STEPS = [0, 1, 5, 15, 45, 90];
@@ -2650,12 +2763,59 @@ function setTool(mode) {
   TOOL.mode = mode; saveTool(); THOVER = null;
   renderRibbon(); schedule();
 }
-function cycleSnap(key, steps, unit) {
-  TOOL[key] = steps[(steps.indexOf(TOOL[key]) + 1) % steps.length];
-  saveTool(); renderRibbon();
-  log('info', TOOL[key] ? `${key === 'moveSnap' ? 'Move and scale snap' : 'Rotation snap'}: ${TOOL[key]} ${unit}.` : `${key === 'moveSnap' ? 'Move and scale' : 'Rotation'} snapping off.`);
+// Move/Rotate snap: a small box to type any step, pick a common one, or turn snapping off.
+const moveStepCm = () => imperial() ? (TOOL.moveSnapIn || 0) * 2.54 : TOOL.moveSnap; // the step drags use, in cm
+const snapKey = key => key === 'moveSnap' && imperial() ? 'moveSnapIn' : key;
+const SNAP = {
+  moveSnapIn:{title:'Move and scale snap', unit:'in', picks:[0.125, 0.25, 0.5, 1, 6], max:400,
+    hint:'Drags move and resize in steps of this size. 0 or Off drags freely.'},
+  moveSnap:{title:'Move and scale snap', unit:'cm', picks:MOVE_STEPS.filter(Boolean), max:1000,
+    hint:'Drags move and resize in steps of this size. 0 or Off drags freely.'},
+  rotSnap:{title:'Rotation snap', unit:'°', picks:ROT_STEPS.filter(Boolean), max:360,
+    hint:'Ring drags turn in steps of this angle. 0 or Off turns freely.'}
+};
+function openSnapPop(key, btn) {
+  key = snapKey(key);
+  const pop = $('#snapPop'), cfg = SNAP[key];
+  if (!pop.hidden && pop.dataset.key === key) { pop.hidden = true; return; }
+  $('#matMenu').hidden = true;
+  pop.dataset.key = key;
+  const cur = TOOL[key];
+  pop.innerHTML = `<h4 id="snapTitle">${cfg.title}</h4>
+    <div class="snaprow"><input type="number" id="snapIn" min="0" max="${cfg.max}" step="any" value="${cur || ''}" placeholder="off" aria-label="${cfg.title} (${cfg.unit})"><span class="unit">${cfg.unit}</span>
+      <label class="chk"><input type="checkbox" id="snapOff"${cur ? '' : ' checked'}> Off</label></div>
+    <div class="snapchips">${cfg.picks.map(v => `<button type="button" class="chip" data-v="${v}" aria-pressed="${v === cur}">${withUnit(v, cfg.unit)}</button>`).join('')}</div>
+    <div class="snaprow"><button type="button" class="tbtn" id="snapApply">Apply</button></div>
+    <p class="snaperr" id="snapErr" role="alert"></p><p class="snaphint">${cfg.hint} Enter applies, Esc closes.</p>`;
+  const r = btn.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 272)) + 'px';
+  pop.style.top = (r.bottom + 4) + 'px';
+  pop.hidden = false;
+  const input = $('#snapIn'), off = $('#snapOff');
+  const close = () => { pop.hidden = true; btn.focus(); };
+  const apply = v => {
+    if (!Number.isFinite(v) || v < 0 || v > cfg.max) { $('#snapErr').textContent = `Enter a number from 0 to ${withUnit(cfg.max, cfg.unit)}.`; input.focus(); return; }
+    setSnap(key, v);
+    close();
+  };
+  input.addEventListener('input', () => { $('#snapErr').textContent = ''; off.checked = input.value === '' || +input.value === 0; });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); apply(input.value === '' ? 0 : +input.value); }
+    else if (e.key === 'Escape') { e.preventDefault(); close(); }
+  });
+  off.addEventListener('change', () => { if (off.checked) apply(0); else { input.value = cfg.picks[Math.floor(cfg.picks.length / 2)]; input.focus(); input.select(); } });
+  pop.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => apply(+c.dataset.v)));
+  $('#snapApply').addEventListener('click', () => apply(off.checked ? 0 : (input.value === '' ? 0 : +input.value)));
+  pop.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+  input.focus(); input.select();
 }
-const snapLabel = (v, unit) => v ? `${v} ${unit}` : 'Off';
+function setSnap(key, v) {
+  TOOL[key] = v > 0 ? +(+v).toPrecision(12) : 0;
+  saveTool(); renderRibbon();
+  log('info', TOOL[key] ? `${key === 'rotSnap' ? 'Rotation snap' : 'Move and scale snap'}: ${withUnit(TOOL[key], SNAP[key].unit)}.` : `${key === 'rotSnap' ? 'Rotation' : 'Move and scale'} snapping off.`);
+}
+const withUnit = (v, unit) => unit === '°' ? `${v}°` : `${v} ${unit}`;
+const snapLabel = (v, unit) => v ? withUnit(v, unit) : 'Off';
 
 function axisRotation(i, deg) { return i === 0 ? rotXYZ(deg, 0, 0) : i === 1 ? rotXYZ(0, deg, 0) : rotXYZ(0, 0, deg); }
 function eulerFrom(R) { // inverse of rotXYZ (R = Rz·Ry·Rx), degrees
@@ -2751,7 +2911,7 @@ function restoreSet(t, s0) {
   if (t.group && s0.group) Object.assign(t.group, s0.group);
 }
 function applyTransform(mx, my) {
-  const {h, t, s0, adapter:A} = TDRAG, o = t.o, dx = mx - TDRAG.mx, dy = my - TDRAG.my, step = TOOL.moveSnap;
+  const {h, t, s0, adapter:A} = TDRAG, o = t.o, dx = mx - TDRAG.mx, dy = my - TDRAG.my, step = moveStepCm();
   const along = w => (dx * w[0] + dy * w[1]) / (w[0] * w[0] + w[1] * w[1]); // cm moved along the direction imaged as w
   const minSize = step > 0 ? step : 0.01;
   if (t.kind === 'set') {
@@ -2763,7 +2923,7 @@ function applyTransform(mx, my) {
       const d = delta.map((v, i) => v ? snapStep(c0[i] + v, step) - c0[i] : 0); // the pivot snaps; the parts keep their spacing
       moveItems(t.items, s0.items, d);
       if (t.group) ['x', 'y', 'z'].forEach((a, i) => { t.group[a] = tidy(s0.group[a] + d[i]); });
-      TDRAG.readout = h.type === 'move' ? `${who}: ${'xyz'[h.axis]} ${d[h.axis] >= 0 ? '+' : ''}${fmtNum(d[h.axis])} cm` : `${who}: (${d.map(fmtNum).join(', ')}) cm`;
+      TDRAG.readout = h.type === 'move' ? `${who}: ${'xyz'[h.axis]} ${d[h.axis] >= 0 ? '+' : ''}${showLen(d[h.axis])}` : `${who}: ${showVec(d)}`;
     } else if (h.type === 'ring') {
       const a = TDRAG.plane ? A.ringAngle(h.axis, c0, mx, my) : Math.atan2(my - h.y, mx - h.x);
       if (a === null) return;
@@ -2790,10 +2950,10 @@ function applyTransform(mx, my) {
       });
     } else ['x', 'y', 'z'].forEach((a, i) => { if (delta[i]) o[a] = tidy(snapStep(s0[a] + delta[i], step)); });
     const c = targetCenter(t);
-    TDRAG.readout = h.type === 'move' ? `${'xyz'[h.axis]} = ${fmtNum(c[h.axis])} cm` : `(${c.map(fmtNum).join(', ')}) cm`;
+    TDRAG.readout = h.type === 'move' ? `${'xyz'[h.axis]} = ${showLen(c[h.axis])}` : showVec(c);
   } else if (h.type === 'radius') {
     o.r = tidy(Math.max(minSize, snapStep(s0.r + h.sign * along(h.w), step)));
-    TDRAG.readout = `r = ${fmtNum(o.r)} cm`;
+    TDRAG.readout = `r = ${showLen(o.r)}`;
   } else if (h.type === 'size') {
     const tcm = along(h.w);
     if (o.shape === 'box' || h.k === 2) { // this face moves, the opposite face stays put
@@ -2801,10 +2961,10 @@ function applyTransform(mx, my) {
       const size = Math.max(minSize, snapStep(s0[key] + h.sign * tcm, step)), shift = h.sign * (size - s0[key]) / 2;
       o[key] = tidy(size);
       ['x', 'y', 'z'].forEach((a, i) => { o[a] = tidy(s0[a] + h.d[i] * shift); });
-      TDRAG.readout = `${key === 'h' ? 'height' : key} = ${fmtNum(size)} cm`;
+      TDRAG.readout = `${key === 'h' ? 'height' : key} = ${showLen(size)}`;
     } else {
       o.r = tidy(Math.max(minSize, snapStep(s0.r + h.sign * tcm, step)));
-      TDRAG.readout = `r = ${fmtNum(o.r)} cm`;
+      TDRAG.readout = `r = ${showLen(o.r)}`;
     }
   } else if (h.type === 'ring') {
     // 3D: angle of the point where the mouse ray meets the ring's plane (right-handed about the axis).
@@ -2906,8 +3066,8 @@ function pivotButton() {
   }, null, () => TOOL.pivot === 'each'];
 }
 function snapButtons() {
-  return [['grid', () => `Move ${snapLabel(TOOL.moveSnap, 'cm')}`, () => cycleSnap('moveSnap', MOVE_STEPS, 'cm')],
-          ['rotstep', () => `Rotate ${snapLabel(TOOL.rotSnap, '°')}`, () => cycleSnap('rotSnap', ROT_STEPS, '°')]];
+  return [['grid', () => imperial() ? `Move ${snapLabel(TOOL.moveSnapIn, 'in')}` : `Move ${snapLabel(TOOL.moveSnap, 'cm')}`, e => openSnapPop('moveSnap', e.currentTarget)],
+          ['rotstep', () => `Rotate ${snapLabel(TOOL.rotSnap, '°')}`, e => openSnapPop('rotSnap', e.currentTarget)]];
 }
 
 /* ───────── 3D view: WebGL ray tracing of Studio's own CSG (no libraries) ─────────
@@ -3234,7 +3394,7 @@ function draw3D() {
     ctx.font = '600 11px "JetBrains Mono", Consolas, monospace'; ctx.fillText('xyz'[i], o[0] + e[0] * 34 - 3, o[1] + e[1] * 34 + 4);
   });
   ctx.fillStyle = 'rgba(216,221,227,.65)'; ctx.font = '11px "JetBrains Mono", Consolas, monospace';
-  ctx.fillText(cut ? `3D · cut open at ${AX[view.plane][2]} = ${view.slice} cm (the half facing you is removed)` : '3D', 10, 16);
+  ctx.fillText(cut ? `3D · cut open at ${AX[view.plane][2]} = ${showLen(view.slice)} (the half facing you is removed)` : '3D', 10, 16);
   ctx.fillText('drag to orbit · right-drag or Shift+drag to pan · wheel to zoom · F to focus', 10, 31);
   if (S.parts.length > V3.maxp) { ctx.fillStyle = '#e6b455'; ctx.fillText(`3D shows the first ${V3.maxp} of ${S.parts.length} parts (2D and exports use all).`, 10, 46); }
   // gizmo
@@ -3555,23 +3715,26 @@ function drawViewport() {
 
   // axis ticks
   const [ha, va] = AX[view.plane];
-  const span = W / scale, raw = span / 8, p10 = Math.pow(10, Math.floor(Math.log10(raw)));
+  // ticks at round numbers in the units shown (uS, vS), placed at their cm positions
+  const uf = DIMS.len().f, span = W / scale * uf, raw = span / 8, p10 = Math.pow(10, Math.floor(Math.log10(raw)));
   const step = [1, 2, 5, 10].map(m => m * p10).find(s => s >= raw) || 10 * p10;
   ctx.fillStyle = 'rgba(216,221,227,.62)'; ctx.strokeStyle = 'rgba(216,221,227,.35)'; ctx.lineWidth = 1;
   ctx.textAlign = 'center';
-  for (let u = Math.ceil(-cx / scale / step) * step; U(u) < W; u += step) {
-    ctx.beginPath(); ctx.moveTo(U(u), H); ctx.lineTo(U(u), H - 5); ctx.stroke();
-    if (U(u) > 30 && U(u) < W - 30) ctx.fillText(+u.toPrecision(6), U(u), H - 8);
+  for (let uS = Math.ceil(-cx / scale * uf / step) * step; U(uS / uf) < W; uS += step) {
+    const X = U(uS / uf);
+    ctx.beginPath(); ctx.moveTo(X, H); ctx.lineTo(X, H - 5); ctx.stroke();
+    if (X > 30 && X < W - 30) ctx.fillText(+uS.toPrecision(6), X, H - 8);
   }
   ctx.textAlign = 'left';
-  for (let v = Math.ceil(-(H - cy) / scale / step) * step; V(v) > 0; v += step) {
-    ctx.beginPath(); ctx.moveTo(0, V(v)); ctx.lineTo(5, V(v)); ctx.stroke();
-    if (V(v) > 44 && V(v) < H - 24) ctx.fillText(+v.toPrecision(6), 8, V(v) + 4);
+  for (let vS = Math.ceil(-(H - cy) / scale * uf / step) * step; V(vS / uf) > 0; vS += step) {
+    const Y = V(vS / uf);
+    ctx.beginPath(); ctx.moveTo(0, Y); ctx.lineTo(5, Y); ctx.stroke();
+    if (Y > 44 && Y < H - 24) ctx.fillText(+vS.toPrecision(6), 8, Y + 4);
   }
   ctx.fillStyle = '#d8dde3';
-  ctx.fillText(`${view.plane.toUpperCase()} slice at ${AX[view.plane][2]} = ${view.slice} cm`, 10, 16);
+  ctx.fillText(`${view.plane.toUpperCase()} slice at ${AX[view.plane][2]} = ${showLen(view.slice)}`, 10, 16);
   ctx.fillStyle = 'rgba(216,221,227,.62)';
-  ctx.fillText(`→ ${ha} (cm)   ↑ ${va} (cm)`, 10, 31);
+  ctx.fillText(`→ ${ha} (${lenUnit()})   ↑ ${va} (${lenUnit()})`, 10, 31);
   const tt = toolTarget();
   vpGeom.handles = tt ? buildHandles(tt, adapter2D()) : [];
   drawHandles(ctx, vpGeom.handles);
@@ -3642,6 +3805,7 @@ function schedule() {
     if (!pending) return;
     pending = false;
     compactGroups(S);
+    pruneMaterials();
     const P = problems();
     renderTree(); renderTitle(P); renderProblems(P); renderLegend(); renderPropsTitle();
     if (sel.kind === 'source' || sel.kind === 'tally') refreshMcnp();
@@ -3654,7 +3818,7 @@ function schedule() {
   setTimeout(flush, 60);
 }
 function renderRibbonState() {
-  const key = `${sel.kind}|${sel.id}|${selItems().length}|${!!downloads}|${HISTORY.undo.length > 0}|${HISTORY.redo.length > 0}`;
+  const key = `${sel.kind}|${sel.id}|${selItems().length}|${UNITS.system}|${!!downloads}|${HISTORY.undo.length > 0}|${HISTORY.redo.length > 0}`;
   if (renderRibbonState.last !== key) { renderRibbonState.last = key; renderRibbon(); }
 }
 function renderAll() { renderRibbon(); renderProps(); syncViewControls(); schedule(); }
@@ -3662,7 +3826,9 @@ function syncViewControls() {
   document.querySelectorAll('[data-vmode]').forEach(b => b.setAttribute('aria-pressed', b.dataset.vmode === view.mode));
   document.querySelectorAll('[data-plane]').forEach(b => b.setAttribute('aria-pressed', b.dataset.plane === view.plane));
   $('#sliceAxis').textContent = `at ${AX[view.plane][2]} =`;
-  $('#sliceIn').value = view.slice;
+  $('#sliceIn').value = toShown(view.slice);
+  $('#sliceUnit').textContent = lenUnit();
+  document.querySelectorAll('.unitsnote').forEach(n => { n.hidden = !imperial(); });
 }
 function setDocTab(which) { // 'view' | 'code' | 'mcnp'; in split view the viewport stays on the left
   const split = VIEWSTATE.split;
@@ -3685,7 +3851,18 @@ $('#rtabs').addEventListener('click', e => { const b = e.target.closest('[data-t
 $('#matMenu').addEventListener('click', e => {
   const c = e.target.closest('[data-cat]');
   if (c) { const k = c.dataset.cat; MATMENU.open.has(k) ? MATMENU.open.delete(k) : MATMENU.open.add(k); renderMatList(''); const again = $(`#matList [data-cat="${CSS.escape(k)}"]`); if (again) again.focus(); return; }
-  const b = e.target.closest('[data-key]'); if (b) { $('#matMenu').hidden = true; addMaterial(b.dataset.key); }
+  const assign = MATMENU.assign;
+  const pm = e.target.closest('[data-mat]');
+  if (pm && assign) { $('#matMenu').hidden = true; MATMENU.assign = null; assign(pm.dataset.mat); return; }
+  const b = e.target.closest('[data-key]');
+  if (!b) return;
+  $('#matMenu').hidden = true;
+  if (!assign) return addMaterial(b.dataset.key);
+  MATMENU.assign = null;
+  HISTORY.boundary = true;
+  const {m, added} = materialForKey(b.dataset.key);
+  if (added) log('info', b.dataset.key === 'custom' ? `Added ${esc(m.name)}. Select it under Materials to set its composition.` : `Added ${esc(m.name)} to the project${m.ref ? ` (${esc(m.ref)})` : ''}.`);
+  assign(m.id);
 });
 $('#matMenu').addEventListener('keydown', e => { // arrow keys move through the list; typing goes back to the search box
   if (!e.target.closest('#matList')) return;
@@ -3696,7 +3873,10 @@ $('#matMenu').addEventListener('keydown', e => { // arrow keys move through the 
     if (j < 0) $('#matSearch').focus(); else if (all[j]) all[j].focus();
   } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && e.key !== ' ') { $('#matSearch').focus(); }
 });
-document.addEventListener('mousedown', e => { const m = $('#matMenu'); if (!m.hidden && !m.contains(e.target) && !e.target.closest('.rbtn')) m.hidden = true; });
+document.addEventListener('mousedown', e => {
+  const m = $('#matMenu'); if (!m.hidden && !m.contains(e.target) && !e.target.closest('.rbtn, .matpick')) m.hidden = true;
+  const p = $('#snapPop'); if (!p.hidden && !p.contains(e.target) && !e.target.closest('.rbtn')) p.hidden = true;
+});
 let drag = null, justDragged = false;
 $('#tree').addEventListener('click', e => {
   if (justDragged) { justDragged = false; return; }
@@ -3781,7 +3961,7 @@ $('#runBtn').addEventListener('click', runModel);
 $('#propFilter').addEventListener('input', applyPropFilter);
 $('#openFile').addEventListener('change', e => { const f = e.target.files[0]; if (f) openProject(f); e.target.value = ''; });
 document.querySelectorAll('[data-plane]').forEach(b => b.addEventListener('click', () => { view.plane = b.dataset.plane; view.slice = 0; syncViewControls(); schedule(); }));
-$('#sliceIn').addEventListener('input', e => { const v = parseFloat(e.target.value); if (fin(v)) { view.slice = v; schedule(); } });
+$('#sliceIn').addEventListener('input', e => { const v = parseFloat(e.target.value); if (fin(v)) { view.slice = fromShown(v); schedule(); } });
 $('#zoomIn').addEventListener('click', () => { if (view.mode === '3d') CAM.dist /= 1.4; else view.zoom = Math.min(view.zoom * 1.4, 20); schedule(); });
 $('#zoomOut').addEventListener('click', () => { if (view.mode === '3d') CAM.dist *= 1.4; else view.zoom = Math.max(view.zoom / 1.4, .25); schedule(); });
 $('#zoomFit').addEventListener('click', () => { if (view.mode === '3d') { CAM.target = [0, 0, 0]; CAM.dist = (S.settings.worldR || 100) * 3.2; } else view.zoom = 1; schedule(); });
@@ -3865,7 +4045,8 @@ $('#vp').addEventListener('pointermove', e => {
   const what = h.src ? S.sources.find(s => s.id === h.src.id).name
     : h.cell === -2 ? 'outside the world' : h.cell === -1 ? `World (${(matById(S.settings.worldFill) || {name:'void'}).name})`
     : `${S.parts[h.cell].name} (${(matById(S.parts[h.cell].material) || {name:'void'}).name})`;
-  $('#readout').textContent = `x ${h.x.toFixed(1)}  y ${h.y.toFixed(1)}  z ${h.z.toFixed(1)} cm · ${what}`;
+  const dp = imperial() ? 2 : 1;
+  $('#readout').textContent = `x ${(+toShown(h.x)).toFixed(dp)}  y ${(+toShown(h.y)).toFixed(dp)}  z ${(+toShown(h.z)).toFixed(dp)} ${lenUnit()} · ${what}`;
 });
 $('#vp').addEventListener('click', e => {
   if (suppressVpClick) { suppressVpClick = false; return; }
@@ -3888,7 +4069,7 @@ document.addEventListener('keydown', e => {
     moveSelected(e.key === 'ArrowUp' ? -1 : 1);
     if (fromTree) setTimeout(() => { const b = document.querySelector('#tree .titem.is-sel'); if (b) b.focus(); }, 90);
   }
-  if (e.key === 'Escape') { $('#matMenu').hidden = true; if (drag) dragEnd({type:'pointercancel'}); if (TDRAG) endTransform(true); else if (sel.kind === 'multi') select('settings'); }
+  if (e.key === 'Escape') { $('#matMenu').hidden = true; $('#snapPop').hidden = true; if (drag) dragEnd({type:'pointercancel'}); if (TDRAG) endTransform(true); else if (sel.kind === 'multi') select('settings'); }
   if (!e.ctrlKey && !e.metaKey && !e.altKey && ['1', '2', '3', '4'].includes(e.key)) setTool(['select', 'move', 'scale', 'rotate'][+e.key - 1]);
   if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'f' && view.mode === '3d') focusSelection();
 });

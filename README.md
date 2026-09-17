@@ -107,7 +107,7 @@ neutron tracks and the world boundary.
 - After a run, the **Flux map** is painted on the slice plane and **Tracks** are drawn
   bright where nothing is in front of them and faint behind geometry. Turn on Cutaway
   to see the flux map across the whole cut.
-- Up to 128 parts are drawn in 3D (fewer on graphics cards with a low shader limit;
+- Up to 192 parts are drawn in 3D (fewer on graphics cards with a low shader limit;
   the view says so). The slice view and the exports always use every part.
 
 ## Editing in the code tabs

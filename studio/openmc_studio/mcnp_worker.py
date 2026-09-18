@@ -90,18 +90,26 @@ def geometry_key(model_xml):
     return h.hexdigest()
 
 
-def add_group_comments(deck_path, groups):
-    """Studio groups (model.py's `groups = {name: [cells]}`) as comment cards right after the title card:
-    c Group: Shield = cells 2 3 4. They name cells for the reader and change nothing in the problem."""
-    if not isinstance(groups, dict) or not groups:
-        return
+def collect_group_cards(groups_dict, prefix=""):
     cards = []
-    for name, cells in groups.items():
-        ids = [str(c.id) for c in (cells or []) if hasattr(c, "id")]
-        if not ids:
+    for name, data in groups_dict.items():
+        path = f"{prefix}/{name}" if prefix else str(name)
+        label = path.encode("ascii", "replace").decode("ascii").replace("=", "-")
+        if isinstance(data, dict):
+            pivot = data.get("pivot")
+            cells = data.get("cells", [])
+            child_groups = data.get("groups", {})
+        elif isinstance(data, list):
+            pivot = None
+            cells = data
+            child_groups = {}
+        else:
             continue
-        label = str(name).encode("ascii", "replace").decode("ascii").replace("=", "-")
-        line = f"c Group: {label} = cells"
+        
+        ids = [str(c.id) for c in (cells or []) if hasattr(c, "id")]
+        pivot_str = f" | pivot: {' '.join(str(round(v, 6)) for v in pivot)}" if pivot and len(pivot) == 3 else ""
+        
+        line = f"c Group: {label}{pivot_str}{' = cells' if ids else ''}"
         for i in ids:  # MCNP input lines stay within 80 columns
             if len(line) + 1 + len(i) > 80:
                 cards.append(line)
@@ -109,6 +117,18 @@ def add_group_comments(deck_path, groups):
             else:
                 line += " " + i
         cards.append(line)
+        
+        if child_groups and isinstance(child_groups, dict):
+            cards.extend(collect_group_cards(child_groups, path))
+    return cards
+
+
+def add_group_comments(deck_path, groups):
+    """Studio groups (model.py's `groups = {name: [cells]}` or nested dicts) as comment cards right after the title card:
+    c Group: Core/Assembly 1 | pivot: x y z = cells 2 3 4. They name cells for the reader and change nothing in the problem."""
+    if not isinstance(groups, dict) or not groups:
+        return
+    cards = collect_group_cards(groups)
     if not cards:
         return
     with open(deck_path) as f:

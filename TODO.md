@@ -110,10 +110,22 @@ Other candidates:
   cylinder.
 - Torus (TX/TY/TZ): hardest (quartic in the shader); MCNP only allows axis-aligned tori.
 
+## Nested groups & comment-based reverse translation (DONE)
+
+- Implemented multi-level hierarchical group architecture in OpenMC Studio:
+  - Data model: `parent` group ID reference on groups (`g.parent`), cycle-breaking validation, and depth-first contiguous block ordering in `compactGroups` to preserve CSG priority semantics.
+  - Explorer Tree UI: recursive indentation based on group hierarchy depth (`padding-left: 26 + depth * 14 px`), collapsible carets (`gcaret`) for parent groups hiding all descendant child groups and parts, and group subtree reordering.
+  - Grouping & Ungrouping: grouping selected groups or parts nests them cleanly under a new parent group; ungrouping promotes child groups and parts to the parent level.
+  - Rigid 2D & 3D transformations: moving or rotating a parent group rigidly translates and orbits all descendant sub-group pivot points and parts about the parent's pivot.
+  - Duplication: duplicating a parent group recursively replicates all child groups, remapping `parent` links and part assignments to the duplicated hierarchy.
+  - Code generation & structured comments:
+    - Python `model.py` (`buildScript`): exports hierarchical `groups = { "Core": { "pivot": (...), "cells": [...], "groups": { "Assembly 1": { ... } } } }`.
+    - MCNP `model.mcnp` (`mcnp_worker.py`): exports path-based `c Group: Core/Assembly 1 | pivot: x y z = cells ...` cards respecting MCNP's 80-column line limit.
+    - Reverse translation & live annotation (`annotateMcnp`): parses path-based `c Group:` cards and provides bi-directional highlight mapping between the Explorer and MCNP editor lines.
+  - Verified in OpenMC 0.15.3 simulation with 10,000 particles and cell overlap checking: 0 errors, 0 lost particles.
+
 ## Smaller items
 
-- **Nested groups** (groups inside groups): not needed yet. Groups are one level; a part or source
-  belongs to at most one group.
 - **Snap to grid**: the new ribbon controls were checked by typing values and unticking Move; a
   rotate drag landing on the typed step (e.g. 45 deg) wasn't re-checked in the browser before the
   SSD was removed. Quick test next session.

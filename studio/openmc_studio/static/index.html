@@ -543,27 +543,111 @@ function normalizeProject(o) { // fill fields added in later versions
   o.settings = {...DEFAULT_SETTINGS, ...o.settings};
   (o.parts || []).forEach(p => ['rx', 'ry', 'rz'].forEach(k => { if (p[k] === undefined || p[k] === null) p[k] = 0; }));
   o.groups = Array.isArray(o.groups) ? o.groups.filter(g => g && typeof g.id === 'string') : [];
-  o.groups.forEach(g => { ['x', 'y', 'z'].forEach(k => { if (!Number.isFinite(g[k])) g[k] = 0; }); if (typeof g.name !== 'string') g.name = 'Group'; });
+  o.groups.forEach(g => {
+    ['x', 'y', 'z'].forEach(k => { if (!Number.isFinite(g[k])) g[k] = 0; });
+    if (typeof g.name !== 'string') g.name = 'Group';
+    if (typeof g.parent !== 'string' || !g.parent) delete g.parent;
+  });
   compactGroups(o);
   return o;
 }
-/* Groups: {id, name, x, y, z} in model.groups, where x/y/z is the pivot the group turns about. Parts and sources
-   join with a `group` field. A group's parts always sit next to each other in the Explorer, so the group is one
-   priority block; this keeps that true after any edit and drops groups nothing belongs to. */
+/* Groups: {id, name, parent, x, y, z} in model.groups, where x/y/z is the pivot the group turns about.
+   Parts and sources join with a `group` field. Groups can be nested via `parent` (group ID).
+   A group's parts (and child groups) sit contiguously in the Explorer for CSG priority block integrity. */
+const groupById = id => (S.groups || []).find(g => g.id === id);
+const groupChildren = gid => (S.groups || []).filter(g => g.parent === gid);
+function groupDescendantIds(gid) {
+  const res = new Set();
+  const stack = [gid];
+  while (stack.length) {
+    const cur = stack.pop();
+    (S.groups || []).forEach(g => {
+      if (g.parent === cur && !res.has(g.id)) { res.add(g.id); stack.push(g.id); }
+    });
+  }
+  return res;
+}
+function groupAncestorIds(gid) {
+  const res = new Set();
+  let cur = gid, safety = 0;
+  while (cur && safety++ < 50) {
+    const g = groupById(cur);
+    if (!g || !g.parent || res.has(g.parent)) break;
+    res.add(g.parent);
+    cur = g.parent;
+  }
+  return res;
+}
+function groupDepth(gid) {
+  let d = 0, cur = gid;
+  while (cur && d < 50) {
+    const g = groupById(cur);
+    if (!g || !g.parent) break;
+    d++;
+    cur = g.parent;
+  }
+  return d;
+}
+function groupPath(gid) {
+  const names = [];
+  let cur = gid, safety = 0;
+  while (cur && safety++ < 50) {
+    const g = groupById(cur);
+    if (!g) break;
+    names.unshift(g.name);
+    cur = g.parent;
+  }
+  return names.join('/');
+}
+function isGroupCollapsed(gid) {
+  let cur = gid, safety = 0;
+  while (cur && safety++ < 50) {
+    if (collapsed['g:' + cur]) return true;
+    const g = groupById(cur);
+    cur = g ? g.parent : null;
+  }
+  return false;
+}
 function compactGroups(m) {
   if (!Array.isArray(m.groups)) m.groups = [];
   const known = new Set(m.groups.map(g => g.id));
-  [...(m.parts || []), ...(m.sources || [])].forEach(x => { if (x.group !== undefined && !known.has(x.group)) delete x.group; });
-  const out = [], done = new Set();
+  m.groups.forEach(g => {
+    if (g.parent && (!known.has(g.parent) || g.parent === g.id)) delete g.parent;
+  });
+  // Break any parent-child reference cycles
+  m.groups.forEach(g => {
+    let cur = g.parent, visited = new Set([g.id]);
+    while (cur) {
+      if (visited.has(cur)) { delete g.parent; break; }
+      visited.add(cur);
+      const p = m.groups.find(x => x.id === cur);
+      cur = p ? p.parent : null;
+    }
+  });
+  [...(m.parts || []), ...(m.sources || [])].forEach(x => {
+    if (x.group !== undefined && !known.has(x.group)) delete x.group;
+  });
+  // Sort parts depth-first by group subtree hierarchy so each group's contents form a contiguous CSG block
+  const out = [], doneGroups = new Set();
+  const addGroupParts = gid => {
+    if (doneGroups.has(gid)) return;
+    doneGroups.add(gid);
+    (m.parts || []).forEach(p => { if (p.group === gid) out.push(p); });
+    (m.groups || []).filter(g => g.parent === gid).forEach(cg => addGroupParts(cg.id));
+  };
   (m.parts || []).forEach(p => {
     if (!p.group) { out.push(p); return; }
-    if (done.has(p.group)) return;
-    done.add(p.group);
-    m.parts.forEach(q => { if (q.group === p.group) out.push(q); });
+    let rootG = p.group, cur = m.groups.find(g => g.id === rootG);
+    while (cur && cur.parent) { rootG = cur.parent; cur = m.groups.find(g => g.id === rootG); }
+    addGroupParts(rootG);
   });
   if (m.parts) m.parts.splice(0, m.parts.length, ...out);
-  const used = new Set([...(m.parts || []), ...(m.sources || [])].map(x => x.group).filter(Boolean));
-  m.groups = m.groups.filter(g => used.has(g.id));
+  // Keep groups that have members (parts/sources) directly or in child groups
+  const hasMembers = gid => {
+    if ((m.parts || []).some(p => p.group === gid) || (m.sources || []).some(s => s.group === gid)) return true;
+    return (m.groups || []).some(g => g.parent === gid && hasMembers(g.id));
+  };
+  m.groups = m.groups.filter(g => hasMembers(g.id));
 }
 function validProject(o) {
   return !!o && Array.isArray(o.materials) && Array.isArray(o.parts) && Array.isArray(o.sources) &&
@@ -1139,15 +1223,27 @@ function buildScript(probs, mark) {
   const all = S.parts.map(q => shapeVar[q.id]);
   push(`cell_world = openmc.Cell(name="World", fill=${fill(st.worldFill)}, region=world${all.length ? ` & ~(${all.join(' | ')})` : ''})`);
   owner = null;
-  const groupsUsed = (S.groups || []).filter(g => S.parts.some(p => p.group === g.id) || S.sources.some(s => s.group === g.id));
+  const groupsUsed = (S.groups || []).filter(g => S.parts.some(p => p.group === g.id) || S.sources.some(s => s.group === g.id) || (S.groups || []).some(cg => cg.parent === g.id));
   if (groupsUsed.length) {
     push('', '# Groups from OpenMC Studio: named sets of cells (and sources) that move together in the editor.',
       '# They don\'t change the geometry; model.mcnp lists them as "c Group:" comment cards.', 'groups = {');
-    groupsUsed.forEach(g => {
+    function serializeGroup(g, indent) {
       owner = {kind:'group', id:g.id};
-      const srcs = S.sources.filter(s => s.group === g.id).map(s => s.name);
-      push(`    ${pyStr(g.name)}: [${S.parts.filter(p => p.group === g.id).map(p => cv[p.id]).join(', ')}],  # pivot (${[g.x, g.y, g.z].map(num).join(', ')}) cm${srcs.length ? `; sources: ${srcs.join(', ')}` : ''}`);
-    });
+      const directParts = S.parts.filter(p => p.group === g.id);
+      const childGroups = groupsUsed.filter(cg => cg.parent === g.id);
+      const cellList = directParts.map(p => cv[p.id]).join(', ');
+      push(`${indent}${pyStr(g.name)}: {`);
+      push(`${indent}    "pivot": (${[g.x, g.y, g.z].map(num).join(', ')}),`);
+      push(`${indent}    "cells": [${cellList}],`);
+      if (childGroups.length) {
+        push(`${indent}    "groups": {`);
+        childGroups.forEach(cg => serializeGroup(cg, indent + '        '));
+        push(`${indent}    },`);
+      }
+      push(`${indent}},`);
+    }
+    const rootGroups = groupsUsed.filter(g => !g.parent || !groupsUsed.some(pg => pg.id === g.parent));
+    rootGroups.forEach(rg => serializeGroup(rg, '    '));
     owner = null;
     push('}');
   }
@@ -1304,9 +1400,9 @@ function getSel() {
 }
 const MOVABLE = {part:1, source:1};
 function select(kind, id) { sel = {kind, id, anchor:MOVABLE[kind] ? {kind, id} : undefined}; renderProps(); schedule(); }
-const groupById = id => S.groups.find(g => g.id === id);
 function groupMembers(gid) {
-  return [...S.parts.filter(p => p.group === gid).map(o => ({kind:'part', o})), ...S.sources.filter(s => s.group === gid).map(o => ({kind:'source', o}))];
+  const all = new Set([gid, ...groupDescendantIds(gid)]);
+  return [...S.parts.filter(p => p.group && all.has(p.group)).map(o => ({kind:'part', o})), ...S.sources.filter(s => s.group && all.has(s.group)).map(o => ({kind:'source', o}))];
 }
 // The parts and sources the selection covers (a group's members, a multi-selection, or one part or source).
 function selItems() {
@@ -1437,15 +1533,28 @@ function duplicateSelected() {
   if (sel.kind === 'group') {
     const g = groupById(sel.id), members = groupMembers(sel.id);
     if (!g || !members.length) return;
-    const g2 = {...clone(g), id:newId('g'), name:uniqueName(S.groups, g.name + ' copy')};
-    S.groups.push(g2);
+    const descIds = [...groupDescendantIds(g.id)];
+    const allGroupIds = [g.id, ...descIds];
+    const idMap = {};
+    allGroupIds.forEach(oldId => {
+      const orig = groupById(oldId);
+      const copyG = {...clone(orig), id:newId('g'), name:uniqueName(S.groups, orig.name + ' copy')};
+      idMap[oldId] = copyG.id;
+      S.groups.push(copyG);
+    });
+    // Remap parent IDs
+    allGroupIds.forEach(oldId => {
+      const orig = groupById(oldId), newG = groupById(idMap[oldId]);
+      if (oldId === g.id) newG.parent = orig.parent;
+      else newG.parent = idMap[orig.parent] || g.parent;
+    });
     const first = S.parts.findIndex(p => p.group === g.id);
-    const copies = members.map(({kind, o}) => ({kind, o:{...clone(o), id:newId(kind[0]), name:uniqueName(S[LISTS[kind]], o.name + ' copy'), group:g2.id}}));
-    S.parts.splice(first < 0 ? 0 : first, 0, ...copies.filter(x => x.kind === 'part').map(x => x.o)); // the copy block sits just above, so it wins overlaps
+    const copies = members.map(({kind, o}) => ({kind, o:{...clone(o), id:newId(kind[0]), name:uniqueName(S[LISTS[kind]], o.name + ' copy'), group:idMap[o.group] || idMap[g.id]}}));
+    S.parts.splice(first < 0 ? 0 : first, 0, ...copies.filter(x => x.kind === 'part').map(x => x.o));
     S.sources.push(...copies.filter(x => x.kind === 'source').map(x => x.o));
     compactGroups(S);
-    log('info', `Duplicated group ${esc(g.name)} as ${esc(g2.name)}.`);
-    return select('group', g2.id);
+    log('info', `Duplicated group ${esc(g.name)} as ${esc(groupById(idMap[g.id]).name)}.`);
+    return select('group', idMap[g.id]);
   }
   if (sel.kind === 'multi') {
     const copies = selItems().map(({kind, o}) => {
@@ -1520,11 +1629,23 @@ function moveTo(kind, id, slot) { // slot = gap index 0..n in the current list
 }
 function groupSelected() {
   const items = selItems();
-  if (!items.length) { log('warn', 'Select parts or sources to group: Ctrl+click or Shift+click them in the Explorer.'); return; }
+  if (!items.length) { log('warn', 'Select parts or groups to group: Ctrl+click or Shift+click them in the Explorer.'); return; }
   const c = itemsCenter(items).map(tidy);
   const g = {id:newId('g'), name:uniqueName(S.groups, 'Group'), x:c[0], y:c[1], z:c[2]};
+  if (sel.kind === 'group') {
+    const existingG = groupById(sel.id);
+    if (existingG) { g.parent = existingG.parent; existingG.parent = g.id; }
+  } else if (sel.kind === 'multi') {
+    const selGroupIds = new Set(sel.items.filter(x => x.kind === 'group').map(x => x.id));
+    selGroupIds.forEach(gid => {
+      const cg = groupById(gid);
+      if (cg) cg.parent = g.id;
+    });
+  }
   S.groups.push(g);
-  items.forEach(({o}) => { o.group = g.id; });
+  items.forEach(({o}) => {
+    if (!o.group || !groupDescendantIds(g.id).has(o.group)) o.group = g.id;
+  });
   compactGroups(S);
   log('ok', `Grouped ${items.map(x => esc(x.o.name)).join(', ')} as ${esc(g.name)}. Its parts stay together in the Explorer and turn about the pivot ${showVec(c)}.`);
   select('group', g.id);
@@ -1532,14 +1653,26 @@ function groupSelected() {
 function ungroupSelected() {
   if (sel.kind === 'group') {
     const g = groupById(sel.id), items = groupMembers(sel.id);
-    items.forEach(({o}) => { delete o.group; });
+    if (!g) return;
+    const parentId = g.parent;
+    (S.groups || []).filter(cg => cg.parent === g.id).forEach(cg => {
+      if (parentId) cg.parent = parentId; else delete cg.parent;
+    });
+    [...S.parts, ...S.sources].filter(x => x.group === g.id).forEach(x => {
+      if (parentId) x.group = parentId; else delete x.group;
+    });
+    S.groups = S.groups.filter(x => x.id !== g.id);
     compactGroups(S);
-    log('info', `Ungrouped ${esc(g ? g.name : 'group')}.`);
+    log('info', `Ungrouped ${esc(g.name)}.`);
+    if (parentId) return select('group', parentId);
     return setSelection(items.map(x => ({kind:x.kind, id:x.o.id})));
   }
   const items = selItems().filter(x => x.o.group);
   if (!items.length) return;
-  items.forEach(({o}) => { delete o.group; });
+  items.forEach(({o}) => {
+    const curG = groupById(o.group);
+    if (curG && curG.parent) o.group = curG.parent; else delete o.group;
+  });
   compactGroups(S);
   log('info', `Removed ${items.map(x => esc(x.o.name)).join(', ')} from ${items.length === 1 ? 'its group' : 'their groups'}.`);
   renderProps(); schedule();
@@ -1554,6 +1687,16 @@ function rotateSelectionBy() {
   HISTORY.boundary = true;
   const err = rotateItems(items, before, Rg, pivot, TOOL.pivot === 'each');
   if (err) { log('warn', `Not rotated: ${esc(err)}.`); return; }
+  if (g && TOOL.pivot !== 'each') {
+    const childGroups = [...groupDescendantIds(g.id)].map(id => groupById(id)).filter(Boolean);
+    const mv = (M, v) => M.map(r => r[0] * v[0] + r[1] * v[1] + r[2] * v[2]);
+    const nice = v => { const r = Math.round(v * 1e6) / 1e6; return Math.abs(r - v) < 1e-8 ? (r === 0 ? 0 : r) : tidy(v); };
+    childGroups.forEach(cg => {
+      const c0 = [cg.x, cg.y, cg.z];
+      const c = mv(Rg, c0.map((v, k) => v - pivot[k])).map((v, k) => nice(pivot[k] + v));
+      [cg.x, cg.y, cg.z] = c;
+    });
+  }
   log('ok', `Rotated ${esc(g ? g.name : `${items.length} items`)} by (${[ROTATE_BY.rx, ROTATE_BY.ry, ROTATE_BY.rz].map(v => fmtNum(v || 0)).join(', ')})° ${TOOL.pivot === 'each' ? 'each about its own center' : `about the pivot ${showVec(pivot)}`}.`);
   HISTORY.boundary = true;
   renderProps(); schedule();
@@ -1817,10 +1960,16 @@ function renderTree() {
       `${extra.pre || ''}<span class="glyph">${glyph}</span><span class="tname">${esc(label)}</span><span class="tmeta${meta === 'unused' && kind === 'material' ? ' unused' : ''}">${esc(meta || '')}</span></button>`;
   };
   const gcaret = gid => `<span class="gtog" data-gtoggle="${gid}" role="button" aria-label="Show or hide the group's parts" aria-expanded="${!collapsed['g:' + gid]}"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" fill="none"/></svg></span>`;
-  const groupRow = g => {
-    const n = groupMembers(g.id).length, idx = S.parts.map((p, i) => p.group === g.id ? i : -1).filter(i => i >= 0);
+  const groupRow = (g) => {
+    const n = groupMembers(g.id).length;
+    const allMembers = groupMembers(g.id);
+    const idx = S.parts.map((p, i) => allMembers.some(m => m.o === p) ? i : -1).filter(i => i >= 0);
+    const depth = groupDepth(g.id);
+    const isHidden = g.parent ? isGroupCollapsed(g.parent) : false;
+    const pad = 26 + depth * 14;
     return item('group', g.id, ic('group', 14), g.name, `${n} item${n === 1 ? '' : 's'}`,
-      {cls:' tgrp', pre:gcaret(g.id), attrs:idx.length ? ` data-idx="${idx[0]}" data-end="${idx[idx.length - 1] + 1}"` : ''});
+      {cls:' tgrp', pre:gcaret(g.id), hidden:isHidden,
+       attrs:(idx.length ? ` data-idx="${idx[0]}" data-end="${idx[idx.length - 1] + 1}"` : '') + ` style="padding-left:${pad}px"`});
   };
   const group = (key, title, count, addTitle, body) => {
     const open = !collapsed[key];
@@ -1839,10 +1988,26 @@ function renderTree() {
   const shown = new Set();
   const partRows = S.parts.map((p, i) => {
     let row = '';
-    if (p.group && !shown.has(p.group) && groupById(p.group)) { shown.add(p.group); row += groupRow(groupById(p.group)); }
+    if (p.group) {
+      // Find ancestor path from root to p.group
+      const chain = [];
+      let cur = p.group;
+      while (cur) {
+        const cg = groupById(cur);
+        if (!cg) break;
+        chain.unshift(cg);
+        cur = cg.parent;
+      }
+      chain.forEach(g => {
+        if (!shown.has(g.id)) { shown.add(g.id); row += groupRow(g); }
+      });
+    }
+    const depth = p.group ? groupDepth(p.group) + 1 : 0;
+    const isHidden = p.group ? isGroupCollapsed(p.group) : false;
+    const pad = 26 + depth * 14;
     return row + item('part', p.id, ic(p.shape, 14), p.name, matName(p.material),
-      {attrs:` data-idx="${i}"`, cls:p.group ? ' tin' : '', hidden:p.group && collapsed['g:' + p.group]});
-  }).join('') + S.groups.filter(g => !shown.has(g.id)).map(groupRow).join(''); // groups of sources only
+      {attrs:` data-idx="${i}" style="padding-left:${pad}px"`, cls:p.group ? ' tin' : '', hidden:isHidden});
+  }).join('') + S.groups.filter(g => !shown.has(g.id)).map(groupRow).join(''); // remaining groups
   h += group('parts', 'Geometry', S.parts.length + 1, 'Add sphere',
     partRows + item('world', undefined, ic('world', 14), 'World boundary', `${S.settings.worldShape} ${shortLen(S.settings.worldR)}`));
   h += group('sources', 'Sources', S.sources.length, 'Add neutron source',
@@ -2474,7 +2639,7 @@ function mcnpContext(P, built) {
   }
   const tallyScores = [];
   S.tallies.forEach(t => t.scores.forEach(() => tallyScores.push(t)));
-  return {surfaces: built.surfaces, materials: built.materials, parts: S.parts.slice(), source: src, dists, tallyScores, groups: (S.groups || []).map(g => ({id:g.id, name:g.name}))};
+  return {surfaces: built.surfaces, materials: built.materials, parts: S.parts.slice(), source: src, dists, tallyScores, groups: (S.groups || []).map(g => ({id:g.id, name:g.name, path:groupPath(g.id)}))};
 }
 function annotateMcnp(deck, ctx, editable) {
   const owners = [], refs = [];
@@ -2487,7 +2652,9 @@ function annotateMcnp(deck, ctx, editable) {
     const trimmed = line.trim();
     if (!trimmed) { block++; card = null; owners.push(null); return '<span class="ln"> </span>'; }
     if (li === 0 || /^(\$|c(\s|$))/i.test(trimmed)) {
-      const gm = trimmed.match(/^c Group: (.*) = cells /i), g = gm && (ctx.groups || []).find(x => x.name === gm[1]);
+      const gm = trimmed.match(/^c\s+Group:\s*([^|=]+?)(?:\s*\||\s*=|\s*$)/i);
+      const path = gm ? gm[1].trim() : null;
+      const g = path && (ctx.groups || []).find(x => x.path === path || x.name === path);
       const own = g ? {kind:'group', id:g.id} : null;
       owners.push(own);
       return `<span class="ln${ownerMatchesSel(own) ? ' sel' : ''}" data-line="${li}"><span class="t-mcom">${esc(line)}</span></span>`;
@@ -3104,7 +3271,8 @@ function toolTarget() {
     const items = selItems();
     if (!items.length || TOOL.mode === 'scale') return null;
     const group = sel.kind === 'group' ? groupById(sel.id) : null;
-    return {kind:'set', items, group, o:{name:group ? group.name : `${items.length} items`}};
+    const childGroups = group ? [...groupDescendantIds(group.id)].map(id => groupById(id)).filter(Boolean) : [];
+    return {kind:'set', items, group, childGroups, o:{name:group ? group.name : `${items.length} items`}};
   }
   const o = getSel();
   if (!o) return null;
@@ -3175,12 +3343,17 @@ function beginTransform(h, t, mx, my, adapter) {
   HISTORY.boundary = true;
   const c0 = targetCenter(t); // fixed for the whole drag: a set's bounding box changes shape as it turns
   const a0 = h.type === 'ring' && adapter.ringAngle ? adapter.ringAngle(h.axis, c0, mx, my) : null;
-  const s0 = t.kind === 'set' ? {items:t.items.map(x => clone(x.o)), group:t.group ? clone(t.group) : null} : clone(t.o);
+  const s0 = t.kind === 'set' ? {
+    items: t.items.map(x => clone(x.o)),
+    group: t.group ? clone(t.group) : null,
+    childGroups: (t.childGroups || []).map(cg => clone(cg))
+  } : clone(t.o);
   TDRAG = {h, t, mx, my, s0, c0, adapter, acc:0, last:a0 !== null ? a0 : Math.atan2(my - h.y, mx - h.x), plane:a0 !== null, readout:''};
 }
 function restoreSet(t, s0) {
   t.items.forEach((x, i) => Object.assign(x.o, clone(s0.items[i])));
   if (t.group && s0.group) Object.assign(t.group, s0.group);
+  if (t.childGroups && s0.childGroups) t.childGroups.forEach((cg, i) => Object.assign(cg, s0.childGroups[i]));
 }
 function applyTransform(mx, my) {
   const {h, t, s0, adapter:A} = TDRAG, o = t.o, dx = mx - TDRAG.mx, dy = my - TDRAG.my, step = moveStepCm();
@@ -3195,6 +3368,7 @@ function applyTransform(mx, my) {
       const d = delta.map((v, i) => v ? snapStep(c0[i] + v, step) - c0[i] : 0); // the pivot snaps; the parts keep their spacing
       moveItems(t.items, s0.items, d);
       if (t.group) ['x', 'y', 'z'].forEach((a, i) => { t.group[a] = tidy(s0.group[a] + d[i]); });
+      if (t.childGroups) t.childGroups.forEach((cg, ci) => { ['x', 'y', 'z'].forEach((a, i) => { cg[a] = tidy(s0.childGroups[ci][a] + d[i]); }); });
       TDRAG.readout = h.type === 'move' ? `${who}: ${'xyz'[h.axis]} ${d[h.axis] >= 0 ? '+' : ''}${showLen(d[h.axis])}` : `${who}: ${showVec(d)}`;
     } else if (h.type === 'ring') {
       const a = TDRAG.plane ? A.ringAngle(h.axis, c0, mx, my) : Math.atan2(my - h.y, mx - h.x);
@@ -3206,6 +3380,17 @@ function applyTransform(mx, my) {
       const each = TOOL.pivot === 'each';
       const err = rotateItems(t.items, s0.items, axisRotation(h.axis, deg), c0, each);
       if (err) { restoreSet(t, s0); TDRAG.readout = `Can't turn: ${err}`; return; }
+      if (t.childGroups && !each) {
+        const Rg = axisRotation(h.axis, deg);
+        const mv = (M, v) => M.map(r => r[0] * v[0] + r[1] * v[1] + r[2] * v[2]);
+        const nice = v => { const r = Math.round(v * 1e6) / 1e6; return Math.abs(r - v) < 1e-8 ? (r === 0 ? 0 : r) : tidy(v); };
+        t.childGroups.forEach((cg, ci) => {
+          const sc = s0.childGroups[ci];
+          const gc0 = [sc.x, sc.y, sc.z];
+          const gc = mv(Rg, gc0.map((v, k) => v - c0[k])).map((v, k) => nice(c0[k] + v));
+          [cg.x, cg.y, cg.z] = gc;
+        });
+      }
       TDRAG.readout = `${who}: ${fmtNum(deg)}° about ${'xyz'[h.axis]}${each ? ', each part in place' : ''}`;
     }
     return;

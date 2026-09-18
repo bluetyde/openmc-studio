@@ -44,10 +44,14 @@ Needs changes in three places:
   - Studio UI fields for bin edges (`tab_e`) and probabilities (`tab_p`), with a paste-in dialog and auto-detection
     for MCNP `SI`/`SP` card blocks.
   - Supported and validated in `openmc-mcnp-project` (`src/mcnp_cards.py`) and verified by integration tests.
-- **Array tool (DONE - Step 1).** Added Roblox-style "Array…" tool to the Ribbon (Home and Model tabs):
-  - Popover with interactive 3D count ($N_x, N_y, N_z$) and pitch ($\Delta x, \Delta y, \Delta z$) inputs in current length units (cm or in).
-  - Automatically creates cloned, offset parts on the grid with optional auto-grouping ("Array <Name>").
-  - Step 2 (`openmc.RectLattice` and MCNP `LAT`/`FILL` cards) remains for lattice-level export once lattice universes are supported.
+- **Array tool & RectLattice export (DONE - Steps 1 & 2).**
+  - Enhanced Array tool in the Ribbon (Home and Model tabs) supporting both individual parts and multi-component groups:
+    - Arraying an existing group creates a clean hierarchy: parent group `Array <Name>` with child instance groups `<Name> [ix,iy,iz]` for each grid position, preserving component grouping per instance without cluttering the Explorer.
+    - Arraying loose parts creates a parent group with all cloned items neatly organized inside.
+    - Popover controls for 3D count ($N_x, N_y, N_z$), pitch ($\Delta x, \Delta y, \Delta z$), grouping, and native `RectLattice` export.
+    - Properties panel: displays lattice dimensions/pitch and a toggle to switch between native `openmc.RectLattice` export and discrete CSG cells.
+    - OpenMC Python export in `buildScript`: exports unit universe (`openmc.Universe`) with centered base elements and background moderator cell, native `openmc.RectLattice(pitch, lower_left, universes)`, and bounding lattice cell (`openmc.Cell(fill=lattice)`).
+    - Verified in OpenMC 0.15.3 simulation: fixed-source transport with over 1.29 million overlap checks completed with zero errors and zero lost particles.
 - **He-3 detector response.** The pre-lab asks for (n,alpha) and (n,2alpha), MT 107 and 108, but
   ENDF/B-VIII.0 He-3 has neither; its detection reaction is MT 103, He-3(n,p)T, 5316 b at
   0.0253 eV. Confirm with the course which reaction (or detector gas) is meant. Then add a
@@ -55,9 +59,6 @@ Needs changes in three places:
   in the geometry (MCNP `FM` naming that material; OpenMC `EnergyFunctionFilter` with its cross
   section, or small He-3 gas detector cells). Studio's MCNP tally export only writes FM for the
   tallied cells' own material today.
-- **Lattice (Step 2).** Export arrays as `openmc.RectLattice` and MCNP `LAT`/`FILL`. Needs MCNPy's
-  lattice support confirmed, and openmc-mcnp-project's geometry check extended to universes and lattices
-  (a known limit today).
 
 ## 3D view: more than 192 parts (DONE)
 

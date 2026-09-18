@@ -3298,9 +3298,13 @@ function pivotButton() {
    then walked front to back: the first stretch whose highest-priority part (Explorer order) has a
    material is what you see. Void parts and the world fill are see-through, like cavities. The
    optional cutaway removes everything beyond the slice plane, so cross-sections show their colors. */
-const MAXP_BUCKETS = [32, 64, 128, 192]; // shader sizes; the largest one the graphics card's uniform limit allows is the cap
+/* ───────── 3D Viewport: ray-traced CSG in WebGL 2 with BVH ───────── */
 const CAM = {target:[0, 0, 0], yaw:-0.9, pitch:0.45, dist:0, fov:45 * DEG};
-const V3 = {gl:null, prog:null, loc:null, ok:null, err:'', geom:null, drag:null, maxp:32, buckets:[32], progs:{}, depth:null, depthBuf:null};
+const V3 = {
+  gl:null, prog:null, loc:null, ok:null, err:'', geom:null, drag:null,
+  partTex:null, bvhTex:null, partTexW:512, bvhTexW:512,
+  bvh:null, depth:null, depthBuf:null
+};
 
 const v3sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const v3add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -3322,27 +3326,107 @@ function project3(B, p) {
 }
 function rayFor(B, px, py) { return v3norm(v3add(B.f, v3add(v3mul(B.r, (px - B.W / 2) / B.focal), v3mul(B.u, -(py - B.H / 2) / B.focal)))); }
 
-const shaderFS = maxp => `
-precision highp float;
-#define MAXP ${maxp}
-uniform vec2 uRes; uniform vec3 uCam; uniform vec3 uR; uniform vec3 uU; uniform vec3 uF; uniform float uFocal;
-uniform int uN;
-// per part: center + shape type (w), two frame columns (the third is their cross product), half sizes, color
-uniform vec4 uC[MAXP]; uniform vec3 uM0[MAXP]; uniform vec3 uM1[MAXP];
-uniform vec3 uD[MAXP]; uniform vec4 uCol[MAXP];
-uniform float uWorldR; uniform float uWorldSphere;
-uniform float uCut; uniform float uCutAxis; uniform float uCutAt; uniform float uCutSide;
-uniform float uSel;
-uniform float uDepth; uniform float uTMax;
-const float BIG = 1e9;
+// Build BVH over S.parts. Returns { nodes, partsList, root }
+function buildBvh3D(parts) {
+  if (!parts.length) return { nodes: [], root: -1 };
+  const items = parts.map((p, idx) => {
+    const h = partHalfExtents(p);
+    return {
+      idx,
+      min: [p.x - h[0], p.y - h[1], p.z - h[2]],
+      max: [p.x + h[0], p.y + h[1], p.z + h[2]],
+      cen: [p.x, p.y, p.z]
+    };
+  });
+  const nodes = [];
+  function recurse(list) {
+    const nodeIdx = nodes.length;
+    nodes.push({ min:[0,0,0], max:[0,0,0], left:-1, right:-1, isLeaf:false, partIdx:-1 });
+    if (list.length === 1) {
+      const it = list[0];
+      nodes[nodeIdx].min = it.min;
+      nodes[nodeIdx].max = it.max;
+      nodes[nodeIdx].left = it.idx;
+      nodes[nodeIdx].right = -1;
+      nodes[nodeIdx].isLeaf = true;
+      nodes[nodeIdx].partIdx = it.idx;
+      return nodeIdx;
+    }
+    const bmin = [Infinity, Infinity, Infinity], bmax = [-Infinity, -Infinity, -Infinity];
+    const cmin = [Infinity, Infinity, Infinity], cmax = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < list.length; i++) {
+      const it = list[i];
+      for (let k = 0; k < 3; k++) {
+        if (it.min[k] < bmin[k]) bmin[k] = it.min[k];
+        if (it.max[k] > bmax[k]) bmax[k] = it.max[k];
+        if (it.cen[k] < cmin[k]) cmin[k] = it.cen[k];
+        if (it.cen[k] > cmax[k]) cmax[k] = it.cen[k];
+      }
+    }
+    nodes[nodeIdx].min = bmin;
+    nodes[nodeIdx].max = bmax;
+    let axis = 0, span = cmax[0] - cmin[0];
+    for (let k = 1; k < 3; k++) {
+      if (cmax[k] - cmin[k] > span) { axis = k; span = cmax[k] - cmin[k]; }
+    }
+    list.sort((a, b) => a.cen[axis] - b.cen[axis]);
+    const mid = Math.floor(list.length / 2);
+    const leftChild = recurse(list.slice(0, mid));
+    const rightChild = recurse(list.slice(mid));
+    nodes[nodeIdx].left = leftChild;
+    nodes[nodeIdx].right = rightChild;
+    return nodeIdx;
+  }
+  const root = recurse(items);
+  return { nodes, root };
+}
 
-// A ray that hits nothing: background, or 'no surface' (white) in the depth pass.
+const shaderFS300 = `#version 300 es
+precision highp float;
+precision highp int;
+
+uniform vec2 uRes;
+uniform vec3 uCam;
+uniform vec3 uR;
+uniform vec3 uU;
+uniform vec3 uF;
+uniform float uFocal;
+uniform int uN;
+uniform int uBvhRoot;
+
+uniform highp sampler2D uPartTex;
+uniform highp sampler2D uBvhTex;
+uniform int uPartTexW;
+uniform int uBvhTexW;
+
+uniform float uWorldR;
+uniform float uWorldSphere;
+uniform float uCut;
+uniform float uCutAxis;
+uniform float uCutAt;
+uniform float uCutSide;
+uniform float uDepth;
+uniform float uTMax;
+
+out vec4 fragColor;
+
+const float BIG = 1e9;
+const int MAX_CAND = 96;
+
 vec4 miss(vec3 bg) { return uDepth > 0.5 ? vec4(1.0) : vec4(bg, 1.0); }
 
-// Values, not an index: WebGL 1 only guarantees uniform-array indexing with a loop index in fragment shaders.
-bool part(vec3 c, vec3 m0, vec3 m1, vec3 m2, vec3 d, float ty, vec3 ro, vec3 rd, out float t0, out float t1, out vec3 n0, out vec3 n1) {
+// Fetch 4-component float vector from 1D texel address
+vec4 fetchTex1D(highp sampler2D tex, int addr, int texW) {
+  int x = addr % texW;
+  int y = addr / texW;
+  return texelFetch(tex, ivec2(x, y), 0);
+}
+
+// Intersect a single part primitive
+bool intersectPart(vec3 c, vec3 m0, vec3 m1, vec3 m2, vec3 d, float ty, vec3 ro, vec3 rd, out float t0, out float t1, out vec3 n0, out vec3 n1) {
   vec3 o = ro - c;
-  vec3 lo = vec3(dot(o, m0), dot(o, m1), dot(o, m2)), ld = vec3(dot(rd, m0), dot(rd, m1), dot(rd, m2));
+  vec3 lo = vec3(dot(o, m0), dot(o, m1), dot(o, m2));
+  vec3 ld = vec3(dot(rd, m0), dot(rd, m1), dot(rd, m2));
   if (ty < 0.5) { // sphere
     float b = dot(lo, ld), cc = dot(lo, lo) - d.x * d.x, disc = b * b - cc;
     if (disc < 0.0) return false;
@@ -3350,7 +3434,7 @@ bool part(vec3 c, vec3 m0, vec3 m1, vec3 m2, vec3 d, float ty, vec3 ro, vec3 rd,
     n0 = normalize(o + rd * t0); n1 = normalize(o + rd * t1);
     return true;
   }
-  if (ty < 1.5) { // box, half sizes d
+  if (ty < 1.5) { // box
     vec3 inv = 1.0 / (ld + vec3(equal(ld, vec3(0.0))) * 1e-12);
     vec3 ta = (-d - lo) * inv, tb = (d - lo) * inv, tmn = min(ta, tb), tmx = max(ta, tb);
     t0 = max(max(tmn.x, tmn.y), tmn.z); t1 = min(min(tmx.x, tmx.y), tmx.z);
@@ -3377,17 +3461,27 @@ bool part(vec3 c, vec3 m0, vec3 m1, vec3 m2, vec3 d, float ty, vec3 ro, vec3 rd,
   return true;
 }
 
+// Ray-AABB intersection test
+bool intersectBox(vec3 bmin, vec3 bmax, vec3 ro, vec3 invRd, float tMinLimit, float tMaxLimit) {
+  vec3 t1 = (bmin - ro) * invRd;
+  vec3 t2 = (bmax - ro) * invRd;
+  vec3 tNear = min(t1, t2);
+  vec3 tFar  = max(t1, t2);
+  float enter = max(max(tNear.x, tNear.y), max(tNear.z, tMinLimit));
+  float exit  = min(min(tFar.x, tFar.y), min(tFar.z, tMaxLimit));
+  return enter <= exit;
+}
+
 void main() {
   vec2 px = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
   vec3 rd = normalize(uF + uR * ((px.x - uRes.x * 0.5) / uFocal) - uU * ((px.y - uRes.y * 0.5) / uFocal));
   vec3 ro = uCam;
   vec3 bg = mix(vec3(0.075, 0.085, 0.10), vec3(0.12, 0.135, 0.155), px.y / uRes.y);
 
-  // valid range: in front of the camera, inside the world, and on the kept side of the cutaway
-  float tA = 0.0, tB = BIG; vec3 nA = -rd; float srcA = 0.0; // 0 near, 1 world, 2 cut
+  float tA = 0.0, tB = BIG; vec3 nA = -rd; float srcA = 0.0;
   if (uWorldSphere > 0.5) {
     float b = dot(ro, rd), cc = dot(ro, ro) - uWorldR * uWorldR, disc = b * b - cc;
-    if (disc < 0.0) { gl_FragColor = miss(bg); return; }
+    if (disc < 0.0) { fragColor = miss(bg); return; }
     float s = sqrt(disc);
     if (-b - s > tA) { tA = -b - s; nA = normalize(ro + rd * tA); srcA = 1.0; }
     tB = min(tB, -b + s);
@@ -3395,117 +3489,177 @@ void main() {
     vec3 inv = 1.0 / (rd + vec3(equal(rd, vec3(0.0))) * 1e-12);
     vec3 ta = (vec3(-uWorldR) - ro) * inv, tb = (vec3(uWorldR) - ro) * inv, tmn = min(ta, tb), tmx = max(ta, tb);
     float w0 = max(max(tmn.x, tmn.y), tmn.z), w1 = min(min(tmx.x, tmx.y), tmx.z);
-    if (w0 > w1) { gl_FragColor = miss(bg); return; }
+    if (w0 > w1) { fragColor = miss(bg); return; }
     if (w0 > tA) { tA = w0; srcA = 1.0; nA = tmn.x >= tmn.y && tmn.x >= tmn.z ? vec3(-sign(rd.x), 0.0, 0.0) : (tmn.y >= tmn.z ? vec3(0.0, -sign(rd.y), 0.0) : vec3(0.0, 0.0, -sign(rd.z))); }
     tB = min(tB, w1);
   }
   if (uCut > 0.5) {
     int ax = int(uCutAxis + 0.5);
-    // remove the half on the camera's side of the plane (uCutSide = +1: coordinates above uCutAt are removed)
     float oc = ((ax == 0 ? ro.x : (ax == 1 ? ro.y : ro.z)) - uCutAt) * uCutSide, dc = (ax == 0 ? rd.x : (ax == 1 ? rd.y : rd.z)) * uCutSide;
     vec3 cn = (ax == 0 ? vec3(1.0, 0.0, 0.0) : (ax == 1 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0))) * uCutSide;
-    if (abs(dc) < 1e-12) { if (oc > 0.0) { gl_FragColor = miss(bg); return; } }
+    if (abs(dc) < 1e-12) { if (oc > 0.0) { fragColor = miss(bg); return; } }
     else {
       float tc = -oc / dc;
       if (dc > 0.0) tB = min(tB, tc);
       else if (tc > tA) { tA = tc; nA = cn; srcA = 2.0; }
     }
   }
-  if (tA >= tB) { gl_FragColor = miss(bg); return; }
+  if (tA >= tB || uN <= 0) { fragColor = miss(bg); return; }
 
-  float T0[MAXP]; float T1[MAXP]; vec3 N0[MAXP]; vec3 N1[MAXP];
-  for (int i = 0; i < MAXP; i++) {
-    T0[i] = BIG; T1[i] = -BIG; N0[i] = vec3(0.0); N1[i] = vec3(0.0);
-    if (i >= uN) continue;
-    float a0, a1; vec3 b0, b1;
-    if (part(uC[i].xyz, uM0[i], uM1[i], cross(uM0[i], uM1[i]), uD[i], uC[i].w, ro, rd, a0, a1, b0, b1)) { T0[i] = a0; T1[i] = a1; N0[i] = b0; N1[i] = b1; }
+  vec3 invRd = 1.0 / (rd + vec3(equal(rd, vec3(0.0))) * 1e-12);
+
+  // Traverse BVH using integer stack
+  int candParts[MAX_CAND];
+  int numCand = 0;
+  int stack[64];
+  int stackPtr = 0;
+  stack[stackPtr++] = uBvhRoot;
+
+  while (stackPtr > 0 && numCand < MAX_CAND) {
+    int nodeIdx = stack[--stackPtr];
+    if (nodeIdx < 0) continue;
+    vec4 n0 = fetchTex1D(uBvhTex, 2 * nodeIdx, uBvhTexW);
+    vec4 n1 = fetchTex1D(uBvhTex, 2 * nodeIdx + 1, uBvhTexW);
+    if (!intersectBox(n0.xyz, n1.xyz, ro, invRd, tA, tB)) continue;
+
+    if (n1.w < -0.5) { // Leaf node
+      int pIdx = int(n0.w + 0.5);
+      if (pIdx >= 0 && pIdx < uN) {
+        candParts[numCand++] = pIdx;
+      }
+    } else { // Internal node
+      int lChild = int(n0.w + 0.5);
+      int rChild = int(n1.w + 0.5);
+      if (rChild >= 0 && stackPtr < 63) stack[stackPtr++] = rChild;
+      if (lChild >= 0 && stackPtr < 63) stack[stackPtr++] = lChild;
+    }
   }
+
+  if (numCand == 0) { fragColor = miss(bg); return; }
+
+  // Sort candidate parts by part index ascending (model CSG priority) using insertion sort
+  for (int i = 1; i < MAX_CAND; i++) {
+    if (i >= numCand) break;
+    int key = candParts[i];
+    int j = i - 1;
+    while (j >= 0 && candParts[j] > key) {
+      candParts[j + 1] = candParts[j];
+      j--;
+    }
+    candParts[j + 1] = key;
+  }
+
+  // Intersect candidate parts
+  float T0[MAX_CAND]; float T1[MAX_CAND]; vec3 N0[MAX_CAND]; vec3 N1[MAX_CAND];
+  for (int i = 0; i < MAX_CAND; i++) {
+    if (i >= numCand) break;
+    int pIdx = candParts[i];
+    vec4 cType = fetchTex1D(uPartTex, 4 * pIdx, uPartTexW);
+    vec4 m0 = fetchTex1D(uPartTex, 4 * pIdx + 1, uPartTexW);
+    vec4 m1 = fetchTex1D(uPartTex, 4 * pIdx + 2, uPartTexW);
+    vec4 dCol = fetchTex1D(uPartTex, 4 * pIdx + 3, uPartTexW);
+    vec3 m2 = cross(m0.xyz, m1.xyz);
+    float a0, a1; vec3 b0, b1;
+    if (intersectPart(cType.xyz, m0.xyz, m1.xyz, m2, dCol.xyz, cType.w, ro, rd, a0, a1, b0, b1)) {
+      T0[i] = a0; T1[i] = a1; N0[i] = b0; N1[i] = b1;
+    } else {
+      T0[i] = BIG; T1[i] = -BIG;
+    }
+  }
+
+  // Segment ray through candidate parts (exact CSG priority)
   float tc = tA; vec3 nc = nA; float fromCut = srcA > 1.5 ? 1.0 : 0.0;
-  for (int stepi = 0; stepi < 2 * MAXP + 2; stepi++) {
+  for (int stepi = 0; stepi < 2 * MAX_CAND + 2; stepi++) {
     if (tc >= tB) break;
-    float tn = tB; vec3 nn = vec3(0.0); float cutn = 0.0;
-    for (int i = 0; i < MAXP; i++) {
-      if (i >= uN) break;
+    float tn = tB; vec3 nn = vec3(0.0);
+    for (int i = 0; i < MAX_CAND; i++) {
+      if (i >= numCand) break;
       if (T0[i] > tc + 1e-6 && T0[i] < tn) { tn = T0[i]; nn = N0[i]; }
       if (T1[i] > tc + 1e-6 && T1[i] < tn) { tn = T1[i]; nn = -N1[i]; }
     }
     float tm = 0.5 * (tc + tn);
-    int own = -1; vec4 ownCol = vec4(0.0);
-    for (int i = 0; i < MAXP; i++) {
-      if (i >= uN) break;
-      if (T0[i] < tm && tm < T1[i]) { own = i; ownCol = uCol[i]; break; }
+    int own = -1;
+    for (int i = 0; i < MAX_CAND; i++) {
+      if (i >= numCand) break;
+      if (T0[i] < tm && tm < T1[i]) { own = i; break; }
     }
-    if (own >= 0 && ownCol.a > 0.5) {
-      if (uDepth > 0.5) { // depth pass: distance to this visible surface as a 24-bit number
-        float v = floor(clamp(tc / uTMax, 0.0, 1.0) * 16777214.0);
-        gl_FragColor = vec4(floor(v / 65536.0), mod(floor(v / 256.0), 256.0), mod(v, 256.0), 255.0) / 255.0;
+    if (own >= 0) {
+      int pIdx = candParts[own];
+      vec4 m0 = fetchTex1D(uPartTex, 4 * pIdx + 1, uPartTexW);
+      vec4 m1 = fetchTex1D(uPartTex, 4 * pIdx + 2, uPartTexW);
+      vec3 colRgb = vec3(m0.w, m1.w, 0.0);
+      vec4 dCol = fetchTex1D(uPartTex, 4 * pIdx + 3, uPartTexW);
+      colRgb.z = fract(dCol.w); // Blue is stored in fraction
+      float alphaFlag = floor(dCol.w);
+      if (alphaFlag > 0.5) {
+        if (uDepth > 0.5) {
+          float v = floor(clamp(tc / uTMax, 0.0, 1.0) * 16777214.0);
+          fragColor = vec4(floor(v / 65536.0), mod(floor(v / 256.0), 256.0), mod(v, 256.0), 255.0) / 255.0;
+          return;
+        }
+        vec3 n = normalize(nc);
+        if (dot(n, rd) > 0.0) n = -n;
+        float lam = 0.30 + 0.70 * max(dot(n, -rd), 0.0);
+        vec3 col = colRgb * lam;
+        if (fromCut > 0.5) col = colRgb * 0.82 + 0.05;
+        if (alphaFlag > 1.5) col = mix(col, vec3(0.32, 0.72, 1.0), 0.28);
+        fragColor = vec4(col, 1.0);
         return;
       }
-      vec3 n = normalize(nc);
-      if (dot(n, rd) > 0.0) n = -n;
-      float lam = 0.30 + 0.70 * max(dot(n, -rd), 0.0);
-      vec3 col = ownCol.rgb * lam;
-      if (fromCut > 0.5) col = ownCol.rgb * 0.82 + 0.05;              // flat, slightly lifted cross-section
-      if (ownCol.a > 1.5) col = mix(col, vec3(0.32, 0.72, 1.0), 0.28); // selected
-      gl_FragColor = vec4(col, 1.0);
-      return;
     }
     tc = tn; nc = nn; fromCut = 0.0;
   }
-  gl_FragColor = miss(bg);
+  fragColor = miss(bg);
 }`;
 
 function v3init() {
   if (V3.ok !== null) return V3.ok;
-  const gl = $('#vp3').getContext('webgl', {antialias:false, preserveDrawingBuffer:true});
-  if (!gl) { V3.ok = false; V3.err = 'This browser has no WebGL, so the 3D view is unavailable.'; return false; }
+  const cv = $('#vp3');
+  const gl = cv.getContext('webgl2', {antialias:false, preserveDrawingBuffer:true});
+  if (!gl) { V3.ok = false; V3.err = 'This browser does not support WebGL 2, which is required for the 3D view.'; return false; }
+  const ext = gl.getExtension('EXT_color_buffer_float');
   const buf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
-  // each part uses 5 uniform vectors (center and type, 2 frame columns, sizes, color), plus about 24 for the camera and settings
-  const vecs = gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS) || 64;
-  V3.buckets = MAXP_BUCKETS.filter(b => 5 * b + 24 <= vecs);
-  if (!V3.buckets.length) V3.buckets = [Math.max(1, Math.floor((vecs - 24) / 5))];
+
+  // Compile WebGL 2 shader program
+  const mk = (type, src) => {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  };
+  try {
+    const prog = gl.createProgram();
+    gl.attachShader(prog, mk(gl.VERTEX_SHADER, '#version 300 es\nin vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }'));
+    gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, shaderFS300));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+
+    const names = ['uRes', 'uCam', 'uR', 'uU', 'uF', 'uFocal', 'uN', 'uBvhRoot', 'uPartTex', 'uBvhTex', 'uPartTexW', 'uBvhTexW',
+                   'uWorldR', 'uWorldSphere', 'uCut', 'uCutAxis', 'uCutAt', 'uCutSide', 'uDepth', 'uTMax'];
+    const loc = Object.fromEntries(names.map(n => [n, gl.getUniformLocation(prog, n)]));
+    V3.prog = prog; V3.loc = loc;
+  } catch (e) {
+    V3.ok = false; V3.err = `The 3D view couldn't start: ${e.message}`; return false;
+  }
+
+  // Create data textures
+  V3.partTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, V3.partTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+  V3.bvhTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, V3.bvhTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
   Object.assign(V3, {gl, ok:true});
-  if (!v3program(V3.buckets[0])) V3.ok = false;
-  return V3.ok;
-}
-// One program per part-count bucket, compiled when first needed, so small models keep short shader loops.
-function v3program(maxp) {
-  const gl = V3.gl;
-  if (V3.progs[maxp] === undefined) {
-    const mk = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
-    try {
-      const prog = gl.createProgram();
-      gl.attachShader(prog, mk(gl.VERTEX_SHADER, 'attribute vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }'));
-      gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, shaderFS(maxp)));
-      gl.linkProgram(prog);
-      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
-      const names = ['uRes', 'uCam', 'uR', 'uU', 'uF', 'uFocal', 'uN', 'uWorldR', 'uWorldSphere', 'uCut', 'uCutAxis', 'uCutAt', 'uCutSide', 'uSel', 'uDepth', 'uTMax'];
-      const loc = Object.fromEntries(names.map(n => [n, gl.getUniformLocation(prog, n)]));
-      ['uC', 'uM0', 'uM1', 'uD', 'uCol'].forEach(n => { loc[n] = gl.getUniformLocation(prog, n + '[0]'); });
-      V3.progs[maxp] = {prog, loc};
-    } catch (e) {
-      V3.progs[maxp] = null; V3.err = `The 3D view couldn't start: ${e.message}`;
-    }
-  }
-  const p = V3.progs[maxp];
-  if (!p) return false;
-  if (V3.prog !== p.prog) {
-    gl.useProgram(p.prog);
-    const pl = gl.getAttribLocation(p.prog, 'p');
-    gl.enableVertexAttribArray(pl); gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 0, 0);
-    Object.assign(V3, {prog:p.prog, loc:p.loc, maxp});
-  }
   return true;
-}
-// The smallest bucket that holds every part; if a bucket won't compile on this card, the next smaller one.
-function v3fit(n) {
-  const b = V3.buckets;
-  let i = b.findIndex(x => x >= n);
-  if (i < 0) i = b.length - 1;
-  for (; i >= 0; i--) if (v3program(b[i])) return true;
-  return false;
 }
 
 function partUniform(p) { // center, frame columns, dimensions, type
@@ -3521,36 +3675,84 @@ function draw3D() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const B = camBasis(W, H);
   V3.geom = {B, W, H};
-  // overlay canvas
   ov.width = Math.round(W * dpr); ov.height = Math.round(H * dpr);
   const ctx = ov.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  if (!v3init() || !v3fit(S.parts.length)) {
+  if (!v3init()) {
     ctx.fillStyle = '#d8dde3'; ctx.font = '13px "IBM Plex Sans", system-ui, sans-serif';
     ctx.fillText(V3.err, 16, 28);
     return;
   }
   const gl = V3.gl, L = V3.loc;
-  const scale = 1; // render at CSS-pixel resolution: the ray tracer does real work per pixel
+  const scale = 1;
   cv.width = Math.round(W * scale); cv.height = Math.round(H * scale);
   gl.viewport(0, 0, cv.width, cv.height);
-  const parts = S.parts.slice(0, V3.maxp).map(partUniform);
-  const flat = (arr, fn) => new Float32Array(Array.from({length:V3.maxp}, (_, i) => i < arr.length ? fn(arr[i], i) : [0, 0, 0]).flat());
+
+  // 1. Pack parts into texture: 4 texels per part
+  const N = S.parts.length;
+  const partTexW = V3.partTexW;
+  const partTexH = Math.max(1, Math.ceil(Math.max(1, N * 4) / partTexW));
+  const partData = new Float32Array(partTexW * partTexH * 4);
+  const selParts = new Set(selItems().filter(x => x.kind === 'part').map(x => x.o.id));
+
+  for (let i = 0; i < N; i++) {
+    const p = S.parts[i];
+    const u = partUniform(p);
+    const m = matById(p.material);
+    const [r, g, b] = m ? hexRgb(m.color) : [180, 142, 173];
+    const isSel = selParts.has(p.id) ? 2 : 1;
+    const base = i * 16;
+    // Texel 0: center + type
+    partData[base] = u.c[0]; partData[base + 1] = u.c[1]; partData[base + 2] = u.c[2]; partData[base + 3] = u.type;
+    // Texel 1: M0 + red
+    partData[base + 4] = u.cols[0][0]; partData[base + 5] = u.cols[0][1]; partData[base + 6] = u.cols[0][2]; partData[base + 7] = r / 255;
+    // Texel 2: M1 + green
+    partData[base + 8] = u.cols[1][0]; partData[base + 9] = u.cols[1][1]; partData[base + 10] = u.cols[1][2]; partData[base + 11] = g / 255;
+    // Texel 3: dims + packed (isSel + b/255)
+    partData[base + 12] = u.dims[0]; partData[base + 13] = u.dims[1]; partData[base + 14] = u.dims[2]; partData[base + 15] = isSel + (b / 255) * 0.9999;
+  }
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, V3.partTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, partTexW, partTexH, 0, gl.RGBA, gl.FLOAT, partData);
+
+  // 2. Build BVH and pack into texture: 2 texels per node
+  const bvhRes = buildBvh3D(S.parts);
+  V3.bvh = bvhRes;
+  const numNodes = bvhRes.nodes.length;
+  const bvhTexW = V3.bvhTexW;
+  const bvhTexH = Math.max(1, Math.ceil(Math.max(1, numNodes * 2) / bvhTexW));
+  const bvhData = new Float32Array(bvhTexW * bvhTexH * 4);
+  for (let i = 0; i < numNodes; i++) {
+    const nd = bvhRes.nodes[i];
+    const base = i * 8;
+    // Texel 0: min.xyz + leftChild / partIdx
+    bvhData[base] = nd.min[0]; bvhData[base + 1] = nd.min[1]; bvhData[base + 2] = nd.min[2];
+    bvhData[base + 3] = nd.isLeaf ? nd.partIdx : nd.left;
+    // Texel 1: max.xyz + rightChild / leaf flag (-1.0 for leaf, >=0 for internal)
+    bvhData[base + 4] = nd.max[0]; bvhData[base + 5] = nd.max[1]; bvhData[base + 6] = nd.max[2];
+    bvhData[base + 7] = nd.isLeaf ? -1.0 : nd.right;
+  }
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, V3.bvhTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, bvhTexW, bvhTexH, 0, gl.RGBA, gl.FLOAT, bvhData);
+
+  // 3. Set program and uniforms
+  gl.useProgram(V3.prog);
+  const pl = gl.getAttribLocation(V3.prog, 'p');
+  gl.enableVertexAttribArray(pl);
+  gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 0, 0);
+
   gl.uniform2f(L.uRes, cv.width, cv.height);
   gl.uniform3fv(L.uCam, B.pos); gl.uniform3fv(L.uR, B.r); gl.uniform3fv(L.uU, B.u); gl.uniform3fv(L.uF, B.f);
   gl.uniform1f(L.uFocal, B.focal * scale);
-  gl.uniform1i(L.uN, parts.length);
-  gl.uniform4fv(L.uC, new Float32Array(Array.from({length:V3.maxp}, (_, i) => i < parts.length ? [...parts[i].c, parts[i].type] : [0, 0, 0, 0]).flat()));
-  gl.uniform3fv(L.uM0, flat(parts, q => q.cols[0])); gl.uniform3fv(L.uM1, flat(parts, q => q.cols[1]));
-  gl.uniform3fv(L.uD, flat(parts, q => q.dims));
-  const selParts = new Set(selItems().filter(x => x.kind === 'part').map(x => x.o.id));
-  gl.uniform4fv(L.uCol, new Float32Array(Array.from({length:V3.maxp}, (_, i) => {
-    const p = S.parts[i], m = p && matById(p.material);
-    if (!m) return [0, 0, 0, 0];
-    const [r, g, b] = hexRgb(m.color);
-    return [r / 255, g / 255, b / 255, selParts.has(p.id) ? 2 : 1]; // alpha 2 = selected
-  }).flat()));
+  gl.uniform1i(L.uN, N);
+  gl.uniform1i(L.uBvhRoot, bvhRes.root);
+  gl.uniform1i(L.uPartTex, 0);
+  gl.uniform1i(L.uBvhTex, 1);
+  gl.uniform1i(L.uPartTexW, partTexW);
+  gl.uniform1i(L.uBvhTexW, bvhTexW);
+
   gl.uniform1f(L.uWorldR, S.settings.worldR || 100);
   gl.uniform1f(L.uWorldSphere, S.settings.worldShape === 'sphere' ? 1 : 0);
   const cut = $('#cutaway').checked;
@@ -3559,8 +3761,7 @@ function draw3D() {
   gl.uniform1f(L.uCutAt, view.slice);
   const cutAx = {xy:2, xz:1, yz:0}[view.plane], cutSide = B.pos[cutAx] >= view.slice ? 1 : -1;
   gl.uniform1f(L.uCutSide, cutSide);
-  gl.uniform1f(L.uSel, -1);
-  // Depth pass, only when something is drawn over the geometry: distance to the visible surface per pixel.
+
   const res = LOCAL.results;
   const meshT = res && $('#showMesh').checked ? res.tallies.filter(x => x.kind === 'mesh')[+($('#meshPick').value || 0)] : null;
   const showTr = !!(res && res.tracks.length && $('#showTracks').checked);
@@ -3592,7 +3793,7 @@ function draw3D() {
     for (const y of c) for (const z of c) line([-R, y, z], [R, y, z]);
   }
   ctx.setLineDash([]);
-  // flux map on the slice plane, then tracks; both are hidden or dimmed where geometry is in front of them
+  // flux map on the slice plane, then tracks
   if (meshT) drawMesh3D(ctx, B, meshT, W, H);
   if (showTr) drawTracks3D(ctx, B, res);
   // sources
@@ -3619,7 +3820,6 @@ function draw3D() {
   ctx.fillStyle = 'rgba(216,221,227,.65)'; ctx.font = '11px "JetBrains Mono", Consolas, monospace';
   ctx.fillText(cut ? `3D · cut open at ${AX[view.plane][2]} = ${showLen(view.slice)} (the half facing you is removed)` : '3D', 10, 16);
   ctx.fillText('drag to orbit · right-drag or Shift+drag to pan · wheel to zoom · F to focus', 10, 31);
-  if (S.parts.length > V3.maxp) { ctx.fillStyle = '#e6b455'; ctx.fillText(`3D shows the first ${V3.maxp} of ${S.parts.length} parts (2D and exports use all).`, 10, 46); }
   // gizmo
   const tt = toolTarget();
   V3.handles = tt ? buildHandles(tt, adapter3D()) : [];
@@ -3636,7 +3836,7 @@ function depthAt(x, y) {
   if (b[i] === 255 && b[i + 1] === 255 && b[i + 2] === 255) return Infinity;
   return (b[i] * 65536 + b[i + 1] * 256 + b[i + 2]) / 16777214 * D.tmax;
 }
-const depthSlack = d => 0.5 + 0.004 * d; // surfaces are resolved to a pixel, so allow a little
+const depthSlack = d => 0.5 + 0.004 * d;
 
 function drawTracks3D(ctx, B, res) {
   const P = p => project3(B, p);
@@ -3651,7 +3851,6 @@ function drawTracks3D(ctx, B, res) {
       const a3 = [p[3 * i - 3], p[3 * i - 2], p[3 * i - 1]], b3 = [p[3 * i], p[3 * i + 1], p[3 * i + 2]], a = P(a3), b = P(b3);
       if (!fin(a[0]) || !fin(b[0])) continue;
       ctx.strokeStyle = pt.particle === 'neutron' ? energyColor(pt.E[i - 1]) : 'rgb(255,214,102)';
-      // pieces a few pixels long: bright where nothing is in front, faint behind geometry
       const steps = Math.max(1, Math.min(200, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 3)));
       const at = s => P(v3add(a3, v3mul(v3sub(b3, a3), s)));
       let from = 0, vis = null;
@@ -3739,7 +3938,7 @@ function adapter3D() {
   };
 }
 
-// JS version of the shader's walk, for clicking
+// JS version of the shader's BVH walk, for clicking
 function pick3(px, py) {
   const {B} = V3.geom, rd = rayFor(B, px, py), ro = B.pos, R = S.settings.worldR || 100;
   let tA = 0, tB = Infinity;
@@ -3760,10 +3959,41 @@ function pick3(px, py) {
     if (Math.abs(dc) < 1e-12) { if (oc > 0) return -1; }
     else { const tc = -oc / dc; if (dc > 0) tB = Math.min(tB, tc); else tA = Math.max(tA, tc); }
   }
-  if (tA >= tB) return -1;
-  const iv = S.parts.slice(0, V3.maxp).map(p => {
+  if (tA >= tB || !S.parts.length) return -1;
+
+  // Gather candidate parts via BVH or bounds
+  const bvh = V3.bvh || buildBvh3D(S.parts);
+  const invRd = [1 / (rd[0] || 1e-12), 1 / (rd[1] || 1e-12), 1 / (rd[2] || 1e-12)];
+  const cand = [];
+  const stack = [bvh.root];
+  while (stack.length > 0 && cand.length < 128) {
+    const nodeIdx = stack.pop();
+    if (nodeIdx < 0) continue;
+    const nd = bvh.nodes[nodeIdx];
+    if (!nd) continue;
+    // Box test
+    let enter = tA, exit = tB;
+    for (let k = 0; k < 3; k++) {
+      const t1 = (nd.min[k] - ro[k]) * invRd[k], t2 = (nd.max[k] - ro[k]) * invRd[k];
+      enter = Math.max(enter, Math.min(t1, t2));
+      exit  = Math.min(exit,  Math.max(t1, t2));
+    }
+    if (enter > exit) continue;
+    if (nd.isLeaf) {
+      if (nd.partIdx >= 0 && nd.partIdx < S.parts.length) cand.push(nd.partIdx);
+    } else {
+      if (nd.right >= 0) stack.push(nd.right);
+      if (nd.left >= 0) stack.push(nd.left);
+    }
+  }
+
+  if (!cand.length) return -1;
+  cand.sort((a, b) => a - b); // CSG priority order
+
+  const iv = cand.map(pIdx => {
+    const p = S.parts[pIdx];
     const q = partUniform(p), o = v3sub(ro, q.c), lo = q.cols.map(m => v3dot(o, m)), ld = q.cols.map(m => v3dot(rd, m)), d = q.dims;
-    if (q.type === 0) { const b = v3dot(lo, ld), disc = b * b - (v3dot(lo, lo) - d[0] * d[0]); return disc < 0 ? null : [-b - Math.sqrt(disc), -b + Math.sqrt(disc)]; }
+    if (q.type === 0) { const b = v3dot(lo, ld), disc = b * b - (v3dot(lo, lo) - d[0] * d[0]); return disc < 0 ? null : [-b - Math.sqrt(disc), -b + Math.sqrt(disc), pIdx]; }
     if (q.type === 1) {
       let t0 = -Infinity, t1 = Infinity;
       for (let k = 0; k < 3; k++) {
@@ -3771,7 +4001,7 @@ function pick3(px, py) {
         const a = (-d[k] - lo[k]) / ld[k], b = (d[k] - lo[k]) / ld[k];
         t0 = Math.max(t0, Math.min(a, b)); t1 = Math.min(t1, Math.max(a, b));
       }
-      return t0 > t1 ? null : [t0, t1];
+      return t0 > t1 ? null : [t0, t1, pIdx];
     }
     const a = ld[0] ** 2 + ld[1] ** 2, b = lo[0] * ld[0] + lo[1] * ld[1], cc = lo[0] ** 2 + lo[1] ** 2 - d[0] ** 2;
     let sa, sb, za, zb;
@@ -3780,14 +4010,15 @@ function pick3(px, py) {
     if (Math.abs(ld[2]) < 1e-12) { if (Math.abs(lo[2]) > d[1]) return null; za = -Infinity; zb = Infinity; }
     else { const q0 = (-d[1] - lo[2]) / ld[2], q1 = (d[1] - lo[2]) / ld[2]; za = Math.min(q0, q1); zb = Math.max(q0, q1); }
     const t0 = Math.max(sa, za), t1 = Math.min(sb, zb);
-    return t0 > t1 ? null : [t0, t1];
-  });
+    return t0 > t1 ? null : [t0, t1, pIdx];
+  }).filter(Boolean);
+
   let tc = tA;
   for (let step = 0; step < 2 * iv.length + 2 && tc < tB; step++) {
     let tn = tB;
-    iv.forEach(v => { if (!v) return; if (v[0] > tc + 1e-9 && v[0] < tn) tn = v[0]; if (v[1] > tc + 1e-9 && v[1] < tn) tn = v[1]; });
-    const tm = (tc + tn) / 2, own = iv.findIndex(v => v && v[0] < tm && tm < v[1]);
-    if (own >= 0 && matById(S.parts[own].material)) return own;
+    iv.forEach(v => { if (v[0] > tc + 1e-9 && v[0] < tn) tn = v[0]; if (v[1] > tc + 1e-9 && v[1] < tn) tn = v[1]; });
+    const tm = (tc + tn) / 2, hit = iv.find(v => v[0] < tm && tm < v[1]);
+    if (hit && matById(S.parts[hit[2]].material)) return hit[2];
     tc = tn;
   }
   return -1;

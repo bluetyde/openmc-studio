@@ -38,6 +38,49 @@ def emit(obj):
     _real_stdout.flush()
 
 
+def emit_progress(job_id, step, total, stage, text, t0):
+    elapsed = round(time.time() - t0, 1) if t0 else 0
+    _real_stdout.write("@@PROGRESS " + json.dumps({
+        "id": job_id, "step": step, "total": total, "stage": stage, "text": text, "elapsed": elapsed
+    }) + "\n")
+    _real_stdout.flush()
+
+
+class StageForwarder(io.TextIOBase):
+    def __init__(self, job_id, t0):
+        self.job_id = job_id
+        self.t0 = t0
+        self.buf = ""
+
+    def write(self, s):
+        self.buf += s
+        while "\n" in self.buf:
+            line, self.buf = self.buf.split("\n", 1)
+            self._handle_line(line.strip())
+        return len(s)
+
+    def _handle_line(self, line):
+        if not line:
+            return
+        stage_map = [
+            ("Translating Materials", (2, "materials", "Translating materials...")),
+            ("Translating Surfaces", (3, "surfaces", "Translating surfaces...")),
+            ("Translating Universes and Cells", (4, "cells", "Translating universes and cells...")),
+            ("Making Universes", (4, "cells", "Making universes...")),
+            ("Filling Cells", (5, "cells", "Filling cells...")),
+            ("Constructing Lattices", (6, "lattices", "Constructing lattices...")),
+        ]
+        for trigger, (step, stage, text) in stage_map:
+            if trigger in line:
+                emit_progress(self.job_id, step, 8, stage, text, self.t0)
+                break
+
+    def flush(self):
+        if self.buf.strip():
+            self._handle_line(self.buf.strip())
+            self.buf = "" 
+
+
 def geometry_key(model_xml):
     root = ET.parse(model_xml).getroot()
     h = hashlib.sha256()
@@ -87,7 +130,7 @@ def main():
             from mcnp_cards import UnsupportedFeature
             from remediate_deck import load_model, remediate
             from validate_deck import validate_deck
-            import mcnpy.translate_mcnp_openmc  # noqa: F401  (starts the Java bridge once)
+            from mcnpy.translate_mcnp_openmc import openmc_to_mcnp  # noqa: F401  (starts the Java bridge once)
     except Exception as e:
         emit({"ready": False, "error": f"Couldn't load the MCNP pipeline from {project}: {type(e).__name__}: {e}"})
         return 1
@@ -111,6 +154,7 @@ def main():
                     if os.path.exists(stale):
                         os.remove(stale)
 
+                emit_progress(job.get("id"), 1, 8, "prepare", "Preparing OpenMC model...", t0)
                 openmc.reset_auto_ids()  # IDs start at 1, as in a fresh `python model.py`
                 with contextlib.redirect_stdout(io.StringIO()):
                     ns = runpy.run_path(os.path.join(folder, "model.py"), run_name="studio_export")
@@ -121,11 +165,15 @@ def main():
                 key = geometry_key(model_xml)
                 report["translation_cached"] = key in cache
                 if key in cache:
+                    emit_progress(job.get("id"), 6, 8, "cached", "Reusing cached translation...", t0)
                     shutil.copyfile(cache[key], translated)
                 else:
                     report["stage"] = "translate"
-                    with contextlib.redirect_stdout(io.StringIO()):
-                        translate(model, translated)
+                    forwarder = StageForwarder(job.get("id"), t0)
+                    with contextlib.redirect_stdout(forwarder):
+                        deck = openmc_to_mcnp(model.geometry, model.materials, model.settings)
+                        deck.write(translated)
+                    forwarder.flush()
                     if len(cache) >= 20:
                         cache.clear()
                     cached = os.path.join(cache_dir, f"{key}.mcnp")
@@ -133,10 +181,12 @@ def main():
                     cache[key] = cached
 
                 report["stage"] = "remediate"
+                emit_progress(job.get("id"), 7, 8, "remediate", "Remediating deck (sources, tallies, settings)...", t0)
                 report.update(remediate(translated, model, runnable))
                 add_group_comments(runnable, ns.get("groups"))
 
                 report["stage"] = "validate"
+                emit_progress(job.get("id"), 8, 8, "validate", "Validating deck...", t0)
                 buf = io.StringIO()
                 with contextlib.redirect_stdout(buf):
                     ok = validate_deck(runnable, model=model, geometry_samples=int(job.get("samples", 20000)))

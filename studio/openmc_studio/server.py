@@ -164,6 +164,7 @@ class McnpWorker:
         self.lock = threading.Lock()
         self.latest = {}  # page-load id -> newest sequence number seen (numbers restart on reload)
         self.job = 0
+        self.progress = None
 
     def _remembered_path_file(self):
         return self.runs_root / "mcnp_project_path.txt"
@@ -205,7 +206,13 @@ class McnpWorker:
         for line in proc.stdout:
             if line.startswith("@@RESULT "):
                 try:
+                    self.progress = None
                     results.put(json.loads(line[len("@@RESULT "):]))
+                except ValueError:
+                    pass
+            elif line.startswith("@@PROGRESS "):
+                try:
+                    self.progress = json.loads(line[len("@@PROGRESS "):])
                 except ValueError:
                     pass
         results.put(None)  # process ended
@@ -234,7 +241,11 @@ class McnpWorker:
             return (ready or {}).get("error") or "The MCNP worker didn't start (see mcnp-worker.log in the runs folder)."
         return None
 
+    def get_progress(self):
+        return self.progress
+
     def stop(self):
+        self.progress = None
         if self.proc and self.proc.poll() is None:
             try:
                 os.killpg(self.proc.pid, signal.SIGTERM)
@@ -258,16 +269,18 @@ class McnpWorker:
             folder.mkdir(parents=True, exist_ok=True)
             (folder / "model.py").write_text(script, encoding="utf-8")
             self.job += 1
+            self.progress = {"id": self.job, "step": 0, "total": 8, "stage": "start", "text": "Starting...", "elapsed": 0.0}
             job = {"id": self.job, "folder": str(folder), "name": name, "samples": 20000}
             try:
                 self.proc.stdin.write(json.dumps(job) + "\n")
                 self.proc.stdin.flush()
-                result = self.results.get(timeout=600)
+                result = self.results.get(timeout=1800)
             except (BrokenPipeError, OSError, queue.Empty):
                 result = None
+            self.progress = None
             if not result or result.get("id") != job["id"]:
                 self.stop()
-                return {"ok": False, "error": "The MCNP worker stopped or took over 10 minutes; it will restart on the next request.", "seq": seq}
+                return {"ok": False, "error": "The MCNP worker stopped or timed out; it will restart on the next request.", "seq": seq}
             result["seq"] = seq
             return result
 
@@ -336,6 +349,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(401, "Missing or wrong token. Start Studio from its launcher.")
         if path == "/api/health":
             return self._send(200, self._health())
+        if path == "/api/mcnp-progress":
+            return self._send(200, self.studio.mcnp.get_progress() or {})
         if path == "/api/runs":
             return self._send(200, {"runs": self.studio.list_runs()})
         m = re.match(r"^/api/runs/([^/]+)/(stream|results|project|script)$", path)

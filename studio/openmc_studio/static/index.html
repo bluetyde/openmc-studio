@@ -1314,10 +1314,47 @@ function buildScript(probs, mark) {
     push(`${latVar} = openmc.RectLattice(name=${pyStr(lg.name)})`);
     push(`${latVar}.pitch = [${[lat.dx, dy, ...(is3D ? [lat.dz] : [])].map(num).join(', ')}]`);
     push(`${latVar}.lower_left = [${[x_min, y_min, ...(is3D ? [z_min] : [])].map(num).join(', ')}]`);
-    if (is3D) {
-      push(`${latVar}.universes = [[[${uPinVar}] * ${lat.nx} for _ in range(${lat.ny})] for _ in range(${lat.nz})]`);
+
+    // Check if any lattice sites are missing parts (e.g. user deleted an aperture)
+    const missingSites = [];
+    const nz = is3D ? lat.nz : 1;
+    const ny = lat.ny || 1;
+    for (let iz = 0; iz < nz; iz++) {
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < lat.nx; ix++) {
+          const cx = x_min + (ix + 0.5) * lat.dx;
+          const cy = y_min + (iy + 0.5) * dy;
+          const cz = is3D ? (z_min + (iz + 0.5) * lat.dz) : basePart.z;
+          const hasPart = memberParts.some(p => Math.abs(p.x - cx) < lat.dx / 2 && (!is3D || Math.abs(p.z - cz) < (lat.dz || lat.dx) / 2));
+          if (!hasPart) missingSites.push([iz, iy, ix]);
+        }
+      }
+    }
+
+    if (!missingSites.length) {
+      if (is3D) {
+        push(`${latVar}.universes = [[[${uPinVar}] * ${lat.nx} for _ in range(${lat.ny})] for _ in range(${lat.nz})]`);
+      } else {
+        push(`${latVar}.universes = [[${uPinVar}] * ${lat.nx} for _ in range(${lat.ny})]`);
+      }
     } else {
-      push(`${latVar}.universes = [[${uPinVar}] * ${lat.nx} for _ in range(${lat.ny})]`);
+      const uSolidVar = name('u_solid', lg.name);
+      const cellSolidVar = name('cell_solid', lg.name);
+      push(`${cellSolidVar} = openmc.Cell(name=${pyStr(lg.name + " Solid [unit]")}, fill=${fill(modFill)}, region=world)`);
+      push(`${uSolidVar} = openmc.Universe(name=${pyStr(lg.name + " Solid Universe")}, cells=[${cellSolidVar}])`);
+      if (is3D) {
+        push(`_lat_grid_${lgIdx} = [[[${uPinVar}] * ${lat.nx} for _ in range(${lat.ny})] for _ in range(${lat.nz})]`);
+        missingSites.forEach(([iz, iy, ix]) => {
+          push(`_lat_grid_${lgIdx}[${iz}][${iy}][${ix}] = ${uSolidVar}`);
+        });
+        push(`${latVar}.universes = _lat_grid_${lgIdx}`);
+      } else {
+        push(`_lat_grid_${lgIdx} = [[${uPinVar}] * ${lat.nx} for _ in range(${lat.ny})]`);
+        missingSites.forEach(([iz, iy, ix]) => {
+          push(`_lat_grid_${lgIdx}[${iy}][${ix}] = ${uSolidVar}`);
+        });
+        push(`${latVar}.universes = _lat_grid_${lgIdx}`);
+      }
     }
 
     // Bounding region for lattice in root geometry

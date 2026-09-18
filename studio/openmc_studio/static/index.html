@@ -57,6 +57,12 @@ button,input,select{font:inherit;color:inherit}
 .snapgrid input.bad{border-color:var(--err)}
 .snapgrid .unit{min-width:14px}
 #matMenu{width:340px;max-width:calc(100vw - 16px);box-sizing:border-box;padding-top:0}
+#arrayMenu{width:290px;max-width:calc(100vw - 16px);box-sizing:border-box;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+#arrayMenu .atitle{font-weight:600;font-size:12.5px;margin-bottom:2px}
+#arrayMenu .agrid{display:grid;grid-template-columns:22px 1fr 1fr;gap:6px;align-items:center;font-size:11.5px}
+#arrayMenu .agrid span.ax{color:var(--muted);font-weight:500}
+#arrayMenu .agrid input{padding:3px 6px;font-size:11.5px}
+#arrayMenu .abottom{display:flex;justify-content:space-between;align-items:center;margin-top:4px}
 .msearch{position:sticky;top:0;z-index:1;margin:0 -4px 4px;padding:6px;background:var(--panel2);border-bottom:1px solid var(--line)}
 .menu button.mcat{font-weight:500;color:var(--text)}
 .menu button.mcat small{font-family:var(--mono)}
@@ -344,6 +350,7 @@ input[type=checkbox]{accent-color:var(--accent)}
 </div>
 <input type="file" id="openFile" accept=".json,application/json" hidden>
 <div class="menu" id="matMenu" hidden role="menu"></div>
+<div class="menu" id="arrayMenu" hidden role="dialog" aria-label="Repeat in an array"></div>
 <div class="dropline" id="dropLine" hidden></div>
 <script>
 "use strict";
@@ -374,6 +381,7 @@ const ICON = {
   rotate:'<path d="M15 9.5A6 6 0 1 1 9 3.5"/><path d="M8.2 1.2L10.6 3.5 8.2 5.8"/>',
   grid:'<path d="M2.5 6.5h13M2.5 11.5h13M6.5 2.5v13M11.5 2.5v13"/>',
   rotstep:'<path d="M2.5 15.5h13M2.5 15.5l9-10"/><path d="M8.5 15.5a6 6 0 0 0-1.8-4.2"/>',
+  array:'<rect x="2.5" y="2.5" width="5" height="5" rx="1"/><rect x="10.5" y="2.5" width="5" height="5" rx="1"/><rect x="2.5" y="10.5" width="5" height="5" rx="1"/><rect x="10.5" y="10.5" width="5" height="5" rx="1"/>',
   group:'<path d="M2.5 5.5a1 1 0 0 1 1-1h3.2l1.5 1.6h6.3a1 1 0 0 1 1 1v7.4a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/>',
   ungroup:'<rect x="2.5" y="2.5" width="6" height="6" rx="1"/><rect x="9.5" y="9.5" width="6" height="6" rx="1"/>',
   pivot:'<circle cx="9" cy="9" r="2.2"/><path d="M9 1.8v3.6M9 12.6v3.6M1.8 9h3.6M12.6 9h3.6"/>',
@@ -498,7 +506,8 @@ const DEFAULT_SETTINGS = {name:'Shielding demo', runMode:'fixed source', particl
 function newSource(id, name, particle = 'neutron') {
   return {id, name, particle, strength:1, space:'point', x:0, y:0, z:0, rin:0, r:5, h:10,
     x0:-5, y0:-5, z0:-5, x1:5, y1:5, z1:5, angle:'isotropic', u:0, v:0, w:1,
-    energy:'lines', lines: particle === 'photon' ? '0.662:1' : '14.1:1', wa:0.988, wb:2.249, theta:1.2895, emin:0.1, emax:2};
+    energy:'lines', lines: particle === 'photon' ? '0.662:1' : '14.1:1', wa:0.988, wb:2.249, theta:1.2895, emin:0.1, emax:2,
+    tab_e:'0.0, 1.0, 2.0, 5.0', tab_p:'0.2, 0.5, 0.3'};
 }
 function newPart(id, name, shape) {
   return {id, name, shape, x:0, y:0, z:0, r:10, h:20, axis:'z', sx:20, sy:20, sz:20, rx:0, ry:0, rz:0, material:'void'};
@@ -662,6 +671,28 @@ function parseLines(str) {
 function parseNums(str) {
   const vals = String(str || '').split(',').map(s => s.trim()).filter(Boolean).map(Number);
   return {vals, ok:vals.every(fin)};
+}
+function parseTabular(eStr, pStr) {
+  const cleanE = String(eStr || '').replace(/^SI\d*\s*H?\s*/i, '').replace(/&/g, ' ');
+  const cleanP = String(pStr || '').replace(/^SP\d*\s*D?\s*/i, '').replace(/&/g, ' ');
+  const es = cleanE.split(/[\s,]+/).map(s => s.trim()).filter(Boolean).map(Number);
+  let ps = cleanP.split(/[\s,]+/).map(s => s.trim()).filter(Boolean).map(Number);
+  if (ps.length === es.length && ps[0] === 0) ps = ps.slice(1);
+  const okE = es.length >= 2 && es.every(fin) && es.every((v, i) => i === 0 || v > es[i - 1]) && es[0] >= 0;
+  const okP = ps.length === es.length - 1 && ps.every(fin) && ps.every(v => v >= 0) && ps.some(v => v > 0);
+  return {edges: es, probs: ps, ok: okE && okP, okE, okP};
+}
+function parseSiSpPair(text) {
+  const lines = String(text || '').split('\n');
+  let si = '', sp = '';
+  lines.forEach(l => {
+    l = l.trim();
+    if (/^SI\d*/i.test(l)) si += ' ' + l.replace(/^SI\d*\s*H?\s*/i, '');
+    else if (/^SP\d*/i.test(l)) sp += ' ' + l.replace(/^SP\d*\s*D?\s*/i, '');
+    else if (si && !sp) si += ' ' + l;
+    else if (sp) sp += ' ' + l;
+  });
+  return {si: si.trim(), sp: sp.trim()};
 }
 function parseTrack(str) {
   const out = [], errs = [];
@@ -848,6 +879,12 @@ function problems() {
     if (s.energy === 'watt' && !(pos(s.wa) && pos(s.wb))) add('error', `${T}: Watt a and b must be above 0.`, 'source', s.id);
     if (s.energy === 'maxwell' && !pos(s.theta)) add('error', `${T}: Maxwell temperature must be above 0.`, 'source', s.id);
     if (s.energy === 'uniform' && !(fin(s.emin) && s.emin >= 0 && s.emax > s.emin)) add('error', `${T}: maximum energy must be above the minimum.`, 'source', s.id);
+    if (s.energy === 'tabulated') {
+      const tab = parseTabular(s.tab_e, s.tab_p);
+      if (!tab.okE) add('error', `${T}: bin edges must have at least 2 increasing values in MeV, starting at or above 0.`, 'source', s.id);
+      else if (!tab.okP) add('error', `${T}: probabilities must have exactly ${tab.edges.length - 1} non-negative values (one per bin).`, 'source', s.id);
+      else if (s.particle === 'neutron' && tab.edges[tab.edges.length - 1] > 20) add('warn', `${T}: energies above 20 MeV are past the top of most neutron data libraries.`, 'source', s.id);
+    }
     if (!pos(s.strength)) add('error', `${T}: strength must be above 0.`, 'source', s.id);
     if (s.particle === 'photon' && !st.photon) add('warn', `${T} emits photons but photon transport is off in Settings.`, 'source', s.id);
     if (eig && s.particle !== 'neutron') add('error', `${T}: eigenvalue runs only take neutron sources.`, 'source', s.id);
@@ -1095,7 +1132,12 @@ function buildScript(probs, mark) {
       push(`${v}.energy = openmc.stats.Discrete([${ls.map((l, i) => E(num(l.e * 1e6), {t:'line', obj:s, index:i, part:'e', scale:1e-6})).join(', ')}], [${ls.map((l, i) => E(num(l.p), {t:'line', obj:s, index:i, part:'p'})).join(', ')}])  # eV`);
     } else if (s.energy === 'watt') push(`${v}.energy = openmc.stats.Watt(a=${F(s, 'wa', num(s.wa * 1e6), {scale:1e-6})}, b=${F(s, 'wb', num(s.wb / 1e6), {scale:1e6})})  # a in eV, b in 1/eV`);
     else if (s.energy === 'maxwell') push(`${v}.energy = openmc.stats.Maxwell(theta=${F(s, 'theta', num(s.theta * 1e6), {scale:1e-6})})  # eV`);
-    else push(`${v}.energy = openmc.stats.Uniform(${F(s, 'emin', num(s.emin * 1e6), {scale:1e-6})}, ${F(s, 'emax', num(s.emax * 1e6), {scale:1e-6})})  # eV`);
+    else if (s.energy === 'tabulated') {
+      const tab = parseTabular(s.tab_e, s.tab_p);
+      const eList = tab.edges.map(e => num(e * 1e6)).join(', ');
+      const pList = tab.probs.map(p => num(p)).join(', ');
+      push(`${v}.energy = openmc.stats.Tabular([${eList}], [${pList}], interpolation='histogram')  # eV`);
+    } else push(`${v}.energy = openmc.stats.Uniform(${F(s, 'emin', num(s.emin * 1e6), {scale:1e-6})}, ${F(s, 'emax', num(s.emax * 1e6), {scale:1e-6})})  # eV`);
     push(`${v}.strength = ${F(s, 'strength', num(s.strength))}`, '');
     return v;
   });
@@ -1162,7 +1204,12 @@ function mcnpSource(s) {
     else if (ls.length > 1) parts.push(`ERG=${dist(`L ${ls.map(l => mcnpNum(l.e)).join(' ')}`, `D ${ls.map(l => mcnpNum(l.p)).join(' ')}`)}`);
   } else if (s.energy === 'watt') parts.push(`ERG=${dist('', `-3 ${mcnpNum(s.wa)} ${mcnpNum(s.wb)}`)}`);
   else if (s.energy === 'maxwell') parts.push(`ERG=${dist('', `-2 ${mcnpNum(s.theta)}`)}`);
-  else parts.push(`ERG=${dist(`H ${mcnpNum(s.emin)} ${mcnpNum(s.emax)}`, '0 1')}`);
+  else if (s.energy === 'tabulated') {
+    const tab = parseTabular(s.tab_e, s.tab_p);
+    const eList = tab.edges.map(mcnpNum).join(' ');
+    const pList = ['0', ...tab.probs.map(mcnpNum)].join(' ');
+    parts.push(`ERG=${dist(`H ${eList}`, `D ${pList}`)}`);
+  } else parts.push(`ERG=${dist(`H ${mcnpNum(s.emin)} ${mcnpNum(s.emax)}`, '0 1')}`);
   return [parts.join(' '), ...cards.map(c => c.replace(/^(SI\d+) $/, '$1'))].filter(c => !/^SI\d+$/.test(c)).join('\n');
 }
 // Mirrors src/mcnp_cards.py in openmc-mcnp-project: one MCNP tally per score, numbered 4, 14, 24… across all
@@ -1592,7 +1639,7 @@ const RIBBON = {
   Home:[
     {label:'Tools', btns:toolButtons()},
     {label:'Snap to grid', custom:snapControls},
-    {label:'Edit', btns:[['undo', 'Undo', undo, () => HISTORY.undo.length > 0], ['redo', 'Redo', redo, () => HISTORY.redo.length > 0], ['duplicate', 'Duplicate', duplicateSelected, canEditSelection], ['del', 'Delete', removeSelected, canEditSelection]]},
+    {label:'Edit', btns:[['undo', 'Undo', undo, () => HISTORY.undo.length > 0], ['redo', 'Redo', redo, () => HISTORY.redo.length > 0], ['duplicate', 'Duplicate', duplicateSelected, canEditSelection], ['array', 'Array…', e => openArrayMenu(e.currentTarget), canEditSelection], ['del', 'Delete', removeSelected, canEditSelection]]},
     {label:'Group', btns:[['group', 'Group', groupSelected, () => selItems().length > 0], ['ungroup', 'Ungroup', ungroupSelected, () => sel.kind === 'group' || selItems().some(x => x.o.group)], pivotButton()]},
     {label:'Order', btns:[['up', 'Raise', () => moveSelected(-1), () => !!LISTS[sel.kind] || sel.kind === 'group'], ['down', 'Lower', () => moveSelected(1), () => !!LISTS[sel.kind] || sel.kind === 'group']]},
     {label:'Project', btns:[['reset', 'Demo model', resetSample]]}
@@ -1600,7 +1647,7 @@ const RIBBON = {
   Model:[
     {label:'Tools', btns:toolButtons()},
     {label:'Snap to grid', custom:snapControls},
-    {label:'Group', btns:[['group', 'Group', groupSelected, () => selItems().length > 0], ['ungroup', 'Ungroup', ungroupSelected, () => sel.kind === 'group' || selItems().some(x => x.o.group)], pivotButton()]},
+    {label:'Group', btns:[['group', 'Group', groupSelected, () => selItems().length > 0], ['ungroup', 'Ungroup', ungroupSelected, () => sel.kind === 'group' || selItems().some(x => x.o.group)], ['array', 'Array…', e => openArrayMenu(e.currentTarget), canEditSelection], pivotButton()]},
     {label:'Parts', btns:[['sphere', 'Sphere', () => addPart('sphere')], ['cylinder', 'Cylinder', () => addPart('cylinder')], ['box', 'Box', () => addPart('box')]]},
     {label:'Materials', btns:[['material', 'Material ▾', e => openMatMenu(e.currentTarget)]]},
     {label:'Boundary', btns:[['world', 'World', () => select('world')]]}
@@ -1712,7 +1759,8 @@ function shapeMeta(p) {
 const shortDens = d => { const v = toShown(d, 'dens'); return v < 0.01 ? v.toExponential(1) : String(+(+v).toPrecision(4)); };
 function energyMeta(s) {
   if (s.energy === 'lines') { const ls = parseLines(s.lines).out; return ls.length === 1 ? `${ls[0].e} MeV` : `${ls.length} lines`; }
-  return {watt:'Watt', maxwell:'Maxwell', uniform:'uniform'}[s.energy];
+  if (s.energy === 'tabulated') { const tab = parseTabular(s.tab_e, s.tab_p); return `${tab.probs.length} bins`; }
+  return {watt:'Watt', maxwell:'Maxwell', uniform:'uniform', tabulated:'Tabulated'}[s.energy];
 }
 function renderTree() {
   const selNow = new Set(selItems().map(x => `${x.kind}:${x.o.id}`));
@@ -1844,11 +1892,14 @@ function specFor(kind, o) {
         F('vec', null, 'Direction', {keys:['u', 'v', 'w'], show:() => o.angle === 'mono', hint:'Any length; it is normalized. Same as VEC with DIR=1.'})
       ]},
       {title:'Energy', fields:[
-        F('select', 'energy', 'Spectrum', {options:() => [['lines', 'Discrete lines'], ['watt', 'Watt fission'], ['maxwell', 'Maxwell fission'], ['uniform', 'Uniform']]}),
+        F('select', 'energy', 'Spectrum', {options:() => [['lines', 'Discrete lines'], ['watt', 'Watt fission'], ['maxwell', 'Maxwell fission'], ['uniform', 'Uniform'], ['tabulated', 'Tabulated (histogram)']]}),
         F('text', 'lines', 'Lines', {show:en('lines'), hint:'MeV:intensity, comma separated. 14.1:1 is D-T; 2.45:1 is D-D; 1.1732:1, 1.3325:1 is Co-60.'}),
         F('num', 'wa', 'a', {unit:'MeV', show:en('watt')}), F('num', 'wb', 'b', {unit:'1/MeV', show:en('watt'), hint:'U-235 thermal fission: a = 0.988, b = 2.249.'}),
         F('num', 'theta', 'Temperature', {unit:'MeV', show:en('maxwell')}),
-        F('num', 'emin', 'Minimum', {unit:'MeV', show:en('uniform')}), F('num', 'emax', 'Maximum', {unit:'MeV', show:en('uniform')})
+        F('num', 'emin', 'Minimum', {unit:'MeV', show:en('uniform')}), F('num', 'emax', 'Maximum', {unit:'MeV', show:en('uniform')}),
+        F('text', 'tab_e', 'Bin edges', {show:en('tabulated'), hint:'MeV, rising boundaries (e.g. 0.0, 0.5, 1.0, 2.0). Or paste MCNP SI/SP cards.'}),
+        F('text', 'tab_p', 'Probabilities', {show:en('tabulated'), hint:'Bin weights or relative probabilities (N-1 values for N edges).'}),
+        {type:'buttons', btns:[['Paste MCNP SI/SP cards…', () => openPasteSiSp(o)]], show:en('tabulated')}
       ]},
       {title:'MCNP equivalent', fields:[{type:'mcnp', text:() => mcnpSource(o)}]}
     ];
@@ -1940,7 +1991,13 @@ function fieldEl(f, obj) {
       i.type = 'text'; i.id = fid; i.value = obj[f.key] ?? ''; i.spellcheck = false;
       if (f.placeholder) i.placeholder = f.placeholder;
       i.addEventListener('input', () => { obj[f.key] = i.value; schedule(); });
-      i.addEventListener('change', () => { if (sel.kind === 'source' || sel.kind === 'tally') refreshMcnp(); });
+      i.addEventListener('change', () => {
+        if (f.key === 'tab_e' && /SP/i.test(i.value)) {
+          const pair = parseSiSpPair(i.value);
+          if (pair.si && pair.sp) { obj.tab_e = pair.si; obj.tab_p = pair.sp; renderProps(); }
+        }
+        if (sel.kind === 'source' || sel.kind === 'tally') refreshMcnp();
+      });
       ctl.appendChild(i); break;
     }
     case 'num': case 'int': ctl.appendChild(numIn(fid, f.key, f.type === 'int')); unit(); break;
@@ -2368,6 +2425,7 @@ function mcnpContext(P, built) {
     } else if (src.energy === 'watt') addDist(null, [null, {t:'field', obj:src, key:'wa'}, {t:'field', obj:src, key:'wb'}]);
     else if (src.energy === 'maxwell') addDist(null, [null, {t:'field', obj:src, key:'theta'}]);
     else if (src.energy === 'uniform') addDist([{t:'field', obj:src, key:'emin'}, {t:'field', obj:src, key:'emax'}], []);
+    else if (src.energy === 'tabulated') addDist([], []);
   }
   const tallyScores = [];
   S.tallies.forEach(t => t.scores.forEach(() => tallyScores.push(t)));
@@ -2878,6 +2936,112 @@ function snapControls() {
   });
   wrap.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.type === 'number') e.target.blur(); });
   return wrap;
+}
+
+function openPasteSiSp(src) {
+  const text = prompt('Paste MCNP SI and SP cards (e.g. SI1 H 0 1 2 ... \nSP1 D 0 0.5 ...):');
+  if (!text) return;
+  const pair = parseSiSpPair(text);
+  if (pair.si && pair.sp) {
+    src.tab_e = pair.si;
+    src.tab_p = pair.sp;
+    renderProps();
+    schedule();
+  } else {
+    alert("Couldn't find both SI and SP lines in pasted text.");
+  }
+}
+
+const ARRAYMENU = {btn:null};
+function openArrayMenu(btn) {
+  const menu = $('#arrayMenu');
+  if (!menu.hidden && ARRAYMENU.btn === btn) { menu.hidden = true; return; }
+  const r = btn.getBoundingClientRect();
+  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 308)) + 'px';
+  menu.style.top = (r.bottom + 4) + 'px';
+  const u = lenUnit();
+  const defaultStep = imperial() ? 8 : 20;
+  menu.innerHTML = `
+    <div class="atitle">Repeat in an array</div>
+    <div class="agrid">
+      <span></span><span style="font-weight:600">Count</span><span style="font-weight:600">Pitch (${u})</span>
+      <span class="ax">X</span><input type="number" id="arr-nx" min="1" max="100" step="1" value="1"><input type="number" id="arr-dx" step="any" value="${defaultStep}">
+      <span class="ax">Y</span><input type="number" id="arr-ny" min="1" max="100" step="1" value="1"><input type="number" id="arr-dy" step="any" value="${defaultStep}">
+      <span class="ax">Z</span><input type="number" id="arr-nz" min="1" max="100" step="1" value="1"><input type="number" id="arr-dz" step="any" value="${defaultStep}">
+    </div>
+    <div class="abottom">
+      <label class="chk" style="font-size:11.5px"><input type="checkbox" id="arr-grp" checked> Group items</label>
+      <button type="button" class="tbtn" id="arr-ok" style="font-weight:600">Create</button>
+    </div>
+  `;
+  menu.hidden = false;
+  ARRAYMENU.btn = btn;
+  const nxIn = $('#arr-nx');
+  nxIn.focus(); nxIn.select();
+
+  const apply = () => {
+    const nx = Math.max(1, parseInt($('#arr-nx').value) || 1);
+    const ny = Math.max(1, parseInt($('#arr-ny').value) || 1);
+    const nz = Math.max(1, parseInt($('#arr-nz').value) || 1);
+    let dx = parseFloat($('#arr-dx').value) || 0;
+    let dy = parseFloat($('#arr-dy').value) || 0;
+    let dz = parseFloat($('#arr-dz').value) || 0;
+    if (imperial()) { dx = fromShown(dx, 'len'); dy = fromShown(dy, 'len'); dz = fromShown(dz, 'len'); }
+    const doGroup = $('#arr-grp').checked;
+    menu.hidden = true;
+    createArray(nx, ny, nz, dx, dy, dz, doGroup);
+  };
+
+  $('#arr-ok').onclick = apply;
+  menu.onkeydown = e => {
+    if (e.key === 'Enter') { e.preventDefault(); apply(); }
+    else if (e.key === 'Escape') { e.preventDefault(); menu.hidden = true; btn.focus(); }
+  };
+}
+
+function createArray(nx, ny, nz, dx, dy, dz, doGroup) {
+  if (nx * ny * nz <= 1) return;
+  if (nx * ny * nz > 2000) { log('warn', 'Array size capped at 2,000 items.'); return; }
+  HISTORY.boundary = true;
+  const items = selItems().filter(x => x.kind === 'part');
+  if (!items.length) { log('warn', 'Select at least one part to repeat in an array.'); return; }
+
+  const baseName = items.length === 1 ? items[0].o.name : 'Array';
+  let g = null;
+  if (doGroup) {
+    g = {id: newId('g'), name: uniqueName(S.groups, 'Array ' + baseName)};
+    S.groups.push(g);
+    items.forEach(x => { x.o.group = g.id; });
+  }
+
+  const newParts = [];
+  for (let ix = 0; ix < nx; ix++) {
+    for (let iy = 0; iy < ny; iy++) {
+      for (let iz = 0; iz < nz; iz++) {
+        if (ix === 0 && iy === 0 && iz === 0) continue;
+        const ox = ix * dx, oy = iy * dy, oz = iz * dz;
+        items.forEach(({o}) => {
+          const cp = clone(o);
+          cp.id = newId('p');
+          cp.name = uniqueName(S.parts, `${o.name} [${ix},${iy},${iz}]`);
+          cp.x += ox; cp.y += oy; cp.z += oz;
+          if (cp.x0 !== undefined) { cp.x0 += ox; cp.x1 += ox; }
+          if (cp.y0 !== undefined) { cp.y0 += oy; cp.y1 += oy; }
+          if (cp.z0 !== undefined) { cp.z0 += oz; cp.z1 += oz; }
+          if (g) cp.group = g.id;
+          newParts.push(cp);
+        });
+      }
+    }
+  }
+
+  const lastIdx = Math.max(...items.map(x => S.parts.indexOf(x.o)));
+  S.parts.splice(lastIdx + 1, 0, ...newParts);
+  compactGroups(S);
+  if (g) select('group', g.id);
+  else setSelection(newParts.map(p => ({kind:'part', id:p.id})));
+  renderProps(); renderTree(); schedule();
+  log('ok', `Created ${newParts.length} parts in a ${nx}×${ny}×${nz} array.`);
 }
 
 function axisRotation(i, deg) { return i === 0 ? rotXYZ(deg, 0, 0) : i === 1 ? rotXYZ(0, deg, 0) : rotXYZ(0, 0, deg); }
@@ -3953,6 +4117,7 @@ $('#matMenu').addEventListener('keydown', e => { // arrow keys move through the 
 });
 document.addEventListener('mousedown', e => {
   const m = $('#matMenu'); if (!m.hidden && !m.contains(e.target) && !e.target.closest('.rbtn, .matpick')) m.hidden = true;
+  const am = $('#arrayMenu'); if (am && !am.hidden && !am.contains(e.target) && !e.target.closest('.rbtn')) am.hidden = true;
 });
 let drag = null, justDragged = false;
 $('#tree').addEventListener('click', e => {

@@ -38,11 +38,16 @@ Needs changes in three places:
 
 ## Graphite pile (examples/ne403-graphite-pile) follow-ups
 
-- **Tabulated source spectrum.** Studio sources offer lines, Watt, Maxwell and uniform only, so
-  the PuBe source is a Maxwell stand-in (T = 2.8 MeV). Add a "Tabulated" energy type: bin edges
-  plus probabilities, written as `openmc.stats.Tabular(..., interpolation='histogram')` in model.py
-  and `SI H` / `SP D` in model.mcnp, with a paste-in for an SI/SP pair. Needs the course's PuBe
-  starter SDEF. Check that openmc-mcnp-project's source export handles a Tabular distribution.
+- **Tabulated source spectrum (DONE).** Added Tabulated (histogram) energy distribution to OpenMC Studio
+  and openmc-mcnp-project:
+  - `openmc.stats.Tabular(..., interpolation='histogram')` generation in `model.py` and MCNP `SI H` / `SP D` cards.
+  - Studio UI fields for bin edges (`tab_e`) and probabilities (`tab_p`), with a paste-in dialog and auto-detection
+    for MCNP `SI`/`SP` card blocks.
+  - Supported and validated in `openmc-mcnp-project` (`src/mcnp_cards.py`) and verified by integration tests.
+- **Array tool (DONE - Step 1).** Added Roblox-style "Array…" tool to the Ribbon (Home and Model tabs):
+  - Popover with interactive 3D count ($N_x, N_y, N_z$) and pitch ($\Delta x, \Delta y, \Delta z$) inputs in current length units (cm or in).
+  - Automatically creates cloned, offset parts on the grid with optional auto-grouping ("Array <Name>").
+  - Step 2 (`openmc.RectLattice` and MCNP `LAT`/`FILL` cards) remains for lattice-level export once lattice universes are supported.
 - **He-3 detector response.** The pre-lab asks for (n,alpha) and (n,2alpha), MT 107 and 108, but
   ENDF/B-VIII.0 He-3 has neither; its detection reaction is MT 103, He-3(n,p)T, 5316 b at
   0.0253 eV. Confirm with the course which reaction (or detector gas) is meant. Then add a
@@ -50,11 +55,9 @@ Needs changes in three places:
   in the geometry (MCNP `FM` naming that material; OpenMC `EnergyFunctionFilter` with its cross
   section, or small He-3 gas detector cells). Studio's MCNP tally export only writes FM for the
   tallied cells' own material today.
-- **Lattice.** Every aperture is its own cell, so the deck has no `LAT`/`FILL` cards (same
-  geometry, but the pre-lab asks for a repeated structure). Step 1: an Array tool that repeats a
-  part on a grid (e.g. 12 x 11 on an 8 in pitch). Step 2: export arrays as `openmc.RectLattice`
-  and MCNP `LAT`/`FILL`. Needs MCNPy's lattice support confirmed, and openmc-mcnp-project's geometry
-  check extended to universes and lattices (a known limit today).
+- **Lattice (Step 2).** Export arrays as `openmc.RectLattice` and MCNP `LAT`/`FILL`. Needs MCNPy's
+  lattice support confirmed, and openmc-mcnp-project's geometry check extended to universes and lattices
+  (a known limit today).
 
 ## 3D view: more than 192 parts
 

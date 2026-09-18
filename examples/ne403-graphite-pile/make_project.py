@@ -11,22 +11,20 @@ Geometry, from the NE 403 pre-lab "Neutron diffusion length measurement using th
 - Diamond apertures: squares with 2 in sides turned 45° (a diamond seen from the front), running the
   full 8 ft depth (along y). 12 columns × 11 rows on an 8 in pitch, as in Figure 1: columns 4 in
   from the side faces, top row 4 in below the top, bottom row 12 in above the base.
+  Modeled as an array group ("Apertures (12×11 array)") with nested row groups for easy collapsing
+  and lattice export.
 - Source drawer: 0.75 in × 8 in × 0.75 in, long side along y (parallel to the apertures), centered
   under the middle of the pile, about 1 ft above the bottom.
 
 Coordinates: origin at the center of the whole pile; x across the front face, y into the pile (the
 front face is y = -4 ft), z up. Units are cm, as Studio stores them.
 
-Assumptions to check against your course files:
-- PuBe spectrum: Studio has no tabulated source spectrum yet, so the source is a Maxwell spectrum
-  with T = 2.8 MeV (mean energy 4.2 MeV, close to PuBe's). Replace it with the course's starter
-  SDEF in model.mcnp, or change the energy in Studio, for a real comparison.
-- Graphite: PNNL-15870 #63 "Carbon, Graphite (Reactor Grade)", 1.7 g/cm³ with 1 ppm boron, and the
-  c_Graphite thermal scattering table. Apertures and the drawer are dry air (PNNL #4).
-- The room around the pile is left out (vacuum boundary 1 ft past the sides).
-- Tallies are Studio mesh tallies, 1 in (2.54 cm) bins, through the measurement channel
-  (the 7th column from the left, which is 4 in right of center; the 3rd row from the bottom)
-  and at the 40 in "indicated depth". The He-3 (n,alpha) response isn't included yet.
+Pre-lab measurement positions:
+- Measurement channel: 7th column from left (+4 in right of center), 3rd row from bottom (Row 3).
+- 10 measurements along the depth of channel (y) in 8-inch increments.
+- Transverse measurements across the front face (x) through row 3 at 40 in depth.
+- Vertical measurements up the height (z) through column 7 at 40 in depth.
+- He-3 proportional counter detector response tallies for MT 103 He-3(n,p)T (5316 b at 0.0253 eV).
 """
 import json
 from pathlib import Path
@@ -69,24 +67,77 @@ def box(pid, name, x, y, z, sx, sy, sz, material, ry=0, group=None):
     return p
 
 
-def mesh(tid, name, n, lo, hi):
-    return {"id": tid, "name": name, "kind": "mesh", "cells": [], "scores": ["flux"], "ebins": "",
-            "nx": n[0], "ny": n[1], "nz": n[2], "lx": r(lo[0]), "ly": r(lo[1]), "lz": r(lo[2]),
-            "ux": r(hi[0]), "uy": r(hi[1]), "uz": r(hi[2])}
+def mesh(tid, name, n, lo, hi, detector="none", response_mat="", response_score="(n,p)"):
+    m = {"id": tid, "name": name, "kind": "mesh", "cells": [], "scores": ["flux"], "ebins": "",
+         "nx": n[0], "ny": n[1], "nz": n[2], "lx": r(lo[0]), "ly": r(lo[1]), "lz": r(lo[2]),
+         "ux": r(hi[0]), "uy": r(hi[1]), "uz": r(hi[2])}
+    if detector != "none":
+        m["detector"] = detector
+        m["responseMat"] = response_mat
+        m["responseScore"] = response_score
+        m["responseScale"] = "macro"
+    return m
 
 
 def main():
     graphite = library_material(63, "m_graphite", "#5d636b", sab="c_Graphite")
     air = library_material(4, "m_air", "#8fb8cf")
+    he3 = {
+        "id": "m_he3",
+        "name": "He-3 detector gas (4 atm)",
+        "color": "#8fe0c4",
+        "density": 0.000502,
+        "frac": "ao",
+        "comps": "He3:1",
+        "sab": "",
+        "ref": "Ideal gas, 4 atm, 20 °C",
+    }
+
+    aperture_center = [0, 0, r((ROW_Z[0] + ROW_Z[-1]) / 2)]
+    groups = [
+        {
+            "id": "g_apertures",
+            "name": "Apertures (12×11 array)",
+            "parent": None,
+            "x": aperture_center[0],
+            "y": aperture_center[1],
+            "z": aperture_center[2],
+            "lattice": {
+                "nx": COLS,
+                "ny": 1,
+                "nz": ROWS,
+                "dx": r(PITCH),
+                "dy": 0,
+                "dz": r(PITCH),
+                "asLattice": False,
+            },
+        }
+    ]
 
     parts = []
-    # Apertures first: parts higher in the Explorer win where shapes overlap, so the air channels
-    # are cut out of the graphite block listed after them.
+    # Apertures arranged by row (top to bottom): each row is a nested sub-group under g_apertures.
+    # Parts higher in the Explorer win where shapes overlap, so the air channels are cut out
+    # of the solid graphite block listed after them.
     for i, z in enumerate(reversed(ROW_Z)):          # top row first, like reading the front view
         row = ROWS - i
+        row_gid = f"g_row_{row}"
+        is_meas_row = (row == 3)
+        row_name = f"Row {row} (z = {round((z - Z_BOTTOM)/IN, 1)} in)" + (" [Measurement]" if is_meas_row else "")
+        groups.append({
+            "id": row_gid,
+            "name": row_name,
+            "parent": "g_apertures",
+            "x": 0,
+            "y": 0,
+            "z": r(z),
+        })
         for c, x in enumerate(COL_X):
-            parts.append(box(f"ap_r{row}_c{c + 1}", f"Aperture row {row} col {c + 1}", x, 0, z,
-                             SIDE, DEPTH, SIDE, air["id"], ry=45, group="g_apertures"))
+            col = c + 1
+            is_meas_channel = (is_meas_row and col == 7)
+            part_name = f"Aperture r{row} c{col}" + (" (Channel Col 7, 40 in deep)" if is_meas_channel else "")
+            parts.append(box(f"ap_r{row}_c{col}", part_name, x, 0, z,
+                             SIDE, DEPTH, SIDE, air["id"], ry=45, group=row_gid))
+
     parts.append(box("drawer", "Source drawer", 0, 0, SOURCE_Z, 0.75 * IN, 8 * IN, 0.75 * IN, air["id"]))
     parts.append(box("pile", "Graphite pile", 0, 0, 0, WIDTH, DEPTH, HEIGHT, graphite["id"]))
 
@@ -105,15 +156,23 @@ def main():
              (CHANNEL_X - t, -DEPTH / 2, CHANNEL_Z - t), (CHANNEL_X + t, DEPTH / 2, CHANNEL_Z + t)),
         mesh("t_z", "Flux up (z), channel col 7, 40 in deep", (1, 1, 120),
              (CHANNEL_X - t, DEPTH_40 - t, Z_BOTTOM), (CHANNEL_X + t, DEPTH_40 + t, -Z_BOTTOM)),
+        mesh("t_he3_x", "He-3 response across (x), row 3, 40 in deep", (96, 1, 1),
+             (-WIDTH / 2, DEPTH_40 - t, CHANNEL_Z - t), (WIDTH / 2, DEPTH_40 + t, CHANNEL_Z + t),
+             detector="he3", response_mat="m_he3", response_score="(n,p)"),
+        mesh("t_he3_y", "He-3 response in depth (y), col 7 row 3", (1, 96, 1),
+             (CHANNEL_X - t, -DEPTH / 2, CHANNEL_Z - t), (CHANNEL_X + t, DEPTH / 2, CHANNEL_Z + t),
+             detector="he3", response_mat="m_he3", response_score="(n,p)"),
+        mesh("t_he3_z", "He-3 response up (z), col 7, 40 in deep", (1, 1, 120),
+             (CHANNEL_X - t, DEPTH_40 - t, Z_BOTTOM), (CHANNEL_X + t, DEPTH_40 + t, -Z_BOTTOM),
+             detector="he3", response_mat="m_he3", response_score="(n,p)"),
         mesh("t_map", "Flux map (XZ) at 40 in deep", (96, 1, 120),
              (-WIDTH / 2, DEPTH_40 - t, Z_BOTTOM), (WIDTH / 2, DEPTH_40 + t, -Z_BOTTOM)),
     ]
 
-    aperture_center = [0, 0, r((ROW_Z[0] + ROW_Z[-1]) / 2)]
     project = {
-        "materials": [graphite, air],
+        "materials": [graphite, air, he3],
         "parts": parts,
-        "groups": [{"id": "g_apertures", "name": "Apertures", "x": aperture_center[0], "y": aperture_center[1], "z": aperture_center[2]}],
+        "groups": groups,
         "sources": [source],
         "tallies": tallies,
         "settings": {"name": "NE403 graphite pile", "runMode": "fixed source", "particles": 2000, "batches": 5,
@@ -122,7 +181,7 @@ def main():
     }
     out = HERE / "graphite-pile.openmc-studio.json"
     out.write_text(json.dumps(project, indent=1), encoding="utf-8")
-    print(f"Wrote {out}: {len(parts)} parts ({COLS * ROWS} apertures), {len(tallies)} tallies.")
+    print(f"Wrote {out}: {len(parts)} parts ({COLS * ROWS} apertures across {len(groups)} groups), {len(tallies)} tallies.")
 
 
 if __name__ == "__main__":

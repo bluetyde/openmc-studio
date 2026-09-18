@@ -19,12 +19,22 @@
    "comps": "C:0.000124, N:0.755268, O:0.231781, Ar:0.012827",
    "sab": "",
    "ref": "PNNL #4"
+  },
+  {
+   "id": "m_he3",
+   "name": "He-3 detector gas (4 atm)",
+   "color": "#8fe0c4",
+   "density": 0.000502,
+   "frac": "ao",
+   "comps": "He3:1",
+   "sab": "",
+   "ref": "Ideal gas, 4 atm, 20 \u00b0C"
   }
  ],
  "parts": [
   {
    "id": "ap_r11_c1",
-   "name": "Aperture row 11 col 1",
+   "name": "Aperture r11 c1",
    "shape": "box",
    "x": -111.76,
    "y": 0,
@@ -39,11 +49,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_11"
   },
   {
    "id": "ap_r11_c2",
-   "name": "Aperture row 11 col 2",
+   "name": "Aperture r11 c2",
    "shape": "box",
    "x": -91.44,
    "y": 0,
@@ -58,11 +68,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_11"
   },
   {
    "id": "ap_r11_c3",
-   "name": "Aperture row 11 col 3",
+   "name": "Aperture r11 c3",
    "shape": "box",
    "x": -71.12,
    "y": 0,
@@ -77,11 +87,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_11"
   },
   {
    "id": "ap_r11_c4",
-   "name": "Aperture row 11 col 4",
+   "name": "Aperture r11 c4",
    "shape": "box",
    "x": -50.8,
    "y": 0,
@@ -96,11 +106,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_11"
   },
   {
    "id": "ap_r11_c5",
-   "name": "Aperture row 11 col 5",
+   "name": "Aperture r11 c5",
    "shape": "box",
    "x": -30.48,
    "y": 0,
@@ -115,11 +125,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_11"
   },
   {
    "id": "ap_r11_c6",
-   "name": "Aperture row 11 col 6",
+   "name": "Aperture r11 c6",
    "shape": "box",
    "x": -10.16,
    "y": 0,
@@ -134,11 +144,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_11"
   },
   {
    "id": "ap_r11_c7",
-   "name": "Aperture row 11 col 7",
+   "name": "Aperture r11 c7",
    "shape": "box",
    "x": 10.16,
    "y": 0,
@@ -153,11 +163,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_11"
   },
   {
    "id": "ap_r11_c8",
-   "name": "Aperture row 11 col 8",
+   "name": "Aperture r11 c8",
    "shape": "box",
    "x": 30.48,
    "y": 0,
@@ -172,11 +182,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_11"
   },
   {
    "id": "ap_r11_c9",
-   "name": "Aperture row 11 col 9",
+   "name": "Aperture r11 c9",
    "shape": "box",
    "x": 50.8,
    "y": 0,
@@ -191,11 +201,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_11"
   },
   {
    "id": "ap_r11_c10",
-   "name": "Aperture row 11 col 10",
+   "name": "Aperture r11 c10",
    "shape": "box",
    "x": 71.12,
    "y": 0,
@@ -210,11 +220,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_11"
   },
   {
    "id": "ap_r11_c11",
-   "name": "Aperture row 11 col 11",
+   "name": "Aperture r11 c11",
    "shape": "box",
    "x": 91.44,
    "y": 0,
@@ -229,11 +239,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_11"
   },
   {
    "id": "ap_r11_c12",
-   "name": "Aperture row 11 col 12",
+   "name": "Aperture r11 c12",
    "shape": "box",
    "x": 111.76,
    "y": 0,
@@ -248,11 +258,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_11"
   },
   {
    "id": "ap_r10_c1",
-   "name": "Aperture row 10 col 1",
+   "name": "Aperture r10 c1",
    "shape": "box",
    "x": -111.76,
    "y": 0,
@@ -267,11 +277,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_10"
   },
   {
    "id": "ap_r10_c2",
-   "name": "Aperture row 10 col 2",
+   "name": "Aperture r10 c2",
    "shape": "box",
    "x": -91.44,
    "y": 0,
@@ -286,11 +296,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_10"
   },
   {
    "id": "ap_r10_c3",
-   "name": "Aperture row 10 col 3",
+   "name": "Aperture r10 c3",
    "shape": "box",
    "x": -71.12,
    "y": 0,
@@ -305,11 +315,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_10"
   },
   {
    "id": "ap_r10_c4",
-   "name": "Aperture row 10 col 4",
+   "name": "Aperture r10 c4",
    "shape": "box",
    "x": -50.8,
    "y": 0,
@@ -324,11 +334,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_10"
   },
   {
    "id": "ap_r10_c5",
-   "name": "Aperture row 10 col 5",
+   "name": "Aperture r10 c5",
    "shape": "box",
    "x": -30.48,
    "y": 0,
@@ -343,11 +353,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_10"
   },
   {
    "id": "ap_r10_c6",
-   "name": "Aperture row 10 col 6",
+   "name": "Aperture r10 c6",
    "shape": "box",
    "x": -10.16,
    "y": 0,
@@ -362,11 +372,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_10"
   },
   {
    "id": "ap_r10_c7",
-   "name": "Aperture row 10 col 7",
+   "name": "Aperture r10 c7",
    "shape": "box",
    "x": 10.16,
    "y": 0,
@@ -381,11 +391,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_10"
   },
   {
    "id": "ap_r10_c8",
-   "name": "Aperture row 10 col 8",
+   "name": "Aperture r10 c8",
    "shape": "box",
    "x": 30.48,
    "y": 0,
@@ -400,11 +410,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_10"
   },
   {
    "id": "ap_r10_c9",
-   "name": "Aperture row 10 col 9",
+   "name": "Aperture r10 c9",
    "shape": "box",
    "x": 50.8,
    "y": 0,
@@ -419,11 +429,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_10"
   },
   {
    "id": "ap_r10_c10",
-   "name": "Aperture row 10 col 10",
+   "name": "Aperture r10 c10",
    "shape": "box",
    "x": 71.12,
    "y": 0,
@@ -438,11 +448,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_10"
   },
   {
    "id": "ap_r10_c11",
-   "name": "Aperture row 10 col 11",
+   "name": "Aperture r10 c11",
    "shape": "box",
    "x": 91.44,
    "y": 0,
@@ -457,11 +467,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_10"
   },
   {
    "id": "ap_r10_c12",
-   "name": "Aperture row 10 col 12",
+   "name": "Aperture r10 c12",
    "shape": "box",
    "x": 111.76,
    "y": 0,
@@ -476,11 +486,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_10"
   },
   {
    "id": "ap_r9_c1",
-   "name": "Aperture row 9 col 1",
+   "name": "Aperture r9 c1",
    "shape": "box",
    "x": -111.76,
    "y": 0,
@@ -495,11 +505,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_9"
   },
   {
    "id": "ap_r9_c2",
-   "name": "Aperture row 9 col 2",
+   "name": "Aperture r9 c2",
    "shape": "box",
    "x": -91.44,
    "y": 0,
@@ -514,11 +524,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_9"
   },
   {
    "id": "ap_r9_c3",
-   "name": "Aperture row 9 col 3",
+   "name": "Aperture r9 c3",
    "shape": "box",
    "x": -71.12,
    "y": 0,
@@ -533,11 +543,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_9"
   },
   {
    "id": "ap_r9_c4",
-   "name": "Aperture row 9 col 4",
+   "name": "Aperture r9 c4",
    "shape": "box",
    "x": -50.8,
    "y": 0,
@@ -552,11 +562,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_9"
   },
   {
    "id": "ap_r9_c5",
-   "name": "Aperture row 9 col 5",
+   "name": "Aperture r9 c5",
    "shape": "box",
    "x": -30.48,
    "y": 0,
@@ -571,11 +581,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_9"
   },
   {
    "id": "ap_r9_c6",
-   "name": "Aperture row 9 col 6",
+   "name": "Aperture r9 c6",
    "shape": "box",
    "x": -10.16,
    "y": 0,
@@ -590,11 +600,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_9"
   },
   {
    "id": "ap_r9_c7",
-   "name": "Aperture row 9 col 7",
+   "name": "Aperture r9 c7",
    "shape": "box",
    "x": 10.16,
    "y": 0,
@@ -609,11 +619,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_9"
   },
   {
    "id": "ap_r9_c8",
-   "name": "Aperture row 9 col 8",
+   "name": "Aperture r9 c8",
    "shape": "box",
    "x": 30.48,
    "y": 0,
@@ -628,11 +638,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_9"
   },
   {
    "id": "ap_r9_c9",
-   "name": "Aperture row 9 col 9",
+   "name": "Aperture r9 c9",
    "shape": "box",
    "x": 50.8,
    "y": 0,
@@ -647,11 +657,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_9"
   },
   {
    "id": "ap_r9_c10",
-   "name": "Aperture row 9 col 10",
+   "name": "Aperture r9 c10",
    "shape": "box",
    "x": 71.12,
    "y": 0,
@@ -666,11 +676,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_9"
   },
   {
    "id": "ap_r9_c11",
-   "name": "Aperture row 9 col 11",
+   "name": "Aperture r9 c11",
    "shape": "box",
    "x": 91.44,
    "y": 0,
@@ -685,11 +695,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_9"
   },
   {
    "id": "ap_r9_c12",
-   "name": "Aperture row 9 col 12",
+   "name": "Aperture r9 c12",
    "shape": "box",
    "x": 111.76,
    "y": 0,
@@ -704,11 +714,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_9"
   },
   {
    "id": "ap_r8_c1",
-   "name": "Aperture row 8 col 1",
+   "name": "Aperture r8 c1",
    "shape": "box",
    "x": -111.76,
    "y": 0,
@@ -723,11 +733,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_8"
   },
   {
    "id": "ap_r8_c2",
-   "name": "Aperture row 8 col 2",
+   "name": "Aperture r8 c2",
    "shape": "box",
    "x": -91.44,
    "y": 0,
@@ -742,11 +752,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_8"
   },
   {
    "id": "ap_r8_c3",
-   "name": "Aperture row 8 col 3",
+   "name": "Aperture r8 c3",
    "shape": "box",
    "x": -71.12,
    "y": 0,
@@ -761,11 +771,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_8"
   },
   {
    "id": "ap_r8_c4",
-   "name": "Aperture row 8 col 4",
+   "name": "Aperture r8 c4",
    "shape": "box",
    "x": -50.8,
    "y": 0,
@@ -780,11 +790,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_8"
   },
   {
    "id": "ap_r8_c5",
-   "name": "Aperture row 8 col 5",
+   "name": "Aperture r8 c5",
    "shape": "box",
    "x": -30.48,
    "y": 0,
@@ -799,11 +809,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_8"
   },
   {
    "id": "ap_r8_c6",
-   "name": "Aperture row 8 col 6",
+   "name": "Aperture r8 c6",
    "shape": "box",
    "x": -10.16,
    "y": 0,
@@ -818,11 +828,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_8"
   },
   {
    "id": "ap_r8_c7",
-   "name": "Aperture row 8 col 7",
+   "name": "Aperture r8 c7",
    "shape": "box",
    "x": 10.16,
    "y": 0,
@@ -837,11 +847,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_8"
   },
   {
    "id": "ap_r8_c8",
-   "name": "Aperture row 8 col 8",
+   "name": "Aperture r8 c8",
    "shape": "box",
    "x": 30.48,
    "y": 0,
@@ -856,11 +866,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_8"
   },
   {
    "id": "ap_r8_c9",
-   "name": "Aperture row 8 col 9",
+   "name": "Aperture r8 c9",
    "shape": "box",
    "x": 50.8,
    "y": 0,
@@ -875,11 +885,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_8"
   },
   {
    "id": "ap_r8_c10",
-   "name": "Aperture row 8 col 10",
+   "name": "Aperture r8 c10",
    "shape": "box",
    "x": 71.12,
    "y": 0,
@@ -894,11 +904,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_8"
   },
   {
    "id": "ap_r8_c11",
-   "name": "Aperture row 8 col 11",
+   "name": "Aperture r8 c11",
    "shape": "box",
    "x": 91.44,
    "y": 0,
@@ -913,11 +923,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_8"
   },
   {
    "id": "ap_r8_c12",
-   "name": "Aperture row 8 col 12",
+   "name": "Aperture r8 c12",
    "shape": "box",
    "x": 111.76,
    "y": 0,
@@ -932,11 +942,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_8"
   },
   {
    "id": "ap_r7_c1",
-   "name": "Aperture row 7 col 1",
+   "name": "Aperture r7 c1",
    "shape": "box",
    "x": -111.76,
    "y": 0,
@@ -951,11 +961,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_7"
   },
   {
    "id": "ap_r7_c2",
-   "name": "Aperture row 7 col 2",
+   "name": "Aperture r7 c2",
    "shape": "box",
    "x": -91.44,
    "y": 0,
@@ -970,11 +980,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_7"
   },
   {
    "id": "ap_r7_c3",
-   "name": "Aperture row 7 col 3",
+   "name": "Aperture r7 c3",
    "shape": "box",
    "x": -71.12,
    "y": 0,
@@ -989,11 +999,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_7"
   },
   {
    "id": "ap_r7_c4",
-   "name": "Aperture row 7 col 4",
+   "name": "Aperture r7 c4",
    "shape": "box",
    "x": -50.8,
    "y": 0,
@@ -1008,11 +1018,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_7"
   },
   {
    "id": "ap_r7_c5",
-   "name": "Aperture row 7 col 5",
+   "name": "Aperture r7 c5",
    "shape": "box",
    "x": -30.48,
    "y": 0,
@@ -1027,11 +1037,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_7"
   },
   {
    "id": "ap_r7_c6",
-   "name": "Aperture row 7 col 6",
+   "name": "Aperture r7 c6",
    "shape": "box",
    "x": -10.16,
    "y": 0,
@@ -1046,11 +1056,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_7"
   },
   {
    "id": "ap_r7_c7",
-   "name": "Aperture row 7 col 7",
+   "name": "Aperture r7 c7",
    "shape": "box",
    "x": 10.16,
    "y": 0,
@@ -1065,11 +1075,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_7"
   },
   {
    "id": "ap_r7_c8",
-   "name": "Aperture row 7 col 8",
+   "name": "Aperture r7 c8",
    "shape": "box",
    "x": 30.48,
    "y": 0,
@@ -1084,11 +1094,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_7"
   },
   {
    "id": "ap_r7_c9",
-   "name": "Aperture row 7 col 9",
+   "name": "Aperture r7 c9",
    "shape": "box",
    "x": 50.8,
    "y": 0,
@@ -1103,11 +1113,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_7"
   },
   {
    "id": "ap_r7_c10",
-   "name": "Aperture row 7 col 10",
+   "name": "Aperture r7 c10",
    "shape": "box",
    "x": 71.12,
    "y": 0,
@@ -1122,11 +1132,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_7"
   },
   {
    "id": "ap_r7_c11",
-   "name": "Aperture row 7 col 11",
+   "name": "Aperture r7 c11",
    "shape": "box",
    "x": 91.44,
    "y": 0,
@@ -1141,11 +1151,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_7"
   },
   {
    "id": "ap_r7_c12",
-   "name": "Aperture row 7 col 12",
+   "name": "Aperture r7 c12",
    "shape": "box",
    "x": 111.76,
    "y": 0,
@@ -1160,11 +1170,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_7"
   },
   {
    "id": "ap_r6_c1",
-   "name": "Aperture row 6 col 1",
+   "name": "Aperture r6 c1",
    "shape": "box",
    "x": -111.76,
    "y": 0,
@@ -1179,11 +1189,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_6"
   },
   {
    "id": "ap_r6_c2",
-   "name": "Aperture row 6 col 2",
+   "name": "Aperture r6 c2",
    "shape": "box",
    "x": -91.44,
    "y": 0,
@@ -1198,11 +1208,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_6"
   },
   {
    "id": "ap_r6_c3",
-   "name": "Aperture row 6 col 3",
+   "name": "Aperture r6 c3",
    "shape": "box",
    "x": -71.12,
    "y": 0,
@@ -1217,11 +1227,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_6"
   },
   {
    "id": "ap_r6_c4",
-   "name": "Aperture row 6 col 4",
+   "name": "Aperture r6 c4",
    "shape": "box",
    "x": -50.8,
    "y": 0,
@@ -1236,11 +1246,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_6"
   },
   {
    "id": "ap_r6_c5",
-   "name": "Aperture row 6 col 5",
+   "name": "Aperture r6 c5",
    "shape": "box",
    "x": -30.48,
    "y": 0,
@@ -1255,11 +1265,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_6"
   },
   {
    "id": "ap_r6_c6",
-   "name": "Aperture row 6 col 6",
+   "name": "Aperture r6 c6",
    "shape": "box",
    "x": -10.16,
    "y": 0,
@@ -1274,11 +1284,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_6"
   },
   {
    "id": "ap_r6_c7",
-   "name": "Aperture row 6 col 7",
+   "name": "Aperture r6 c7",
    "shape": "box",
    "x": 10.16,
    "y": 0,
@@ -1293,11 +1303,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_6"
   },
   {
    "id": "ap_r6_c8",
-   "name": "Aperture row 6 col 8",
+   "name": "Aperture r6 c8",
    "shape": "box",
    "x": 30.48,
    "y": 0,
@@ -1312,11 +1322,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_6"
   },
   {
    "id": "ap_r6_c9",
-   "name": "Aperture row 6 col 9",
+   "name": "Aperture r6 c9",
    "shape": "box",
    "x": 50.8,
    "y": 0,
@@ -1331,11 +1341,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_6"
   },
   {
    "id": "ap_r6_c10",
-   "name": "Aperture row 6 col 10",
+   "name": "Aperture r6 c10",
    "shape": "box",
    "x": 71.12,
    "y": 0,
@@ -1350,11 +1360,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_6"
   },
   {
    "id": "ap_r6_c11",
-   "name": "Aperture row 6 col 11",
+   "name": "Aperture r6 c11",
    "shape": "box",
    "x": 91.44,
    "y": 0,
@@ -1369,11 +1379,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_6"
   },
   {
    "id": "ap_r6_c12",
-   "name": "Aperture row 6 col 12",
+   "name": "Aperture r6 c12",
    "shape": "box",
    "x": 111.76,
    "y": 0,
@@ -1388,11 +1398,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_6"
   },
   {
    "id": "ap_r5_c1",
-   "name": "Aperture row 5 col 1",
+   "name": "Aperture r5 c1",
    "shape": "box",
    "x": -111.76,
    "y": 0,
@@ -1407,11 +1417,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_5"
   },
   {
    "id": "ap_r5_c2",
-   "name": "Aperture row 5 col 2",
+   "name": "Aperture r5 c2",
    "shape": "box",
    "x": -91.44,
    "y": 0,
@@ -1426,11 +1436,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_5"
   },
   {
    "id": "ap_r5_c3",
-   "name": "Aperture row 5 col 3",
+   "name": "Aperture r5 c3",
    "shape": "box",
    "x": -71.12,
    "y": 0,
@@ -1445,11 +1455,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_5"
   },
   {
    "id": "ap_r5_c4",
-   "name": "Aperture row 5 col 4",
+   "name": "Aperture r5 c4",
    "shape": "box",
    "x": -50.8,
    "y": 0,
@@ -1464,11 +1474,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_5"
   },
   {
    "id": "ap_r5_c5",
-   "name": "Aperture row 5 col 5",
+   "name": "Aperture r5 c5",
    "shape": "box",
    "x": -30.48,
    "y": 0,
@@ -1483,11 +1493,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_5"
   },
   {
    "id": "ap_r5_c6",
-   "name": "Aperture row 5 col 6",
+   "name": "Aperture r5 c6",
    "shape": "box",
    "x": -10.16,
    "y": 0,
@@ -1502,11 +1512,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_5"
   },
   {
    "id": "ap_r5_c7",
-   "name": "Aperture row 5 col 7",
+   "name": "Aperture r5 c7",
    "shape": "box",
    "x": 10.16,
    "y": 0,
@@ -1521,11 +1531,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_5"
   },
   {
    "id": "ap_r5_c8",
-   "name": "Aperture row 5 col 8",
+   "name": "Aperture r5 c8",
    "shape": "box",
    "x": 30.48,
    "y": 0,
@@ -1540,11 +1550,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_5"
   },
   {
    "id": "ap_r5_c9",
-   "name": "Aperture row 5 col 9",
+   "name": "Aperture r5 c9",
    "shape": "box",
    "x": 50.8,
    "y": 0,
@@ -1559,11 +1569,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_5"
   },
   {
    "id": "ap_r5_c10",
-   "name": "Aperture row 5 col 10",
+   "name": "Aperture r5 c10",
    "shape": "box",
    "x": 71.12,
    "y": 0,
@@ -1578,11 +1588,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_5"
   },
   {
    "id": "ap_r5_c11",
-   "name": "Aperture row 5 col 11",
+   "name": "Aperture r5 c11",
    "shape": "box",
    "x": 91.44,
    "y": 0,
@@ -1597,11 +1607,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_5"
   },
   {
    "id": "ap_r5_c12",
-   "name": "Aperture row 5 col 12",
+   "name": "Aperture r5 c12",
    "shape": "box",
    "x": 111.76,
    "y": 0,
@@ -1616,11 +1626,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_5"
   },
   {
    "id": "ap_r4_c1",
-   "name": "Aperture row 4 col 1",
+   "name": "Aperture r4 c1",
    "shape": "box",
    "x": -111.76,
    "y": 0,
@@ -1635,11 +1645,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_4"
   },
   {
    "id": "ap_r4_c2",
-   "name": "Aperture row 4 col 2",
+   "name": "Aperture r4 c2",
    "shape": "box",
    "x": -91.44,
    "y": 0,
@@ -1654,11 +1664,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_4"
   },
   {
    "id": "ap_r4_c3",
-   "name": "Aperture row 4 col 3",
+   "name": "Aperture r4 c3",
    "shape": "box",
    "x": -71.12,
    "y": 0,
@@ -1673,11 +1683,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_4"
   },
   {
    "id": "ap_r4_c4",
-   "name": "Aperture row 4 col 4",
+   "name": "Aperture r4 c4",
    "shape": "box",
    "x": -50.8,
    "y": 0,
@@ -1692,11 +1702,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_4"
   },
   {
    "id": "ap_r4_c5",
-   "name": "Aperture row 4 col 5",
+   "name": "Aperture r4 c5",
    "shape": "box",
    "x": -30.48,
    "y": 0,
@@ -1711,11 +1721,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_4"
   },
   {
    "id": "ap_r4_c6",
-   "name": "Aperture row 4 col 6",
+   "name": "Aperture r4 c6",
    "shape": "box",
    "x": -10.16,
    "y": 0,
@@ -1730,11 +1740,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_4"
   },
   {
    "id": "ap_r4_c7",
-   "name": "Aperture row 4 col 7",
+   "name": "Aperture r4 c7",
    "shape": "box",
    "x": 10.16,
    "y": 0,
@@ -1749,11 +1759,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_4"
   },
   {
    "id": "ap_r4_c8",
-   "name": "Aperture row 4 col 8",
+   "name": "Aperture r4 c8",
    "shape": "box",
    "x": 30.48,
    "y": 0,
@@ -1768,11 +1778,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_4"
   },
   {
    "id": "ap_r4_c9",
-   "name": "Aperture row 4 col 9",
+   "name": "Aperture r4 c9",
    "shape": "box",
    "x": 50.8,
    "y": 0,
@@ -1787,11 +1797,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_4"
   },
   {
    "id": "ap_r4_c10",
-   "name": "Aperture row 4 col 10",
+   "name": "Aperture r4 c10",
    "shape": "box",
    "x": 71.12,
    "y": 0,
@@ -1806,11 +1816,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_4"
   },
   {
    "id": "ap_r4_c11",
-   "name": "Aperture row 4 col 11",
+   "name": "Aperture r4 c11",
    "shape": "box",
    "x": 91.44,
    "y": 0,
@@ -1825,11 +1835,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_4"
   },
   {
    "id": "ap_r4_c12",
-   "name": "Aperture row 4 col 12",
+   "name": "Aperture r4 c12",
    "shape": "box",
    "x": 111.76,
    "y": 0,
@@ -1844,11 +1854,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_4"
   },
   {
    "id": "ap_r3_c1",
-   "name": "Aperture row 3 col 1",
+   "name": "Aperture r3 c1",
    "shape": "box",
    "x": -111.76,
    "y": 0,
@@ -1863,11 +1873,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_3"
   },
   {
    "id": "ap_r3_c2",
-   "name": "Aperture row 3 col 2",
+   "name": "Aperture r3 c2",
    "shape": "box",
    "x": -91.44,
    "y": 0,
@@ -1882,11 +1892,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_3"
   },
   {
    "id": "ap_r3_c3",
-   "name": "Aperture row 3 col 3",
+   "name": "Aperture r3 c3",
    "shape": "box",
    "x": -71.12,
    "y": 0,
@@ -1901,11 +1911,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_3"
   },
   {
    "id": "ap_r3_c4",
-   "name": "Aperture row 3 col 4",
+   "name": "Aperture r3 c4",
    "shape": "box",
    "x": -50.8,
    "y": 0,
@@ -1920,11 +1930,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_3"
   },
   {
    "id": "ap_r3_c5",
-   "name": "Aperture row 3 col 5",
+   "name": "Aperture r3 c5",
    "shape": "box",
    "x": -30.48,
    "y": 0,
@@ -1939,11 +1949,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_3"
   },
   {
    "id": "ap_r3_c6",
-   "name": "Aperture row 3 col 6",
+   "name": "Aperture r3 c6",
    "shape": "box",
    "x": -10.16,
    "y": 0,
@@ -1958,11 +1968,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_3"
   },
   {
    "id": "ap_r3_c7",
-   "name": "Aperture row 3 col 7",
+   "name": "Aperture r3 c7 (Channel Col 7, 40 in deep)",
    "shape": "box",
    "x": 10.16,
    "y": 0,
@@ -1977,11 +1987,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_3"
   },
   {
    "id": "ap_r3_c8",
-   "name": "Aperture row 3 col 8",
+   "name": "Aperture r3 c8",
    "shape": "box",
    "x": 30.48,
    "y": 0,
@@ -1996,11 +2006,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_3"
   },
   {
    "id": "ap_r3_c9",
-   "name": "Aperture row 3 col 9",
+   "name": "Aperture r3 c9",
    "shape": "box",
    "x": 50.8,
    "y": 0,
@@ -2015,11 +2025,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_3"
   },
   {
    "id": "ap_r3_c10",
-   "name": "Aperture row 3 col 10",
+   "name": "Aperture r3 c10",
    "shape": "box",
    "x": 71.12,
    "y": 0,
@@ -2034,11 +2044,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_3"
   },
   {
    "id": "ap_r3_c11",
-   "name": "Aperture row 3 col 11",
+   "name": "Aperture r3 c11",
    "shape": "box",
    "x": 91.44,
    "y": 0,
@@ -2053,11 +2063,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_3"
   },
   {
    "id": "ap_r3_c12",
-   "name": "Aperture row 3 col 12",
+   "name": "Aperture r3 c12",
    "shape": "box",
    "x": 111.76,
    "y": 0,
@@ -2072,11 +2082,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_3"
   },
   {
    "id": "ap_r2_c1",
-   "name": "Aperture row 2 col 1",
+   "name": "Aperture r2 c1",
    "shape": "box",
    "x": -111.76,
    "y": 0,
@@ -2091,11 +2101,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_2"
   },
   {
    "id": "ap_r2_c2",
-   "name": "Aperture row 2 col 2",
+   "name": "Aperture r2 c2",
    "shape": "box",
    "x": -91.44,
    "y": 0,
@@ -2110,11 +2120,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_2"
   },
   {
    "id": "ap_r2_c3",
-   "name": "Aperture row 2 col 3",
+   "name": "Aperture r2 c3",
    "shape": "box",
    "x": -71.12,
    "y": 0,
@@ -2129,11 +2139,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_2"
   },
   {
    "id": "ap_r2_c4",
-   "name": "Aperture row 2 col 4",
+   "name": "Aperture r2 c4",
    "shape": "box",
    "x": -50.8,
    "y": 0,
@@ -2148,11 +2158,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_2"
   },
   {
    "id": "ap_r2_c5",
-   "name": "Aperture row 2 col 5",
+   "name": "Aperture r2 c5",
    "shape": "box",
    "x": -30.48,
    "y": 0,
@@ -2167,11 +2177,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_2"
   },
   {
    "id": "ap_r2_c6",
-   "name": "Aperture row 2 col 6",
+   "name": "Aperture r2 c6",
    "shape": "box",
    "x": -10.16,
    "y": 0,
@@ -2186,11 +2196,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_2"
   },
   {
    "id": "ap_r2_c7",
-   "name": "Aperture row 2 col 7",
+   "name": "Aperture r2 c7",
    "shape": "box",
    "x": 10.16,
    "y": 0,
@@ -2205,11 +2215,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_2"
   },
   {
    "id": "ap_r2_c8",
-   "name": "Aperture row 2 col 8",
+   "name": "Aperture r2 c8",
    "shape": "box",
    "x": 30.48,
    "y": 0,
@@ -2224,11 +2234,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_2"
   },
   {
    "id": "ap_r2_c9",
-   "name": "Aperture row 2 col 9",
+   "name": "Aperture r2 c9",
    "shape": "box",
    "x": 50.8,
    "y": 0,
@@ -2243,11 +2253,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_2"
   },
   {
    "id": "ap_r2_c10",
-   "name": "Aperture row 2 col 10",
+   "name": "Aperture r2 c10",
    "shape": "box",
    "x": 71.12,
    "y": 0,
@@ -2262,11 +2272,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_2"
   },
   {
    "id": "ap_r2_c11",
-   "name": "Aperture row 2 col 11",
+   "name": "Aperture r2 c11",
    "shape": "box",
    "x": 91.44,
    "y": 0,
@@ -2281,11 +2291,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_2"
   },
   {
    "id": "ap_r2_c12",
-   "name": "Aperture row 2 col 12",
+   "name": "Aperture r2 c12",
    "shape": "box",
    "x": 111.76,
    "y": 0,
@@ -2300,11 +2310,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_2"
   },
   {
    "id": "ap_r1_c1",
-   "name": "Aperture row 1 col 1",
+   "name": "Aperture r1 c1",
    "shape": "box",
    "x": -111.76,
    "y": 0,
@@ -2319,11 +2329,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_1"
   },
   {
    "id": "ap_r1_c2",
-   "name": "Aperture row 1 col 2",
+   "name": "Aperture r1 c2",
    "shape": "box",
    "x": -91.44,
    "y": 0,
@@ -2338,11 +2348,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_1"
   },
   {
    "id": "ap_r1_c3",
-   "name": "Aperture row 1 col 3",
+   "name": "Aperture r1 c3",
    "shape": "box",
    "x": -71.12,
    "y": 0,
@@ -2357,11 +2367,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_1"
   },
   {
    "id": "ap_r1_c4",
-   "name": "Aperture row 1 col 4",
+   "name": "Aperture r1 c4",
    "shape": "box",
    "x": -50.8,
    "y": 0,
@@ -2376,11 +2386,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_1"
   },
   {
    "id": "ap_r1_c5",
-   "name": "Aperture row 1 col 5",
+   "name": "Aperture r1 c5",
    "shape": "box",
    "x": -30.48,
    "y": 0,
@@ -2395,11 +2405,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_1"
   },
   {
    "id": "ap_r1_c6",
-   "name": "Aperture row 1 col 6",
+   "name": "Aperture r1 c6",
    "shape": "box",
    "x": -10.16,
    "y": 0,
@@ -2414,11 +2424,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_1"
   },
   {
    "id": "ap_r1_c7",
-   "name": "Aperture row 1 col 7",
+   "name": "Aperture r1 c7",
    "shape": "box",
    "x": 10.16,
    "y": 0,
@@ -2433,11 +2443,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_1"
   },
   {
    "id": "ap_r1_c8",
-   "name": "Aperture row 1 col 8",
+   "name": "Aperture r1 c8",
    "shape": "box",
    "x": 30.48,
    "y": 0,
@@ -2452,11 +2462,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_1"
   },
   {
    "id": "ap_r1_c9",
-   "name": "Aperture row 1 col 9",
+   "name": "Aperture r1 c9",
    "shape": "box",
    "x": 50.8,
    "y": 0,
@@ -2471,11 +2481,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_1"
   },
   {
    "id": "ap_r1_c10",
-   "name": "Aperture row 1 col 10",
+   "name": "Aperture r1 c10",
    "shape": "box",
    "x": 71.12,
    "y": 0,
@@ -2490,11 +2500,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_1"
   },
   {
    "id": "ap_r1_c11",
-   "name": "Aperture row 1 col 11",
+   "name": "Aperture r1 c11",
    "shape": "box",
    "x": 91.44,
    "y": 0,
@@ -2509,11 +2519,11 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_1"
   },
   {
    "id": "ap_r1_c12",
-   "name": "Aperture row 1 col 12",
+   "name": "Aperture r1 c12",
    "shape": "box",
    "x": 111.76,
    "y": 0,
@@ -2528,7 +2538,7 @@
    "ry": 45,
    "rz": 0,
    "material": "m_air",
-   "group": "g_apertures"
+   "group": "g_row_1"
   },
   {
    "id": "drawer",
@@ -2570,10 +2580,108 @@
  "groups": [
   {
    "id": "g_apertures",
-   "name": "Apertures",
+   "name": "Apertures (12\u00d711 array)",
+   "parent": null,
+   "x": 0,
+   "y": 0,
+   "z": 40.64,
+   "lattice": {
+    "nx": 12,
+    "ny": 1,
+    "nz": 11,
+    "dx": 20.32,
+    "dy": 0,
+    "dz": 20.32,
+    "asLattice": false
+   }
+  },
+  {
+   "id": "g_row_11",
+   "name": "Row 11 (z = 116.0 in)",
+   "parent": "g_apertures",
+   "x": 0,
+   "y": 0,
+   "z": 142.24
+  },
+  {
+   "id": "g_row_10",
+   "name": "Row 10 (z = 108.0 in)",
+   "parent": "g_apertures",
+   "x": 0,
+   "y": 0,
+   "z": 121.92
+  },
+  {
+   "id": "g_row_9",
+   "name": "Row 9 (z = 100.0 in)",
+   "parent": "g_apertures",
+   "x": 0,
+   "y": 0,
+   "z": 101.6
+  },
+  {
+   "id": "g_row_8",
+   "name": "Row 8 (z = 92.0 in)",
+   "parent": "g_apertures",
+   "x": 0,
+   "y": 0,
+   "z": 81.28
+  },
+  {
+   "id": "g_row_7",
+   "name": "Row 7 (z = 84.0 in)",
+   "parent": "g_apertures",
+   "x": 0,
+   "y": 0,
+   "z": 60.96
+  },
+  {
+   "id": "g_row_6",
+   "name": "Row 6 (z = 76.0 in)",
+   "parent": "g_apertures",
    "x": 0,
    "y": 0,
    "z": 40.64
+  },
+  {
+   "id": "g_row_5",
+   "name": "Row 5 (z = 68.0 in)",
+   "parent": "g_apertures",
+   "x": 0,
+   "y": 0,
+   "z": 20.32
+  },
+  {
+   "id": "g_row_4",
+   "name": "Row 4 (z = 60.0 in)",
+   "parent": "g_apertures",
+   "x": 0,
+   "y": 0,
+   "z": -0.0
+  },
+  {
+   "id": "g_row_3",
+   "name": "Row 3 (z = 52.0 in) [Measurement]",
+   "parent": "g_apertures",
+   "x": 0,
+   "y": 0,
+   "z": -20.32
+  },
+  {
+   "id": "g_row_2",
+   "name": "Row 2 (z = 44.0 in)",
+   "parent": "g_apertures",
+   "x": 0,
+   "y": 0,
+   "z": -40.64
+  },
+  {
+   "id": "g_row_1",
+   "name": "Row 1 (z = 36.0 in)",
+   "parent": "g_apertures",
+   "x": 0,
+   "y": 0,
+   "z": -60.96
   }
  ],
  "sources": [
@@ -2665,6 +2773,75 @@
    "ux": 11.43,
    "uy": -19.05,
    "uz": 152.4
+  },
+  {
+   "id": "t_he3_x",
+   "name": "He-3 response across (x), row 3, 40 in deep",
+   "kind": "mesh",
+   "cells": [],
+   "scores": [
+    "flux"
+   ],
+   "ebins": "",
+   "nx": 96,
+   "ny": 1,
+   "nz": 1,
+   "lx": -121.92,
+   "ly": -21.59,
+   "lz": -21.59,
+   "ux": 121.92,
+   "uy": -19.05,
+   "uz": -19.05,
+   "detector": "he3",
+   "responseMat": "m_he3",
+   "responseScore": "(n,p)",
+   "responseScale": "macro"
+  },
+  {
+   "id": "t_he3_y",
+   "name": "He-3 response in depth (y), col 7 row 3",
+   "kind": "mesh",
+   "cells": [],
+   "scores": [
+    "flux"
+   ],
+   "ebins": "",
+   "nx": 1,
+   "ny": 96,
+   "nz": 1,
+   "lx": 8.89,
+   "ly": -121.92,
+   "lz": -21.59,
+   "ux": 11.43,
+   "uy": 121.92,
+   "uz": -19.05,
+   "detector": "he3",
+   "responseMat": "m_he3",
+   "responseScore": "(n,p)",
+   "responseScale": "macro"
+  },
+  {
+   "id": "t_he3_z",
+   "name": "He-3 response up (z), col 7, 40 in deep",
+   "kind": "mesh",
+   "cells": [],
+   "scores": [
+    "flux"
+   ],
+   "ebins": "",
+   "nx": 1,
+   "ny": 1,
+   "nz": 120,
+   "lx": 8.89,
+   "ly": -21.59,
+   "lz": -152.4,
+   "ux": 11.43,
+   "uy": -19.05,
+   "uz": 152.4,
+   "detector": "he3",
+   "responseMat": "m_he3",
+   "responseScore": "(n,p)",
+   "responseScale": "macro"
   },
   {
    "id": "t_map",

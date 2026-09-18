@@ -83,8 +83,18 @@ Implemented and verified:
     - OpenMC geometry export in `buildScript`: 5 planes (2 legs, hypotenuse `openmc.Plane(a=sy/L, b=sx/L, d=...)`, and height slab `openmc.ZPlane` or general slab) sharing aligned surfaces.
     - Verified in OpenMC 0.15.3 simulation with 100,000 particles and cell overlap checking: 0 errors, 0 lost particles.
 
+- **Hexagonal prism (RHP / HEX) (DONE).**
+  - Added `hex_prism` as a first-class primitive in OpenMC Studio:
+    - 3D isometric hexagonal prism icon in `ICON.hex_prism`, Ribbon Model tab, and Explorer.
+    - Properties panel: `Hexagonal prism (RHP)` shape selector with `Half-pitch` ($r$, in-radius / flat-to-flat distance = $2r$), `Height` ($h$), and 3D Euler `Rotation` ($rx, ry, rz$).
+    - 2D slice sampling in `inShape` and viewport rasterizer `inPart` using 3 symmetric slab checks.
+    - World-axis bounding box extents in `partHalfExtents` with exact hexagon radius $s = \frac{2}{\sqrt{3}} r$.
+    - WebGL 2 ray tracer shader (`intersectPart` type 4) evaluating an 8-plane convex slab clipper with analytic normals.
+    - Fast 3D BVH picking (`pick3` type 4).
+    - OpenMC geometry export in `buildScript`: 3 pairs of 60°-rotated parallel slabs (`gslab`) + axial height slab (`openmc.ZPlane` or general slab) sharing aligned surfaces.
+    - Verified in OpenMC 0.15.3 simulation with 100,000 particles and cell overlap checking: 0 errors, 0 lost particles.
+
 Other candidates:
-- Hexagonal prism (RHP/HEX): 8 planes; `openmc.model.HexagonalPrism` exists; common for fuel.
 - Cone and truncated cone (K, TRC): `openmc.XCone`/`ZCone` (GQ when tilted); needs cone support in
   the geometry check and the 3D shader.
 - Ellipsoid (ELL) and elliptical cylinder (REC): quadrics (GQ); the shader can scale a sphere or

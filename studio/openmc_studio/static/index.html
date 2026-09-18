@@ -360,6 +360,7 @@ const ICON = {
   cylinder:'<ellipse cx="9" cy="4.5" rx="5" ry="2"/><path d="M4 4.5v9c0 1.1 2.2 2 5 2s5-.9 5-2v-9"/>',
   box:'<path d="M3 6l6-3 6 3v6.5l-6 3-6-3z"/><path d="M3 6l6 3 6-3M9 9v6.5"/>',
   wedge:'<path d="M3 14.5h9L3 5.5z"/><path d="M3 5.5l3.5-2.5 9 9-3.5 2.5"/>',
+  hex_prism:'<path d="M9 2.5l5 2.5v3.5l-5 2.5-5-2.5V5z"/><path d="M4 8.5v4.5l5 2.5 5-2.5V8.5M9 11v4.5"/>',
   material:'<path d="M7 2.5h4M7.5 2.5V7L3.5 14a1.3 1.3 0 0 0 1.1 1.9h8.8a1.3 1.3 0 0 0 1.1-1.9L10.5 7V2.5"/><path d="M5.2 11h7.6"/>',
   source:'<circle cx="9" cy="9" r="2" fill="currentColor"/><path d="M9 1.5v3M9 13.5v3M1.5 9h3M13.5 9h3M3.7 3.7l2.1 2.1M12.2 12.2l2.1 2.1M3.7 14.3l2.1-2.1M12.2 5.8l2.1-2.1"/>',
   cellTally:'<circle cx="9" cy="9" r="6.5"/><circle cx="9" cy="9" r="3"/><circle cx="9" cy="9" r=".8" fill="currentColor"/>',
@@ -748,6 +749,10 @@ function inShape(p, x, y, z) {
   const lx = M[0][0]*dx + M[1][0]*dy + M[2][0]*dz, ly = M[0][1]*dx + M[1][1]*dy + M[2][1]*dz, lz = M[0][2]*dx + M[1][2]*dy + M[2][2]*dz;
   if (p.shape === 'cylinder') return lx*lx + ly*ly < p.r*p.r && Math.abs(lz) < p.h/2;
   if (p.shape === 'wedge') return lx > -p.sx/2 && ly > -p.sy/2 && (p.sy*lx + p.sx*ly < 0) && Math.abs(lz) < p.sz/2;
+  if (p.shape === 'hex_prism') {
+    const c30 = 0.8660254037844386;
+    return Math.abs(lz) < p.h/2 && Math.abs(ly) < p.r && Math.abs(c30*lx + 0.5*ly) < p.r && Math.abs(c30*lx - 0.5*ly) < p.r;
+  }
   return Math.abs(lx) < p.sx/2 && Math.abs(ly) < p.sy/2 && Math.abs(lz) < p.sz/2;
 }
 function inWorld(x, y, z) {
@@ -764,6 +769,7 @@ function partHalfExtents(p) { // half-widths of the world-axis bounding box
   if (p.shape === 'sphere') return [p.r, p.r, p.r];
   const M = partFrame(p).M;
   if (p.shape === 'box' || p.shape === 'wedge') { const hs = [p.sx/2, p.sy/2, p.sz/2]; return [0, 1, 2].map(i => Math.abs(M[i][0]) * hs[0] + Math.abs(M[i][1]) * hs[1] + Math.abs(M[i][2]) * hs[2]); }
+  if (p.shape === 'hex_prism') { const hs = [1.1547005383792515 * p.r, p.r, p.h / 2]; return [0, 1, 2].map(i => Math.abs(M[i][0]) * hs[0] + Math.abs(M[i][1]) * hs[1] + Math.abs(M[i][2]) * hs[2]); }
   return [0, 1, 2].map(i => Math.abs(M[i][2]) * p.h / 2 + p.r * Math.sqrt(Math.max(0, 1 - M[i][2] * M[i][2])));
 }
 // World-axis bounding box of a part or source, as [lo, hi].
@@ -1075,6 +1081,13 @@ function buildScript(probs, mark) {
       const pz = gslab(col(2), ctr, p.sz / 2);
       expr = `${p1} & ${p2} & ${p3} & ${pz}`;
     }
+    else if (p.shape === 'hex_prism') {
+      const c30 = 0.8660254037844386;
+      const u0 = [0, 1, 2].map(k => c30 * col(0)[k] + 0.5 * col(1)[k]);
+      const u1 = col(1);
+      const u2 = [0, 1, 2].map(k => -c30 * col(0)[k] + 0.5 * col(1)[k]);
+      expr = `${gslab(u0, ctr, p.r)} & ${gslab(u1, ctr, p.r)} & ${gslab(u2, ctr, p.r)} & ${gslab(col(2), ctr, p.h / 2)}`;
+    }
     else if (!fr.aligned) expr = `-${quadric(col(2), ctr, p.r)} & ${gslab(col(2), ctr, p.h / 2)}`;
     else {
       const ax = fr.axis, [a, b] = {x:['y', 'z'], y:['x', 'z'], z:['x', 'y']}[ax];
@@ -1317,7 +1330,7 @@ function selectFromView(kind, id, e) {
 }
 
 function addPart(shape) {
-  const label = {sphere:'Sphere', cylinder:'Cylinder', box:'Box', wedge:'Wedge'}[shape];
+  const label = {sphere:'Sphere', cylinder:'Cylinder', box:'Box', wedge:'Wedge', hex_prism:'Hex prism'}[shape];
   const p = newPart(newId('p'), uniqueName(S.parts, label), shape);
   S.parts.unshift(p);
   log('info', `Added ${p.name} at the top of Geometry, so it wins where it overlaps other parts.`);
@@ -1659,7 +1672,7 @@ const RIBBON = {
     {label:'Tools', btns:toolButtons()},
     {label:'Snap to grid', custom:snapControls},
     {label:'Group', btns:[['group', 'Group', groupSelected, () => selItems().length > 0], ['ungroup', 'Ungroup', ungroupSelected, () => sel.kind === 'group' || selItems().some(x => x.o.group)], ['array', 'Array…', e => openArrayMenu(e.currentTarget), canEditSelection], pivotButton()]},
-    {label:'Parts', btns:[['sphere', 'Sphere', () => addPart('sphere')], ['cylinder', 'Cylinder', () => addPart('cylinder')], ['box', 'Box', () => addPart('box')], ['wedge', 'Wedge', () => addPart('wedge')]]},
+    {label:'Parts', btns:[['sphere', 'Sphere', () => addPart('sphere')], ['cylinder', 'Cylinder', () => addPart('cylinder')], ['box', 'Box', () => addPart('box')], ['wedge', 'Wedge', () => addPart('wedge')], ['hex_prism', 'Hex prism', () => addPart('hex_prism')]]},
     {label:'Materials', btns:[['material', 'Material ▾', e => openMatMenu(e.currentTarget)]]},
     {label:'Boundary', btns:[['world', 'World', () => select('world')]]}
   ],
@@ -1763,6 +1776,7 @@ const collapsed = {};
 function shapeMeta(p) {
   const l = shortLen;
   if (isRotated(p)) return `${p.shape === 'box' || p.shape === 'wedge' ? `${l(p.sx)}×${l(p.sy)}×${l(p.sz)}` : `r ${l(p.r)} · ${l(p.h)}`} ↻`;
+  if (p.shape === 'hex_prism') return `p ${l(p.r * 2)} · ${l(p.h)}${isRotated(p) ? ' ↻' : ''}`;
   if (p.shape === 'sphere') return `r ${l(p.r)}`;
   if (p.shape === 'cylinder') return `r ${l(p.r)} · ${l(p.h)}`;
   return `${l(p.sx)}×${l(p.sy)}×${l(p.sz)}`;
@@ -1867,15 +1881,15 @@ function specFor(kind, o) {
     return secs;
   }
   if (kind === 'part') {
-    const i = S.parts.indexOf(o), cyl = () => o.shape === 'cylinder', sph = () => o.shape === 'sphere', box = () => o.shape === 'box', wed = () => o.shape === 'wedge';
+    const i = S.parts.indexOf(o), cyl = () => o.shape === 'cylinder', sph = () => o.shape === 'sphere', box = () => o.shape === 'box', wed = () => o.shape === 'wedge', hex = () => o.shape === 'hex_prism';
     return [
       {title:'Part', fields:[F('text', 'name', 'Name'), F('material', 'material', 'Material'),
         note(`Priority ${i + 1} of ${S.parts.length}. Parts higher in the Explorer win where shapes overlap. Drag it in the Explorer, or press Alt+↑/↓. MCNP cell ${i + 1}.`)]},
       {title:'Shape', fields:[
-        F('select', 'shape', 'Shape', {options:() => [['sphere', 'Sphere (SPH)'], ['cylinder', 'Cylinder (RCC)'], ['box', 'Box (RPP)'], ['wedge', 'Right wedge (WED)']]}),
+        F('select', 'shape', 'Shape', {options:() => [['sphere', 'Sphere (SPH)'], ['cylinder', 'Cylinder (RCC)'], ['box', 'Box (RPP)'], ['wedge', 'Right wedge (WED)'], ['hex_prism', 'Hexagonal prism (RHP)']]}),
         F('vec', null, 'Center', {keys:['x', 'y', 'z'], unit:'cm'}),
-        F('num', 'r', 'Radius', {unit:'cm', show:() => sph() || cyl()}),
-        F('num', 'h', 'Height', {unit:'cm', show:cyl}),
+        F('num', 'r', o.shape === 'hex_prism' ? 'Half-pitch' : 'Radius', {unit:'cm', show:() => sph() || cyl() || hex(), hint: o.shape === 'hex_prism' ? 'Half-distance between opposite flats (in-radius). Pitch = 2×r.' : ''}),
+        F('num', 'h', 'Height', {unit:'cm', show:() => cyl() || hex()}),
         F('select', 'axis', 'Axis', {options:() => [['x', 'x'], ['y', 'y'], ['z', 'z']], show:cyl}),
         F('vec', null, 'Size', {keys:['sx', 'sy', 'sz'], unit:'cm', show:() => box() || wed()}),
         F('vec', null, 'Rotation', {keys:['rx', 'ry', 'rz'], unit:'°', show:() => !sph(),
@@ -3471,25 +3485,57 @@ bool intersectPart(vec3 c, vec3 m0, vec3 m1, vec3 m2, vec3 d, float ty, vec3 ro,
     n0 = m0 * ln0.x + m1 * ln0.y + m2 * ln0.z; n1 = m0 * ln1.x + m1 * ln1.y + m2 * ln1.z;
     return true;
   }
-  // wedge: right triangular prism (ty >= 2.5)
-  float L = length(d.xy);
-  vec3 nH = vec3(d.y / L, d.x / L, 0.0);
+  if (ty < 3.5) { // wedge: right triangular prism (ty in [2.5, 3.5))
+    float L = length(d.xy);
+    vec3 nH = vec3(d.y / L, d.x / L, 0.0);
+    float tIn = -BIG, tOut = BIG;
+    vec3 ln0 = vec3(0.0), ln1 = vec3(0.0);
+    vec3 pNorms[5];
+    pNorms[0] = vec3(-1.0, 0.0, 0.0);
+    pNorms[1] = vec3(0.0, -1.0, 0.0);
+    pNorms[2] = nH;
+    pNorms[3] = vec3(0.0, 0.0, -1.0);
+    pNorms[4] = vec3(0.0, 0.0, 1.0);
+    float pDists[5];
+    pDists[0] = d.x; pDists[1] = d.y; pDists[2] = 0.0; pDists[3] = d.z; pDists[4] = d.z;
+    for (int k = 0; k < 5; k++) {
+      vec3 pn = pNorms[k];
+      float den = dot(pn, ld);
+      float num = pDists[k] - dot(pn, lo);
+      if (abs(den) < 1e-12) {
+        if (num < 0.0) return false;
+      } else {
+        float tVal = num / den;
+        if (den > 0.0) {
+          if (tVal < tOut) { tOut = tVal; ln1 = pn; }
+        } else {
+          if (tVal > tIn) { tIn = tVal; ln0 = pn; }
+        }
+      }
+    }
+    t0 = tIn; t1 = tOut;
+    if (t0 > t1) return false;
+    n0 = m0 * ln0.x + m1 * ln0.y + m2 * ln0.z;
+    n1 = m0 * ln1.x + m1 * ln1.y + m2 * ln1.z;
+    return true;
+  }
+  // hex_prism: regular hexagonal prism (ty >= 3.5)
+  float c30 = 0.8660254037844386;
+  vec3 pNorms[8];
+  pNorms[0] = vec3(c30, 0.5, 0.0);
+  pNorms[1] = vec3(0.0, 1.0, 0.0);
+  pNorms[2] = vec3(-c30, 0.5, 0.0);
+  pNorms[3] = vec3(-c30, -0.5, 0.0);
+  pNorms[4] = vec3(0.0, -1.0, 0.0);
+  pNorms[5] = vec3(c30, -0.5, 0.0);
+  pNorms[6] = vec3(0.0, 0.0, -1.0);
+  pNorms[7] = vec3(0.0, 0.0, 1.0);
+  float pDists[8];
+  pDists[0] = d.x; pDists[1] = d.x; pDists[2] = d.x; pDists[3] = d.x;
+  pDists[4] = d.x; pDists[5] = d.x; pDists[6] = d.y; pDists[7] = d.y;
   float tIn = -BIG, tOut = BIG;
   vec3 ln0 = vec3(0.0), ln1 = vec3(0.0);
-  vec3 pNorms[5];
-  pNorms[0] = vec3(-1.0, 0.0, 0.0);
-  pNorms[1] = vec3(0.0, -1.0, 0.0);
-  pNorms[2] = nH;
-  pNorms[3] = vec3(0.0, 0.0, -1.0);
-  pNorms[4] = vec3(0.0, 0.0, 1.0);
-  float pDists[5];
-  pDists[0] = d.x;
-  pDists[1] = d.y;
-  pDists[2] = 0.0;
-  pDists[3] = d.z;
-  pDists[4] = d.z;
-
-  for (int k = 0; k < 5; k++) {
+  for (int k = 0; k < 8; k++) {
     vec3 pn = pNorms[k];
     float den = dot(pn, ld);
     float num = pDists[k] - dot(pn, lo);
@@ -3716,7 +3762,7 @@ function partUniform(p) { // center, frame columns, dimensions, type
   const f = p.shape === 'sphere' ? {M:IDENT3} : partFrame(p), M = f.M;
   const cols = [0, 1, 2].map(k => [M[0][k], M[1][k], M[2][k]]);
   const dims = p.shape === 'sphere' ? [p.r, 0, 0] : (p.shape === 'box' || p.shape === 'wedge') ? [p.sx / 2, p.sy / 2, p.sz / 2] : [p.r, p.h / 2, 0];
-  const type = p.shape === 'sphere' ? 0 : p.shape === 'box' ? 1 : p.shape === 'cylinder' ? 2 : 3;
+  const type = p.shape === 'sphere' ? 0 : p.shape === 'box' ? 1 : p.shape === 'cylinder' ? 2 : p.shape === 'wedge' ? 3 : 4;
   return {c:[p.x, p.y, p.z], cols, dims, type};
 }
 
@@ -4064,11 +4110,34 @@ function pick3(px, py) {
       const t0 = Math.max(sa, za), t1 = Math.min(sb, zb);
       return t0 > t1 ? null : [t0, t1, pIdx];
     }
-    const L = Math.hypot(d[0], d[1]);
-    const pNorms = [[-1, 0, 0], [0, -1, 0], [d[1] / L, d[0] / L, 0], [0, 0, -1], [0, 0, 1]];
-    const pDists = [d[0], d[1], 0, d[2], d[2]];
+    if (q.type === 3) {
+      const L = Math.hypot(d[0], d[1]);
+      const pNorms = [[-1, 0, 0], [0, -1, 0], [d[1] / L, d[0] / L, 0], [0, 0, -1], [0, 0, 1]];
+      const pDists = [d[0], d[1], 0, d[2], d[2]];
+      let tIn = -Infinity, tOut = Infinity;
+      for (let k = 0; k < 5; k++) {
+        const pn = pNorms[k], den = pn[0] * ld[0] + pn[1] * ld[1] + pn[2] * ld[2];
+        const num = pDists[k] - (pn[0] * lo[0] + pn[1] * lo[1] + pn[2] * lo[2]);
+        if (Math.abs(den) < 1e-12) {
+          if (num < 0) return null;
+        } else if (den > 0) {
+          tOut = Math.min(tOut, num / den);
+        } else {
+          tIn = Math.max(tIn, num / den);
+        }
+      }
+      return tIn > tOut ? null : [tIn, tOut, pIdx];
+    }
+    // hex_prism (q.type === 4)
+    const c30 = 0.8660254037844386;
+    const pNorms = [
+      [c30, 0.5, 0], [0, 1, 0], [-c30, 0.5, 0],
+      [-c30, -0.5, 0], [0, -1, 0], [c30, -0.5, 0],
+      [0, 0, -1], [0, 0, 1]
+    ];
+    const pDists = [d[0], d[0], d[0], d[0], d[0], d[0], d[1], d[1]];
     let tIn = -Infinity, tOut = Infinity;
-    for (let k = 0; k < 5; k++) {
+    for (let k = 0; k < 8; k++) {
       const pn = pNorms[k], den = pn[0] * ld[0] + pn[1] * ld[1] + pn[2] * ld[2];
       const num = pDists[k] - (pn[0] * lo[0] + pn[1] * lo[1] + pn[2] * lo[2]);
       if (Math.abs(den) < 1e-12) {
@@ -4161,6 +4230,10 @@ function drawViewport() {
     const lx = M[0][0] * dx + M[1][0] * dy + M[2][0] * dz, ly = M[0][1] * dx + M[1][1] * dy + M[2][1] * dz, lz = M[0][2] * dx + M[1][2] * dy + M[2][2] * dz;
     if (p.shape === 'cylinder') return lx * lx + ly * ly < p.r * p.r && Math.abs(lz) < p.h / 2;
     if (p.shape === 'wedge') return lx > -p.sx / 2 && ly > -p.sy / 2 && (p.sy * lx + p.sx * ly < 0) && Math.abs(lz) < p.sz / 2;
+    if (p.shape === 'hex_prism') {
+      const c30 = 0.8660254037844386;
+      return Math.abs(lz) < p.h / 2 && Math.abs(ly) < p.r && Math.abs(c30 * lx + 0.5 * ly) < p.r && Math.abs(c30 * lx - 0.5 * ly) < p.r;
+    }
     return Math.abs(lx) < p.sx / 2 && Math.abs(ly) < p.sy / 2 && Math.abs(lz) < p.sz / 2;
   };
   for (let j = 0; j < H; j++) {

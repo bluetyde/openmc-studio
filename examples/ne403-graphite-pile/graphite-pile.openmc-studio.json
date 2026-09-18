@@ -2590,9 +2590,10 @@
     "ny": 1,
     "nz": 11,
     "dx": 20.32,
-    "dy": 0,
+    "dy": 243.84,
     "dz": 20.32,
-    "asLattice": false
+    "fill": "m_graphite",
+    "asLattice": true
    }
   },
   {

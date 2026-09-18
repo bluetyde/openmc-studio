@@ -52,13 +52,14 @@ Needs changes in three places:
     - Properties panel: displays lattice dimensions/pitch and a toggle to switch between native `openmc.RectLattice` export and discrete CSG cells.
     - OpenMC Python export in `buildScript`: exports unit universe (`openmc.Universe`) with centered base elements and background moderator cell, native `openmc.RectLattice(pitch, lower_left, universes)`, and bounding lattice cell (`openmc.Cell(fill=lattice)`).
     - Verified in OpenMC 0.15.3 simulation: fixed-source transport with over 1.29 million overlap checks completed with zero errors and zero lost particles.
-- **He-3 detector response.** The pre-lab asks for (n,alpha) and (n,2alpha), MT 107 and 108, but
-  ENDF/B-VIII.0 He-3 has neither; its detection reaction is MT 103, He-3(n,p)T, 5316 b at
-  0.0253 eV. Confirm with the course which reaction (or detector gas) is meant. Then add a
-  "detector response" tally option: flux in the channel cells times a detector material that isn't
-  in the geometry (MCNP `FM` naming that material; OpenMC `EnergyFunctionFilter` with its cross
-  section, or small He-3 gas detector cells). Studio's MCNP tally export only writes FM for the
-  tallied cells' own material today.
+- **He-3 detector response (DONE).** Added detector response reaction-rate multiplier tallies:
+  - Supports virtual / unperturbed detector response without modifying the CSG geometry:
+    $$R = \int \phi(E) \, \Sigma_d(E) \, dE = \int \phi(E) \, N_d \, \sigma_d(E) \, dE$$
+  - Studio Properties panel provides response presets for $^{3}\text{He}(n,p)^{3}\text{H}$ [MT 103] ($5316\text{ b}$ at $0.0253\text{ eV}$), $^{10}\text{B}(n,\alpha)^{7}\text{Li}$ [MT 107] ($\text{BF}_3$ counters), and custom materials/reactions with macroscopic rate $\Sigma(E) = N \cdot \sigma(E)$ or microscopic $\sigma(E)$ (barns) scaling.
+  - Python `model.py` export applies `openmc.EnergyFunctionFilter` extracted from nuclear data via `openmc.data.DataLibrary` and `IncidentNeutron`.
+  - MCNP export generates standard `FM` cards (`FM<n> (C M MT)`) referencing the detector material.
+  - Studio backend `results.py` statepoint loader updated to handle `EnergyFunctionFilter` without crashes.
+  - Verified in OpenMC 0.15.3 simulation and results loading: correctly computes reaction rate and loads statepoints into the Studio UI.
 
 ## 3D view: more than 192 parts (DONE)
 

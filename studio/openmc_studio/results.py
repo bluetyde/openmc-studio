@@ -91,8 +91,12 @@ def _tally(t, cell_names, openmc):
             labels_per_filter.append([cell_names.get(int(b), f"cell {int(b)}") for b in f.bins])
         elif isinstance(f, openmc.EnergyFilter):
             labels_per_filter.append([_energy_label(lo, hi) for lo, hi in f.bins])
-        else:
+        elif isinstance(f, openmc.EnergyFunctionFilter):
+            labels_per_filter.append(["response"])
+        elif hasattr(f, "bins"):
             labels_per_filter.append([str(b) for b in f.bins])
+        else:
+            labels_per_filter.append(["response"])
     shape = [len(l) for l in labels_per_filter] or [1]
     rows = []
     for flat in range(mean.shape[0]):

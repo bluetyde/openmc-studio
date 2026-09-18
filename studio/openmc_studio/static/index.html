@@ -361,6 +361,7 @@ const ICON = {
   box:'<path d="M3 6l6-3 6 3v6.5l-6 3-6-3z"/><path d="M3 6l6 3 6-3M9 9v6.5"/>',
   wedge:'<path d="M3 14.5h9L3 5.5z"/><path d="M3 5.5l3.5-2.5 9 9-3.5 2.5"/>',
   hex_prism:'<path d="M9 2.5l5 2.5v3.5l-5 2.5-5-2.5V5z"/><path d="M4 8.5v4.5l5 2.5 5-2.5V8.5M9 11v4.5"/>',
+  cone:'<ellipse cx="9" cy="4" rx="3.5" ry="1.4"/><path d="M5.5 4L3 14c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2L12.5 4"/>',
   material:'<path d="M7 2.5h4M7.5 2.5V7L3.5 14a1.3 1.3 0 0 0 1.1 1.9h8.8a1.3 1.3 0 0 0 1.1-1.9L10.5 7V2.5"/><path d="M5.2 11h7.6"/>',
   source:'<circle cx="9" cy="9" r="2" fill="currentColor"/><path d="M9 1.5v3M9 13.5v3M1.5 9h3M13.5 9h3M3.7 3.7l2.1 2.1M12.2 12.2l2.1 2.1M3.7 14.3l2.1-2.1M12.2 5.8l2.1-2.1"/>',
   cellTally:'<circle cx="9" cy="9" r="6.5"/><circle cx="9" cy="9" r="3"/><circle cx="9" cy="9" r=".8" fill="currentColor"/>',
@@ -512,7 +513,7 @@ function newSource(id, name, particle = 'neutron') {
     tab_e:'0.0, 1.0, 2.0, 5.0', tab_p:'0.2, 0.5, 0.3'};
 }
 function newPart(id, name, shape) {
-  return {id, name, shape, x:0, y:0, z:0, r:10, h:20, axis:'z', sx:20, sy:20, sz:20, rx:0, ry:0, rz:0, material:'void'};
+  return {id, name, shape, x:0, y:0, z:0, r:10, r2:5, h:20, axis:'z', sx:20, sy:20, sz:20, rx:0, ry:0, rz:0, material:'void'};
 }
 function sampleModel() {
   const part = (id, name, shape, o) => Object.assign(newPart(id, name, shape), o);
@@ -753,6 +754,11 @@ function inShape(p, x, y, z) {
     const c30 = 0.8660254037844386;
     return Math.abs(lz) < p.h/2 && Math.abs(ly) < p.r && Math.abs(c30*lx + 0.5*ly) < p.r && Math.abs(c30*lx - 0.5*ly) < p.r;
   }
+  if (p.shape === 'cone') {
+    if (Math.abs(lz) > p.h / 2) return false;
+    const r2 = p.r2 ?? p.r, rmid = (p.r + r2) / 2, k = (r2 - p.r) / p.h, R = rmid + k * lz;
+    return R > 0 && lx * lx + ly * ly < R * R;
+  }
   return Math.abs(lx) < p.sx/2 && Math.abs(ly) < p.sy/2 && Math.abs(lz) < p.sz/2;
 }
 function inWorld(x, y, z) {
@@ -770,6 +776,7 @@ function partHalfExtents(p) { // half-widths of the world-axis bounding box
   const M = partFrame(p).M;
   if (p.shape === 'box' || p.shape === 'wedge') { const hs = [p.sx/2, p.sy/2, p.sz/2]; return [0, 1, 2].map(i => Math.abs(M[i][0]) * hs[0] + Math.abs(M[i][1]) * hs[1] + Math.abs(M[i][2]) * hs[2]); }
   if (p.shape === 'hex_prism') { const hs = [1.1547005383792515 * p.r, p.r, p.h / 2]; return [0, 1, 2].map(i => Math.abs(M[i][0]) * hs[0] + Math.abs(M[i][1]) * hs[1] + Math.abs(M[i][2]) * hs[2]); }
+  if (p.shape === 'cone') { const rmax = Math.max(p.r, p.r2 ?? p.r); return [0, 1, 2].map(i => Math.abs(M[i][2]) * p.h / 2 + rmax * Math.sqrt(Math.max(0, 1 - M[i][2] * M[i][2]))); }
   return [0, 1, 2].map(i => Math.abs(M[i][2]) * p.h / 2 + p.r * Math.sqrt(Math.max(0, 1 - M[i][2] * M[i][2])));
 }
 // World-axis bounding box of a part or source, as [lo, hi].
@@ -1088,6 +1095,17 @@ function buildScript(probs, mark) {
       const u2 = [0, 1, 2].map(k => -c30 * col(0)[k] + 0.5 * col(1)[k]);
       expr = `${gslab(u0, ctr, p.r)} & ${gslab(u1, ctr, p.r)} & ${gslab(u2, ctr, p.r)} & ${gslab(col(2), ctr, p.h / 2)}`;
     }
+    else if (p.shape === 'cone') {
+      const r2 = p.r2 ?? p.r, k = (r2 - p.r) / p.h, rmid = (p.r + r2) / 2, lz_apex = -rmid / k, u = col(2);
+      const P = [0, 1, 2].map(i => [0, 1, 2].map(j => (i === j ? 1 : 0) - (1 + k * k) * u[i] * u[j]));
+      const w = u.map(ui => k * k * lz_apex * ui);
+      const Pc = P.map(row => dot3(row, ctr)), Pc_minus_w = Pc.map((v, i) => v - w[i]);
+      const const_term = dot3(ctr, Pc) - 2 * dot3(w, ctr) - k * k * lz_apex * lz_apex;
+      const co = [P[0][0], P[1][1], P[2][2], 2 * P[0][1], 2 * P[1][2], 2 * P[0][2], -2 * Pc_minus_w[0], -2 * Pc_minus_w[1], -2 * Pc_minus_w[2], const_term];
+      const names = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'j', 'k'];
+      const qv = surface('Q', co, 'quadric', 'cone', () => `openmc.Quadric(${co.map((v, i) => `${names[i]}=${num(v)}`).join(', ')})`, {kind:'quadric'});
+      expr = `-${qv} & ${gslab(u, ctr, p.h / 2)}`;
+    }
     else if (!fr.aligned) expr = `-${quadric(col(2), ctr, p.r)} & ${gslab(col(2), ctr, p.h / 2)}`;
     else {
       const ax = fr.axis, [a, b] = {x:['y', 'z'], y:['x', 'z'], z:['x', 'y']}[ax];
@@ -1330,7 +1348,7 @@ function selectFromView(kind, id, e) {
 }
 
 function addPart(shape) {
-  const label = {sphere:'Sphere', cylinder:'Cylinder', box:'Box', wedge:'Wedge', hex_prism:'Hex prism'}[shape];
+  const label = {sphere:'Sphere', cylinder:'Cylinder', box:'Box', wedge:'Wedge', hex_prism:'Hex prism', cone:'Cone'}[shape];
   const p = newPart(newId('p'), uniqueName(S.parts, label), shape);
   S.parts.unshift(p);
   log('info', `Added ${p.name} at the top of Geometry, so it wins where it overlaps other parts.`);
@@ -1672,7 +1690,7 @@ const RIBBON = {
     {label:'Tools', btns:toolButtons()},
     {label:'Snap to grid', custom:snapControls},
     {label:'Group', btns:[['group', 'Group', groupSelected, () => selItems().length > 0], ['ungroup', 'Ungroup', ungroupSelected, () => sel.kind === 'group' || selItems().some(x => x.o.group)], ['array', 'Array…', e => openArrayMenu(e.currentTarget), canEditSelection], pivotButton()]},
-    {label:'Parts', btns:[['sphere', 'Sphere', () => addPart('sphere')], ['cylinder', 'Cylinder', () => addPart('cylinder')], ['box', 'Box', () => addPart('box')], ['wedge', 'Wedge', () => addPart('wedge')], ['hex_prism', 'Hex prism', () => addPart('hex_prism')]]},
+    {label:'Parts', btns:[['sphere', 'Sphere', () => addPart('sphere')], ['cylinder', 'Cylinder', () => addPart('cylinder')], ['box', 'Box', () => addPart('box')], ['wedge', 'Wedge', () => addPart('wedge')], ['hex_prism', 'Hex prism', () => addPart('hex_prism')], ['cone', 'Cone', () => addPart('cone')]]},
     {label:'Materials', btns:[['material', 'Material ▾', e => openMatMenu(e.currentTarget)]]},
     {label:'Boundary', btns:[['world', 'World', () => select('world')]]}
   ],
@@ -1777,6 +1795,7 @@ function shapeMeta(p) {
   const l = shortLen;
   if (isRotated(p)) return `${p.shape === 'box' || p.shape === 'wedge' ? `${l(p.sx)}×${l(p.sy)}×${l(p.sz)}` : `r ${l(p.r)} · ${l(p.h)}`} ↻`;
   if (p.shape === 'hex_prism') return `p ${l(p.r * 2)} · ${l(p.h)}${isRotated(p) ? ' ↻' : ''}`;
+  if (p.shape === 'cone') return `r ${l(p.r)}→${l(p.r2 ?? p.r)} · ${l(p.h)}${isRotated(p) ? ' ↻' : ''}`;
   if (p.shape === 'sphere') return `r ${l(p.r)}`;
   if (p.shape === 'cylinder') return `r ${l(p.r)} · ${l(p.h)}`;
   return `${l(p.sx)}×${l(p.sy)}×${l(p.sz)}`;
@@ -1881,15 +1900,16 @@ function specFor(kind, o) {
     return secs;
   }
   if (kind === 'part') {
-    const i = S.parts.indexOf(o), cyl = () => o.shape === 'cylinder', sph = () => o.shape === 'sphere', box = () => o.shape === 'box', wed = () => o.shape === 'wedge', hex = () => o.shape === 'hex_prism';
+    const i = S.parts.indexOf(o), cyl = () => o.shape === 'cylinder', sph = () => o.shape === 'sphere', box = () => o.shape === 'box', wed = () => o.shape === 'wedge', hex = () => o.shape === 'hex_prism', con = () => o.shape === 'cone';
     return [
       {title:'Part', fields:[F('text', 'name', 'Name'), F('material', 'material', 'Material'),
         note(`Priority ${i + 1} of ${S.parts.length}. Parts higher in the Explorer win where shapes overlap. Drag it in the Explorer, or press Alt+↑/↓. MCNP cell ${i + 1}.`)]},
       {title:'Shape', fields:[
-        F('select', 'shape', 'Shape', {options:() => [['sphere', 'Sphere (SPH)'], ['cylinder', 'Cylinder (RCC)'], ['box', 'Box (RPP)'], ['wedge', 'Right wedge (WED)'], ['hex_prism', 'Hexagonal prism (RHP)']]}),
+        F('select', 'shape', 'Shape', {options:() => [['sphere', 'Sphere (SPH)'], ['cylinder', 'Cylinder (RCC)'], ['box', 'Box (RPP)'], ['wedge', 'Right wedge (WED)'], ['hex_prism', 'Hexagonal prism (RHP)'], ['cone', 'Truncated cone (TRC)']]}),
         F('vec', null, 'Center', {keys:['x', 'y', 'z'], unit:'cm'}),
-        F('num', 'r', o.shape === 'hex_prism' ? 'Half-pitch' : 'Radius', {unit:'cm', show:() => sph() || cyl() || hex(), hint: o.shape === 'hex_prism' ? 'Half-distance between opposite flats (in-radius). Pitch = 2×r.' : ''}),
-        F('num', 'h', 'Height', {unit:'cm', show:() => cyl() || hex()}),
+        F('num', 'r', o.shape === 'hex_prism' ? 'Half-pitch' : (con() ? 'Bottom radius' : 'Radius'), {unit:'cm', show:() => sph() || cyl() || hex() || con(), hint: o.shape === 'hex_prism' ? 'Half-distance between opposite flats (in-radius). Pitch = 2×r.' : ''}),
+        F('num', 'r2', 'Top radius', {unit:'cm', show:con}),
+        F('num', 'h', 'Height', {unit:'cm', show:() => cyl() || hex() || con()}),
         F('select', 'axis', 'Axis', {options:() => [['x', 'x'], ['y', 'y'], ['z', 'z']], show:cyl}),
         F('vec', null, 'Size', {keys:['sx', 'sy', 'sz'], unit:'cm', show:() => box() || wed()}),
         F('vec', null, 'Rotation', {keys:['rx', 'ry', 'rz'], unit:'°', show:() => !sph(),
@@ -3519,41 +3539,106 @@ bool intersectPart(vec3 c, vec3 m0, vec3 m1, vec3 m2, vec3 d, float ty, vec3 ro,
     n1 = m0 * ln1.x + m1 * ln1.y + m2 * ln1.z;
     return true;
   }
-  // hex_prism: regular hexagonal prism (ty >= 3.5)
-  float c30 = 0.8660254037844386;
-  vec3 pNorms[8];
-  pNorms[0] = vec3(c30, 0.5, 0.0);
-  pNorms[1] = vec3(0.0, 1.0, 0.0);
-  pNorms[2] = vec3(-c30, 0.5, 0.0);
-  pNorms[3] = vec3(-c30, -0.5, 0.0);
-  pNorms[4] = vec3(0.0, -1.0, 0.0);
-  pNorms[5] = vec3(c30, -0.5, 0.0);
-  pNorms[6] = vec3(0.0, 0.0, -1.0);
-  pNorms[7] = vec3(0.0, 0.0, 1.0);
-  float pDists[8];
-  pDists[0] = d.x; pDists[1] = d.x; pDists[2] = d.x; pDists[3] = d.x;
-  pDists[4] = d.x; pDists[5] = d.x; pDists[6] = d.y; pDists[7] = d.y;
-  float tIn = -BIG, tOut = BIG;
-  vec3 ln0 = vec3(0.0), ln1 = vec3(0.0);
-  for (int k = 0; k < 8; k++) {
-    vec3 pn = pNorms[k];
-    float den = dot(pn, ld);
-    float num = pDists[k] - dot(pn, lo);
-    if (abs(den) < 1e-12) {
-      if (num < 0.0) return false;
-    } else {
-      float tVal = num / den;
-      if (den > 0.0) {
-        if (tVal < tOut) { tOut = tVal; ln1 = pn; }
+  if (ty < 4.5) { // hex_prism: regular hexagonal prism (ty in [3.5, 4.5))
+    float c30 = 0.8660254037844386;
+    vec3 pNorms[8];
+    pNorms[0] = vec3(c30, 0.5, 0.0);
+    pNorms[1] = vec3(0.0, 1.0, 0.0);
+    pNorms[2] = vec3(-c30, 0.5, 0.0);
+    pNorms[3] = vec3(-c30, -0.5, 0.0);
+    pNorms[4] = vec3(0.0, -1.0, 0.0);
+    pNorms[5] = vec3(c30, -0.5, 0.0);
+    pNorms[6] = vec3(0.0, 0.0, -1.0);
+    pNorms[7] = vec3(0.0, 0.0, 1.0);
+    float pDists[8];
+    pDists[0] = d.x; pDists[1] = d.x; pDists[2] = d.x; pDists[3] = d.x;
+    pDists[4] = d.x; pDists[5] = d.x; pDists[6] = d.y; pDists[7] = d.y;
+    float tIn = -BIG, tOut = BIG;
+    vec3 ln0 = vec3(0.0), ln1 = vec3(0.0);
+    for (int k = 0; k < 8; k++) {
+      vec3 pn = pNorms[k];
+      float den = dot(pn, ld);
+      float num = pDists[k] - dot(pn, lo);
+      if (abs(den) < 1e-12) {
+        if (num < 0.0) return false;
       } else {
-        if (tVal > tIn) { tIn = tVal; ln0 = pn; }
+        float tVal = num / den;
+        if (den > 0.0) {
+          if (tVal < tOut) { tOut = tVal; ln1 = pn; }
+        } else {
+          if (tVal > tIn) { tIn = tVal; ln0 = pn; }
+        }
+      }
+    }
+    t0 = tIn; t1 = tOut;
+    if (t0 > t1) return false;
+    n0 = m0 * ln0.x + m1 * ln0.y + m2 * ln0.z;
+    n1 = m0 * ln1.x + m1 * ln1.y + m2 * ln1.z;
+    return true;
+  }
+  // cone: truncated cone / frustum along local z (ty >= 4.5)
+  float r1 = d.x, r2 = d.y, halfH = d.z;
+  float rmid = (r1 + r2) * 0.5;
+  float k = (r2 - r1) / (2.0 * halfH);
+  float R0 = rmid + k * lo.z;
+  float Rd = k * ld.z;
+  float A = (ld.x * ld.x + ld.y * ld.y) - Rd * Rd;
+  float B = (lo.x * ld.x + lo.y * ld.y) - R0 * Rd;
+  float C = (lo.x * lo.x + lo.y * lo.y) - R0 * R0;
+  float disc = B * B - A * C;
+
+  float tMin = BIG, tMax = -BIG;
+  vec3 lnMin = vec3(0.0), lnMax = vec3(0.0);
+
+  if (abs(ld.z) > 1e-12) {
+    float t_bot = (-halfH - lo.z) / ld.z;
+    vec2 p_bot = lo.xy + ld.xy * t_bot;
+    if (dot(p_bot, p_bot) <= r1 * r1 + 1e-5) {
+      vec3 n = vec3(0.0, 0.0, -1.0);
+      if (t_bot < tMin) { tMin = t_bot; lnMin = n; }
+      if (t_bot > tMax) { tMax = t_bot; lnMax = n; }
+    }
+    float t_top = (halfH - lo.z) / ld.z;
+    vec2 p_top = lo.xy + ld.xy * t_top;
+    if (dot(p_top, p_top) <= r2 * r2 + 1e-5) {
+      vec3 n = vec3(0.0, 0.0, 1.0);
+      if (t_top < tMin) { tMin = t_top; lnMin = n; }
+      if (t_top > tMax) { tMax = t_top; lnMax = n; }
+    }
+  }
+
+  if (disc >= 0.0) {
+    float s = sqrt(max(0.0, disc));
+    float tRoots[2];
+    int numRoots = 0;
+    if (abs(A) > 1e-12) {
+      tRoots[0] = (-B - s) / A;
+      tRoots[1] = (-B + s) / A;
+      numRoots = 2;
+    } else if (abs(B) > 1e-12) {
+      tRoots[0] = -C / (2.0 * B);
+      numRoots = 1;
+    }
+    for (int i = 0; i < 2; i++) {
+      if (i >= numRoots) break;
+      float tr = tRoots[i];
+      float pz = lo.z + ld.z * tr;
+      if (abs(pz) <= halfH + 1e-5) {
+        float R_at_z = rmid + k * pz;
+        if (R_at_z > 0.0) {
+          vec2 pxy = lo.xy + ld.xy * tr;
+          vec3 n = normalize(vec3(pxy, -k * R_at_z));
+          if (tr < tMin) { tMin = tr; lnMin = n; }
+          if (tr > tMax) { tMax = tr; lnMax = n; }
+        }
       }
     }
   }
-  t0 = tIn; t1 = tOut;
-  if (t0 > t1) return false;
-  n0 = m0 * ln0.x + m1 * ln0.y + m2 * ln0.z;
-  n1 = m0 * ln1.x + m1 * ln1.y + m2 * ln1.z;
+
+  if (tMin >= tMax) return false;
+  t0 = tMin; t1 = tMax;
+  n0 = m0 * lnMin.x + m1 * lnMin.y + m2 * lnMin.z;
+  n1 = m0 * lnMax.x + m1 * lnMax.y + m2 * lnMax.z;
   return true;
 }
 
@@ -3761,8 +3846,8 @@ function v3init() {
 function partUniform(p) { // center, frame columns, dimensions, type
   const f = p.shape === 'sphere' ? {M:IDENT3} : partFrame(p), M = f.M;
   const cols = [0, 1, 2].map(k => [M[0][k], M[1][k], M[2][k]]);
-  const dims = p.shape === 'sphere' ? [p.r, 0, 0] : (p.shape === 'box' || p.shape === 'wedge') ? [p.sx / 2, p.sy / 2, p.sz / 2] : [p.r, p.h / 2, 0];
-  const type = p.shape === 'sphere' ? 0 : p.shape === 'box' ? 1 : p.shape === 'cylinder' ? 2 : p.shape === 'wedge' ? 3 : 4;
+  const dims = p.shape === 'sphere' ? [p.r, 0, 0] : (p.shape === 'box' || p.shape === 'wedge') ? [p.sx / 2, p.sy / 2, p.sz / 2] : p.shape === 'cone' ? [p.r, p.r2 ?? p.r, p.h / 2] : [p.r, p.h / 2, 0];
+  const type = p.shape === 'sphere' ? 0 : p.shape === 'box' ? 1 : p.shape === 'cylinder' ? 2 : p.shape === 'wedge' ? 3 : p.shape === 'hex_prism' ? 4 : 5;
   return {c:[p.x, p.y, p.z], cols, dims, type};
 }
 
@@ -4129,26 +4214,52 @@ function pick3(px, py) {
       return tIn > tOut ? null : [tIn, tOut, pIdx];
     }
     // hex_prism (q.type === 4)
-    const c30 = 0.8660254037844386;
-    const pNorms = [
-      [c30, 0.5, 0], [0, 1, 0], [-c30, 0.5, 0],
-      [-c30, -0.5, 0], [0, -1, 0], [c30, -0.5, 0],
-      [0, 0, -1], [0, 0, 1]
-    ];
-    const pDists = [d[0], d[0], d[0], d[0], d[0], d[0], d[1], d[1]];
-    let tIn = -Infinity, tOut = Infinity;
-    for (let k = 0; k < 8; k++) {
-      const pn = pNorms[k], den = pn[0] * ld[0] + pn[1] * ld[1] + pn[2] * ld[2];
-      const num = pDists[k] - (pn[0] * lo[0] + pn[1] * lo[1] + pn[2] * lo[2]);
-      if (Math.abs(den) < 1e-12) {
-        if (num < 0) return null;
-      } else if (den > 0) {
-        tOut = Math.min(tOut, num / den);
-      } else {
-        tIn = Math.max(tIn, num / den);
+    if (q.type === 4) {
+      const c30 = 0.8660254037844386;
+      const pNorms = [
+        [c30, 0.5, 0], [0, 1, 0], [-c30, 0.5, 0],
+        [-c30, -0.5, 0], [0, -1, 0], [c30, -0.5, 0],
+        [0, 0, -1], [0, 0, 1]
+      ];
+      const pDists = [d[0], d[0], d[0], d[0], d[0], d[0], d[1], d[1]];
+      let tIn = -Infinity, tOut = Infinity;
+      for (let k = 0; k < 8; k++) {
+        const pn = pNorms[k], den = pn[0] * ld[0] + pn[1] * ld[1] + pn[2] * ld[2];
+        const num = pDists[k] - (pn[0] * lo[0] + pn[1] * lo[1] + pn[2] * lo[2]);
+        if (Math.abs(den) < 1e-12) {
+          if (num < 0) return null;
+        } else if (den > 0) {
+          tOut = Math.min(tOut, num / den);
+        } else {
+          tIn = Math.max(tIn, num / den);
+        }
       }
+      return tIn > tOut ? null : [tIn, tOut, pIdx];
     }
-    return tIn > tOut ? null : [tIn, tOut, pIdx];
+    // cone (q.type === 5)
+    const r1 = d[0], r2 = d[1], halfH = d[2];
+    const rmid = (r1 + r2) * 0.5, k = (r2 - r1) / (2.0 * halfH);
+    const R0 = rmid + k * lo[2], Rd = k * ld[2];
+    const A = (ld[0] * ld[0] + ld[1] * ld[1]) - Rd * Rd;
+    const B = (lo[0] * ld[0] + lo[1] * ld[1]) - R0 * Rd;
+    const C = (lo[0] * lo[0] + lo[1] * lo[1]) - R0 * R0;
+    const disc = B * B - A * C;
+    let tMin = Infinity, tMax = -Infinity;
+    if (Math.abs(ld[2]) > 1e-12) {
+      const t_bot = (-halfH - lo[2]) / ld[2], px_b = lo[0] + ld[0] * t_bot, py_b = lo[1] + ld[1] * t_bot;
+      if (px_b * px_b + py_b * py_b <= r1 * r1 + 1e-5) { tMin = Math.min(tMin, t_bot); tMax = Math.max(tMax, t_bot); }
+      const t_top = (halfH - lo[2]) / ld[2], px_t = lo[0] + ld[0] * t_top, py_t = lo[1] + ld[1] * t_top;
+      if (px_t * px_t + py_t * py_t <= r2 * r2 + 1e-5) { tMin = Math.min(tMin, t_top); tMax = Math.max(tMax, t_top); }
+    }
+    if (disc >= 0) {
+      const s = Math.sqrt(Math.max(0, disc));
+      const roots = Math.abs(A) > 1e-12 ? [(-B - s) / A, (-B + s) / A] : (Math.abs(B) > 1e-12 ? [-C / (2 * B)] : []);
+      roots.forEach(tr => {
+        const pz = lo[2] + ld[2] * tr;
+        if (Math.abs(pz) <= halfH + 1e-5 && (rmid + k * pz) > 0) { tMin = Math.min(tMin, tr); tMax = Math.max(tMax, tr); }
+      });
+    }
+    return tMin < tMax ? [tMin, tMax, pIdx] : null;
   }).filter(Boolean);
 
   let tc = tA;
@@ -4233,6 +4344,11 @@ function drawViewport() {
     if (p.shape === 'hex_prism') {
       const c30 = 0.8660254037844386;
       return Math.abs(lz) < p.h / 2 && Math.abs(ly) < p.r && Math.abs(c30 * lx + 0.5 * ly) < p.r && Math.abs(c30 * lx - 0.5 * ly) < p.r;
+    }
+    if (p.shape === 'cone') {
+      if (Math.abs(lz) > p.h / 2) return false;
+      const r2 = p.r2 ?? p.r, rmid = (p.r + r2) / 2, k = (r2 - p.r) / p.h, R = rmid + k * lz;
+      return R > 0 && lx * lx + ly * ly < R * R;
     }
     return Math.abs(lx) < p.sx / 2 && Math.abs(ly) < p.sy / 2 && Math.abs(lz) < p.sz / 2;
   };

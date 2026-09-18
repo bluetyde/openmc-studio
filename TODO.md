@@ -94,9 +94,18 @@ Implemented and verified:
     - OpenMC geometry export in `buildScript`: 3 pairs of 60°-rotated parallel slabs (`gslab`) + axial height slab (`openmc.ZPlane` or general slab) sharing aligned surfaces.
     - Verified in OpenMC 0.15.3 simulation with 100,000 particles and cell overlap checking: 0 errors, 0 lost particles.
 
+- **Truncated cone (TRC / CONE) (DONE).**
+  - Added `cone` as a first-class primitive in OpenMC Studio:
+    - 3D frustum icon in `ICON.cone`, Ribbon Model tab, and Explorer.
+    - Properties panel: `Truncated cone (TRC)` shape selector with `Bottom radius (r1)`, `Top radius (r2)`, `Height (h)`, and 3D Euler `Rotation` ($rx, ry, rz$).
+    - 2D slice sampling in `inShape` and viewport rasterizer `inPart`.
+    - World-axis bounding box extents in `partHalfExtents` with $\max(r_1, r_2)$.
+    - WebGL 2 ray tracer shader (`intersectPart` type 5) solving ray-cone quadratic intersection with axial endcap clipping and analytic outward normals.
+    - Fast 3D BVH picking (`pick3` type 5).
+    - OpenMC geometry export in `buildScript`: analytic quadric matrix calculation ($P = I - (1+k^2) u u^T$, $w = k^2 lz_{apex} u$) generating `openmc.Quadric` for rotated/arbitrary cones + axial endcap planes (`openmc.ZPlane` or general slab `gslab`).
+    - Verified in OpenMC 0.15.3 simulation with 100,000 particles and cell overlap checking: 0 errors, 0 lost particles.
+
 Other candidates:
-- Cone and truncated cone (K, TRC): `openmc.XCone`/`ZCone` (GQ when tilted); needs cone support in
-  the geometry check and the 3D shader.
 - Ellipsoid (ELL) and elliptical cylinder (REC): quadrics (GQ); the shader can scale a sphere or
   cylinder.
 - Torus (TX/TY/TZ): hardest (quartic in the shader); MCNP only allows axis-aligned tori.

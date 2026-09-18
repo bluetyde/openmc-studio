@@ -1152,8 +1152,36 @@ function buildScript(probs, mark) {
   }
   owner = null;
   push('');
+  const fill = id => id === 'void' || !mv[id] ? 'None' : mv[id];
+  // Check for RectLattice groups before defining individual shapes so lattice elements don't generate 100s of redundant surfaces
+  const latGroups = (S.groups || []).filter(g => g.lattice && g.lattice.asLattice);
+  const latMemberPartIds = new Set();
+  const latBoxes = [];
+  const latExtents = [];
+  const latCellVars = [];
+
+  latGroups.forEach(lg => {
+    const lat = lg.lattice;
+    const allMembers = groupMembers(lg.id);
+    const memberParts = allMembers.filter(m => m.kind === 'part').map(m => m.o);
+    if (!memberParts.length) return;
+    memberParts.forEach(p => latMemberPartIds.add(p.id));
+
+    // Determine lattice bounding box
+    const xs = memberParts.map(p => p.x), ys = memberParts.map(p => p.y), zs = memberParts.map(p => p.z);
+    const p_x0 = Math.min(...xs), p_y0 = Math.min(...ys), p_z0 = Math.min(...zs);
+    const is3D = (lat.nz || 1) > 1 && (lat.dz || 0) > 0;
+    const dy = lat.dy || lat.dx;
+    const x_min = p_x0 - lat.dx / 2, x_max = p_x0 + (lat.nx - 0.5) * lat.dx;
+    const y_min = p_y0 - dy / 2, y_max = p_y0 + (lat.ny - 0.5) * dy;
+    const z_min = is3D ? (p_z0 - lat.dz / 2) : -R;
+    const z_max = is3D ? (p_z0 + (lat.nz - 0.5) * lat.dz) : R;
+    latExtents.push([[x_min, y_min, z_min], [x_max, y_max, z_max]]);
+  });
+
   const shapeVar = {};
   S.parts.forEach(p => {
+    if (latMemberPartIds.has(p.id)) return;
     owner = {kind:'part', id:p.id};
     let expr;
     const fr = p.shape === 'sphere' ? null : partFrame(p), ctr = [p.x, p.y, p.z], col = k => [fr.M[0][k], fr.M[1][k], fr.M[2][k]];
@@ -1205,77 +1233,84 @@ function buildScript(probs, mark) {
   });
   owner = null;
   if (S.parts.length) push('');
-  const fill = id => id === 'void' || !mv[id] ? 'None' : mv[id];
-  // A part only needs to exclude earlier parts it can overlap: bounding boxes that don't overlap can't share
-  // any volume. (Subtracting every earlier part made models with many small parts, like 132 apertures, slow to
-  // translate to MCNP and slow to track in OpenMC.)
-  // Check for RectLattice groups
-  const latGroups = (S.groups || []).filter(g => g.lattice && g.lattice.asLattice);
-  const latMemberPartIds = new Set();
-  const latBoxes = [];
-  const latCellVars = [];
 
-  latGroups.forEach(lg => {
+  // Generate RectLattice definitions
+  latGroups.forEach((lg, lgIdx) => {
     const lat = lg.lattice;
     const allMembers = groupMembers(lg.id);
     const memberParts = allMembers.filter(m => m.kind === 'part').map(m => m.o);
     if (!memberParts.length) return;
-    
-    // The base element is the first part (or parts of first child group)
+
     const baseChild = (S.groups || []).find(cg => cg.parent === lg.id);
     const baseParts = baseChild ? S.parts.filter(p => p.group === baseChild.id) : [memberParts[0]];
     const basePart = baseParts[0];
-    
-    // Mark member parts as handled by lattice
-    memberParts.forEach(p => latMemberPartIds.add(p.id));
-    
-    const x0 = basePart.x, y0 = basePart.y, z0 = basePart.z;
-    const x_min = x0 - lat.dx / 2, x_max = x0 + (lat.nx - 0.5) * lat.dx;
-    const y_min = y0 - lat.dy / 2, y_max = y0 + (lat.ny - 0.5) * lat.dy;
-    const is3D = lat.nz > 1 && lat.dz > 0;
-    const z_min = is3D ? z0 - lat.dz / 2 : (basePart.z - (basePart.h || basePart.sz || 20) / 2);
-    const z_max = is3D ? z0 + (lat.nz - 0.5) * lat.dz : (basePart.z + (basePart.h || basePart.sz || 20) / 2);
-    
-    const u_box = `+${plane('x', -lat.dx/2)} & -${plane('x', lat.dx/2)} & +${plane('y', -lat.dy/2)} & -${plane('y', lat.dy/2)}` +
-                  (is3D ? ` & +${plane('z', -lat.dz/2)} & -${plane('z', lat.dz/2)}` : '');
-    
-    // Base unit universe
-    const uPinVar = name('u_unit', lg.name);
-    const cellBaseVar = name('cell_unit', basePart.name);
-    const cellModVar = name('cell_mod', lg.name);
-    
-    // Surface for base part centered in unit cell
-    let unitShape;
+
+    const is3D = (lat.nz || 1) > 1 && (lat.dz || 0) > 0;
+    const dy = lat.dy || lat.dx;
+    const [minCorner, maxCorner] = latExtents[lgIdx];
+    const [x_min, y_min, z_min] = minCorner;
+    const [x_max, y_max, z_max] = maxCorner;
+
+    // Unit universe element centered at (0, 0, 0)
+    let unitShape, unitComp;
+    const fr = basePart.shape === 'sphere' ? null : partFrame(basePart);
+    const col = k => [fr.M[0][k], fr.M[1][k], fr.M[2][k]];
+    const ctr = [0, 0, 0];
+
     if (basePart.shape === 'cylinder') {
       const cylV = surface('Cz', [0, 0, basePart.r], 'zcyl', `r${tag(basePart.r)}`, () => `openmc.ZCylinder(r=${num(basePart.r)})`, {kind:'cyl', ax:'z', a:0, b:0, r:basePart.r});
-      unitShape = `-${cylV}` + (is3D ? ` & +${plane('z', -lat.dz/2)} & -${plane('z', lat.dz/2)}` : ` & ${slab('z', basePart.z - (basePart.h||20)/2, basePart.z + (basePart.h||20)/2)}`);
+      unitShape = `-${cylV}` + (is3D ? ` & +${plane('z', -lat.dz/2)} & -${plane('z', lat.dz/2)}` : ` & ${slab('z', -basePart.h/2, basePart.h/2)}`);
+      unitComp = `+${cylV}`;
     } else if (basePart.shape === 'sphere') {
       const sphV = surface('S', [0, 0, 0, basePart.r], 'sphere', `r${tag(basePart.r)}`, () => `openmc.Sphere(r=${num(basePart.r)})`, {kind:'sphere', x:0, y:0, z:0, r:basePart.r});
       unitShape = `-${sphV}`;
+      unitComp = `+${sphV}`;
+    } else if (basePart.shape === 'box' && fr.aligned) {
+      unitShape = ['x', 'y', 'z'].map((ax, i) => {
+        const hs = [basePart.sx, basePart.sy, basePart.sz][fr.localOf[i]] / 2;
+        return slab(ax, -hs, hs);
+      }).join(' & ');
+      unitComp = ['x', 'y', 'z'].flatMap((ax, i) => {
+        const hs = [basePart.sx, basePart.sy, basePart.sz][fr.localOf[i]] / 2;
+        return [`-${plane(ax, -hs)}`, `+${plane(ax, hs)}`];
+      }).join(' | ');
+    } else if (basePart.shape === 'box') {
+      unitShape = [0, 1, 2].map(k => gslab(col(k), ctr, [basePart.sx, basePart.sy, basePart.sz][k] / 2)).join(' & ');
+      unitComp = [0, 1, 2].flatMap(k => {
+        const hs = [basePart.sx, basePart.sy, basePart.sz][k] / 2;
+        return [gplane(col(k), -hs, '-'), gplane(col(k), hs, '+')];
+      }).join(' | ');
     } else {
       unitShape = ['x', 'y', 'z'].map(ax => slab(ax, -lat['d' + ax]/4, lat['d' + ax]/4)).join(' & ');
+      unitComp = ['x', 'y', 'z'].flatMap(ax => [`-${plane(ax, -lat['d' + ax]/4)}`, `+${plane(ax, lat['d' + ax]/4)}`]).join(' | ');
     }
-    
+
+    const cellBaseVar = name('cell_unit', basePart.name);
+    const cellModVar = name('cell_mod', lg.name);
+    const uPinVar = name('u_unit', lg.name);
+    const modFill = lat.fill || (S.materials.find(m => m.id !== basePart.material) || {}).id || st.worldFill;
+
     push(`${cellBaseVar} = openmc.Cell(name=${pyStr(basePart.name + " [unit]")}, fill=${fill(basePart.material)}, region=${unitShape})`);
-    push(`${cellModVar} = openmc.Cell(name=${pyStr(lg.name + " Mod")}, fill=${fill(st.worldFill)}, region=${u_box} & ~(${unitShape}))`);
+    push(`${cellModVar} = openmc.Cell(name=${pyStr(lg.name + " Mod")}, fill=${fill(modFill)}, region=${unitComp})`);
     push(`${uPinVar} = openmc.Universe(name=${pyStr(lg.name + " Universe")}, cells=[${cellBaseVar}, ${cellModVar}])`);
-    
-    // RectLattice
+
+    // RectLattice definition
     const latVar = name('lattice', lg.name);
     const latCellVar = name('cell_lat', lg.name);
     latCellVars.push(latCellVar);
-    
+
     push(`${latVar} = openmc.RectLattice(name=${pyStr(lg.name)})`);
-    push(`${latVar}.pitch = [${[lat.dx, lat.dy, ...(is3D ? [lat.dz] : [])].map(num).join(', ')}]`);
+    push(`${latVar}.pitch = [${[lat.dx, dy, ...(is3D ? [lat.dz] : [])].map(num).join(', ')}]`);
     push(`${latVar}.lower_left = [${[x_min, y_min, ...(is3D ? [z_min] : [])].map(num).join(', ')}]`);
     if (is3D) {
       push(`${latVar}.universes = [[[${uPinVar}] * ${lat.nx} for _ in range(${lat.ny})] for _ in range(${lat.nz})]`);
     } else {
       push(`${latVar}.universes = [[${uPinVar}] * ${lat.nx} for _ in range(${lat.ny})]`);
     }
-    
+
     // Bounding region for lattice in root geometry
-    const latRegion = `+${plane('x', x_min)} & -${plane('x', x_max)} & +${plane('y', y_min)} & -${plane('y', y_max)} & +${plane('z', z_min)} & -${plane('z', z_max)}`;
+    const latRegion = `+${plane('x', x_min)} & -${plane('x', x_max)} & +${plane('y', y_min)} & -${plane('y', y_max)}` +
+                      (is3D ? ` & +${plane('z', z_min)} & -${plane('z', z_max)}` : '');
     latBoxes.push(latRegion);
     push(`${latCellVar} = openmc.Cell(name=${pyStr(lg.name)}, fill=${latVar}, region=${latRegion} & world)`);
     push('');
@@ -1284,11 +1319,17 @@ function buildScript(probs, mark) {
   const boxes = S.parts.map(p => { const h = partHalfExtents(p); return [[p.x - h[0], p.y - h[1], p.z - h[2]], [p.x + h[0], p.y + h[1], p.z + h[2]]]; });
   const overlaps = (a, b) => [0, 1, 2].every(k => a[0][k] < b[1][k] - SURF_TOL && b[0][k] < a[1][k] - SURF_TOL);
   const standaloneParts = S.parts.filter(p => !latMemberPartIds.has(p.id));
-  
+
   standaloneParts.forEach((p, i) => {
     owner = {kind:'part', id:p.id};
     const v = cv[p.id] = name('cell', p.name);
     const earlier = standaloneParts.slice(0, i).filter((q, j) => overlaps(boxes[S.parts.indexOf(p)], boxes[S.parts.indexOf(q)])).map(q => shapeVar[q.id]);
+    const pBox = boxes[S.parts.indexOf(p)];
+    latGroups.forEach((lg, idx) => {
+      if (overlaps(pBox, latExtents[idx])) {
+        earlier.push(latBoxes[idx]);
+      }
+    });
     const region = `${shapeVar[p.id]} & world` + (earlier.length ? ` & ~(${earlier.join(' | ')})` : '');
     push(`${v} = openmc.Cell(name=${pyStr(p.name)}, fill=${fill(p.material)}, region=${region})`);
   });

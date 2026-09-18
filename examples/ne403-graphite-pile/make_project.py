@@ -107,9 +107,10 @@ def main():
                 "ny": 1,
                 "nz": ROWS,
                 "dx": r(PITCH),
-                "dy": 0,
+                "dy": r(DEPTH),
                 "dz": r(PITCH),
-                "asLattice": False,
+                "fill": graphite["id"],
+                "asLattice": True,
             },
         }
     ]

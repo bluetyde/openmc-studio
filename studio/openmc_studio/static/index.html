@@ -292,6 +292,7 @@ input[type=checkbox]{accent-color:var(--accent)}
             <select id="meshPick" aria-label="Mesh tally to show"></select>
             <label class="chk"><input type="checkbox" id="showTracks" checked> Tracks</label>
             <button class="tbtn" type="button" id="replayBtn" hidden>Replay neutron</button>
+            <button class="tbtn" type="button" id="clearOverlayBtn" title="Clear simulation overlay (tracks and flux map) from the viewport">Clear</button>
           </span>
           <span class="readout" id="readout">Hover the view for coordinates · click to select</span>
         </div>
@@ -318,6 +319,7 @@ input[type=checkbox]{accent-color:var(--accent)}
           <span class="mstatus" id="mcnpStatus">MCNP input from openmc-mcnp-project, validated as you edit.</span>
           <span class="tlabel unitsnote" hidden>cm, g/cm³</span>
           <span class="spacer"></span>
+          <button class="tbtn" type="button" id="refreshMcnpBtn" title="Re-run MCNP translation">Refresh</button>
           <button class="tbtn" type="button" id="copyMcnp">Copy</button>
           <button class="tbtn" type="button" id="saveMcnp">Save .mcnp</button>
         </div>
@@ -1991,6 +1993,7 @@ function openProject(file) {
       if (!validProject(o)) throw new Error('missing materials, parts, sources, tallies or settings');
       normalizeProject(o);
       S = o; sel = {kind:'settings'};
+      clearResults();
       log('ok', `Opened ${file.name}.`); renderAll();
     } catch (e) { log('error', `${file.name} isn't an OpenMC Studio project: ${e.message}.`); }
   };
@@ -2624,6 +2627,7 @@ async function localRun() {
   try { meta = await api('/api/run', {method:'POST', body:JSON.stringify({script:generate(P), project:S, name:S.settings.name})}); }
   catch (e) { log('error', `Couldn't start the run: ${esc(e.message)}`); return; }
   LOCAL.run = meta.id; setRunning(true);
+  clearResults();
   log('info', `Run <code>${esc(meta.id)}</code> started with seed ${S.settings.seed}.`);
   streamRun(meta.id);
   refreshRuns();
@@ -2650,6 +2654,11 @@ function streamRun(id) {
     refreshRuns();
   });
   es.onerror = () => { if (es.readyState === EventSource.CLOSED && LOCAL.run === id) { LOCAL.run = null; setRunning(false); log('error', 'Lost the connection to the Studio server.'); } };
+}
+function clearResults() {
+  LOCAL.results = null; LOCAL.resultsRun = null; LOCAL.selTrack = null; LOCAL.mesh = 0;
+  renderResults();
+  schedule();
 }
 async function loadResults(id, switchTab) {
   try { LOCAL.results = await api(`/api/runs/${encodeURIComponent(id)}/results`); LOCAL.resultsRun = id; }
@@ -2705,12 +2714,21 @@ $('#runs').addEventListener('click', async e => {
   const r = e.target.closest('[data-results]'), l = e.target.closest('[data-load]');
   if (r) loadResults(r.dataset.results, true);
   if (l) {
+    const runId = l.dataset.load;
     try {
-      const o = await api(`/api/runs/${encodeURIComponent(l.dataset.load)}/project`);
+      const o = await api(`/api/runs/${encodeURIComponent(runId)}/project`);
       if (!validProject(o)) throw new Error('project file is incomplete');
       normalizeProject(o);
       S = o; sel = {kind:'settings'};
-      log('ok', `Opened the model from run ${esc(l.dataset.load)}.`); renderAll();
+      log('ok', `Opened the model from run ${esc(runId)}.`); renderAll();
+      try {
+        const meta = (await api('/api/runs')).runs.find(x => x.id === runId);
+        if (meta && meta.status === 'done') {
+          loadResults(runId, false);
+        } else {
+          clearResults();
+        }
+      } catch (err) { clearResults(); }
     } catch (err) { log('error', `Couldn't open that model: ${esc(err.message)}`); }
   }
 });
@@ -3082,11 +3100,11 @@ function pollMcnpProgress(fn) {
 function stopMcnpProgress() {
   if (MCNP_POLL_TIMER) { clearInterval(MCNP_POLL_TIMER); MCNP_POLL_TIMER = null; }
 }
-async function sendLive() {
+async function sendLive(force) {
   const P = problems();
   if (P.some(p => p.sev === 'error')) return;
   const built = buildScript(P, false), script = built.text;
-  if (script === LIVE.sentScript) return;
+  if (!force && script === LIVE.sentScript) return;
   const seq = ++LIVE.seq, ctx = mcnpContext(P, built);
   const slow = !LIVE.report || !LIVE.sentScript || geometryPart(LIVE.sentScript) !== geometryPart(script);
   LIVE.progress = null;
@@ -3220,6 +3238,15 @@ async function exportMcnp() {
   log(r.ok ? 'ok' : 'error', r.ok ? `MCNP input saved: <code>${esc(r.folder)}/${esc(r.name)}_runnable.mcnp</code>.`
     : 'The MCNP input did not validate; don’t run it until the errors above are fixed.');
 }
+$('#refreshMcnpBtn')?.addEventListener('click', () => {
+  LIVE.sentScript = null;
+  LIVE.report = null;
+  LIVE.progress = null;
+  setMcnpStatus('busy', 'Starting MCNP translation…');
+  const pane = $('#mcnpCode');
+  pane.innerHTML = '<span class="ln t-mcom">Translating with MCNPy…</span>';
+  sendLive(true);
+});
 $('#copyMcnp').addEventListener('click', async () => {
   const d = LIVE.report && LIVE.report.deck;
   if (!d) return;
@@ -3342,6 +3369,7 @@ function pickTrack(evt) {
 $('#showMesh').addEventListener('change', schedule);
 $('#showTracks').addEventListener('change', schedule);
 $('#meshPick').addEventListener('change', schedule);
+$('#clearOverlayBtn')?.addEventListener('click', clearResults);
 $('#replayBtn').addEventListener('click', () => {
   if (!LOCAL.selTrack) return;
   S.settings.track = LOCAL.selTrack.join(', ');

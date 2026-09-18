@@ -170,7 +170,7 @@ pre.code .ln::before{counter-increment:ln;content:counter(ln);display:inline-blo
 .olist li.click{cursor:pointer}
 .olist li.click:hover{background:var(--panel2)}
 .sev{flex:none;width:44px;font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:.04em}
-.sev.error{color:var(--err)}.sev.warn{color:var(--warn)}.sev.info{color:var(--accent)}.sev.ok{color:var(--ok)}
+.sev.error{color:var(--err)}.sev.warn{color:var(--warn)}.sev.info{color:var(--accent)}.sev.ok{color:var(--ok)}.sev.busy{color:var(--accent)}
 .otime{color:var(--faint);flex:none}
 .omsg{min-width:0;overflow-wrap:anywhere}
 .omsg code{color:#e3b378}
@@ -1555,6 +1555,31 @@ function log(sev, html) {
   ul.insertAdjacentHTML('beforeend', `<li><span class="otime">${l.t}</span><span class="sev ${l.sev}">${l.sev === 'ok' ? 'done' : l.sev}</span><span class="omsg">${l.html}</span></li>`);
   ul.scrollTop = ul.scrollHeight;
 }
+function logProgress(id, text) {
+  let li = document.getElementById(id);
+  const t = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  const ul = $('#log');
+  if (!li) {
+    ul.insertAdjacentHTML('beforeend', `<li id="${id}"><span class="otime">${t}</span><span class="sev busy">busy</span><span class="omsg">${text}</span></li>`);
+  } else {
+    const omsg = li.querySelector('.omsg');
+    if (omsg) omsg.innerHTML = text;
+  }
+  ul.scrollTop = ul.scrollHeight;
+}
+function finishLogProgress(id, sev, text) {
+  const li = document.getElementById(id);
+  if (li) {
+    const s = li.querySelector('.sev');
+    if (s) {
+      s.className = `sev ${sev}`;
+      s.textContent = sev === 'ok' ? 'done' : sev;
+    }
+    const omsg = li.querySelector('.omsg');
+    if (omsg && text) omsg.innerHTML = text;
+    li.removeAttribute('id');
+  }
+}
 function setOutTab(which) {
   [['problems', '#otProblems'], ['log', '#otLog'], ['results', '#otResults'], ['runs', '#otRuns']].forEach(([k, tab]) => {
     $(tab).setAttribute('aria-selected', which === k);
@@ -2478,7 +2503,11 @@ function renderMcnp(P) {
   }
   const script = generate(P), r = LIVE.report;
   const fresh = !!r && LIVE.sentScript === script;
-  if (!r) { pane.innerHTML = '<span class="ln t-mcom">Translating with MCNPy… (the first export takes about 15 s while MCNPy starts)</span>'; }
+  if (!r) {
+    const p = LIVE.progress;
+    const txt = p && p.step ? `Translating with MCNPy… Stage ${p.step} of ${p.total}: ${p.text} (${p.elapsed}s)` : 'Translating with MCNPy… (the first export takes about 15 s while MCNPy starts)';
+    pane.innerHTML = `<span class="ln t-mcom">${esc(txt)}</span>`;
+  }
   else if (r.deck) {
     const view = annotateMcnp(r.deck, LIVE.ctx, fresh);
     pane.innerHTML = view.html;
@@ -2509,6 +2538,19 @@ function liveMcnpTick(P) {
   clearTimeout(LIVE.timer);
   LIVE.timer = setTimeout(() => sendLive(), 900);
 }
+let MCNP_POLL_TIMER = null;
+function pollMcnpProgress(fn) {
+  stopMcnpProgress();
+  MCNP_POLL_TIMER = setInterval(async () => {
+    try {
+      const p = await api('/api/mcnp-progress');
+      if (p && p.step) fn(p);
+    } catch (e) {}
+  }, 350);
+}
+function stopMcnpProgress() {
+  if (MCNP_POLL_TIMER) { clearInterval(MCNP_POLL_TIMER); MCNP_POLL_TIMER = null; }
+}
 async function sendLive() {
   const P = problems();
   if (P.some(p => p.sev === 'error')) return;
@@ -2516,10 +2558,27 @@ async function sendLive() {
   if (script === LIVE.sentScript) return;
   const seq = ++LIVE.seq, ctx = mcnpContext(P, built);
   const slow = !LIVE.report || !LIVE.sentScript || geometryPart(LIVE.sentScript) !== geometryPart(script);
+  LIVE.progress = null;
   setMcnpStatus('busy', slow ? 'Updating… (geometry or materials changed: about 10 s)' : 'Updating… (about 1 s)');
+  pollMcnpProgress(p => {
+    if (seq !== LIVE.seq) return;
+    LIVE.progress = p;
+    setMcnpStatus('busy', `Stage ${p.step}/${p.total}: ${p.text} (${p.elapsed}s)`);
+    if (!LIVE.report) {
+      const pane = $('#mcnpCode');
+      pane.innerHTML = `<span class="ln t-mcom">Translating with MCNPy… Stage ${p.step} of ${p.total}: ${esc(p.text)} (${p.elapsed}s)</span>`;
+    }
+  });
   let r;
   try { r = await api('/api/mcnp-live', {method:'POST', body:JSON.stringify({script, name:S.settings.name, seq, client:LIVE.client})}); }
-  catch (e) { if (seq === LIVE.seq) setMcnpStatus('err', `Live MCNP failed: ${e.message}`); return; }
+  catch (e) {
+    stopMcnpProgress();
+    LIVE.progress = null;
+    if (seq === LIVE.seq) setMcnpStatus('err', `Live MCNP failed: ${e.message}`);
+    return;
+  }
+  stopMcnpProgress();
+  LIVE.progress = null;
   if (r.superseded || seq !== LIVE.seq) return; // a newer edit is on its way
   LIVE.sentScript = script; LIVE.ctx = ctx; LIVE.report = r;
   if (EDITING.pane !== 'mcnp') renderMcnp(problems());
@@ -2605,10 +2664,24 @@ async function exportMcnp() {
   setOutTab('log');
   if (errs.length) { log('error', `Not exported: fix ${errs.length} problem${errs.length === 1 ? '' : 's'} first (see Problems).`); return; }
   log('info', 'Exporting MCNP input to a new folder…');
+  const progId = 'mcnp-export-prog';
+  logProgress(progId, 'Starting MCNP translation…');
+  pollMcnpProgress(p => {
+    logProgress(progId, `Stage ${p.step} of ${p.total}: ${esc(p.text)} (${p.elapsed}s)`);
+  });
   let r;
   try { r = await api('/api/export-mcnp', {method:'POST', body:JSON.stringify({script:generate(P), project:S, name:S.settings.name})}); }
-  catch (e) { log('error', `MCNP export failed: ${esc(e.message)}`); return; }
-  if (r.error) { log('error', `MCNP export: ${esc(r.error)}`); return; }
+  catch (e) {
+    stopMcnpProgress();
+    finishLogProgress(progId, 'error', `MCNP export failed: ${esc(e.message)}`);
+    return;
+  }
+  stopMcnpProgress();
+  if (r.error) {
+    finishLogProgress(progId, 'error', `MCNP export: ${esc(r.error)}`);
+    return;
+  }
+  finishLogProgress(progId, 'ok', `MCNPy translation completed in ${r.seconds}s${r.translation_cached ? ' (geometry cached)' : ''}.`);
   (r.added || []).forEach(a => log('info', `+ ${esc(a)}`));
   (r.notes || []).forEach(n => log('warn', esc(n)));
   if (r.validation) r.validation.trim().split('\n').filter(l => !l.startsWith('---')).forEach(l =>

@@ -71,19 +71,25 @@ Implemented and verified:
 
 ## More part shapes
 
-Start with the right triangular prism (from the artifact comments). Candidates, easiest first:
-- Right triangular prism / wedge (MCNP WED): legs a, b and height h; 5 planes, all already handled
-  by the exporter and the geometry check.
+- **Right triangular prism / wedge (WED) (DONE).**
+  - Added `wedge` as a first-class primitive in OpenMC Studio:
+    - Dedicated right-triangle SVG icon in `ICON.wedge`, Ribbon Model tab Parts button, and Explorer.
+    - Properties panel: `Right wedge (WED)` shape selector with `Size` ($sx, sy, sz$) and 3D Euler `Rotation` ($rx, ry, rz$).
+    - 2D slice sampling in `inShape` and viewport rasterizer `inPart`.
+    - World-axis bounding box extents in `partHalfExtents`.
+    - WebGL 2 ray tracer shader (`intersectPart` type 3) using a 5-plane slab clipper with analytic normals.
+    - Fast 3D BVH picking (`pick3` type 3).
+    - Interactive 3D scale handles (`buildHandles` and `applyTransform`) preserving opposite faces on drag.
+    - OpenMC geometry export in `buildScript`: 5 planes (2 legs, hypotenuse `openmc.Plane(a=sy/L, b=sx/L, d=...)`, and height slab `openmc.ZPlane` or general slab) sharing aligned surfaces.
+    - Verified in OpenMC 0.15.3 simulation with 100,000 particles and cell overlap checking: 0 errors, 0 lost particles.
+
+Other candidates:
 - Hexagonal prism (RHP/HEX): 8 planes; `openmc.model.HexagonalPrism` exists; common for fuel.
 - Cone and truncated cone (K, TRC): `openmc.XCone`/`ZCone` (GQ when tilted); needs cone support in
   the geometry check and the 3D shader.
 - Ellipsoid (ELL) and elliptical cylinder (REC): quadrics (GQ); the shader can scale a sphere or
   cylinder.
 - Torus (TX/TY/TZ): hardest (quartic in the shader); MCNP only allows axis-aligned tori.
-
-Each shape needs: `inShape`, `partHalfExtents`, the 3D shader type and `pick3`, Scale handles,
-Properties fields, `buildScript` surfaces, an MCNP export check and an OpenMC run with no lost
-particles.
 
 ## Smaller items
 

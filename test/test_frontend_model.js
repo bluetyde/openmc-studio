@@ -418,6 +418,25 @@ if (!mcnpMat.includes('MT') || !mcnpMat.includes('grph.40t')) {
   process.exit(1);
 }
 
+// model.mcnp tally numbers come from the deck's FC cards, not from the tally order: a surface-current tally takes
+// one number per (surface, part) bin, so the cell tally after it isn't F14
+vm.runInContext("S.tallies = " + JSON.stringify([
+  {id: 't_cur', name: 'current out', kind: 'surface', scores: ['current']},
+  {id: 't_cell', name: 'Cell flux', kind: 'cell', scores: ['flux', 'absorption']},
+  {id: 't_mesh', name: 'Flux map', kind: 'mesh', scores: ['flux']},
+  {id: 't_long', name: 'a very long tally name that the exporter has to cut short on its FC card', kind: 'surface', scores: ['current']}]) + ";", sandbox);
+const deckTallies = ['F1:N 13', 'FC1 current out [S 13 C 2 SEG 12 COS 1 X-1]', 'C1 0 1', 'F11:N 14',
+  'FC11 current out [S 14 C 2 SEG 12-17 COS 2 X+1]', 'F24:N 3', 'FC24 Cell flux (flux)', 'SD24 1', 'F34:N 3',
+  'FC34 Cell flux (absorption)', 'FMESH44:N GEOM=XYZ ORIGIN=0 0 0', 'F51:N 7', 'FC51 a very long tally name that the [S 7 C 1 SEG 7 COS 2 X+1]'].join('\n');
+const byNum = sandbox.mcnpTallyNumbers(deckTallies);
+const wantNum = {1: 't_cur', 11: 't_cur', 24: 't_cell', 34: 't_cell', 44: 't_mesh', 51: 't_long'};
+for (const [n, id] of Object.entries(wantNum)) {
+  if (!byNum[n] || byNum[n].id !== id) {
+    console.error(`FAILED: mcnpTallyNumbers: tally ${n} should belong to ${id}, got ${byNum[n] && byNum[n].id}`);
+    process.exit(1);
+  }
+}
+
 console.log('\nAll frontend model generation & MCNP translation tests PASSED!');
 
 

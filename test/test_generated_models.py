@@ -100,7 +100,7 @@ class GeneratedModels(unittest.TestCase):
                 self.assertFalse(bad, f"{len(bad)} of 20000 points differ, e.g. {bad[:3]}")
 
     def test_runs(self):
-        for name in ("rect_array.py", "hex_array_y.py", "hex_array_x.py", "surface_current.py"):
+        for name in ("rect_array.py", "hex_array_y.py", "hex_array_x.py", "surface_current.py", "two_sources.py"):
             with self.subTest(name):
                 ns, means = run(os.path.join(GEN, name))
                 for mean in means.values():

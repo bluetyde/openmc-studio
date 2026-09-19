@@ -482,7 +482,7 @@ async function loadLibrary() {
   if (!$('#matMenu').hidden && $('#matSearch')) renderMatList($('#matSearch').value);
 }
 
-const SCORES = ['flux','total','absorption','fission','nu-fission','scatter','(n,gamma)','(n,p)','(n,a)','heating'];
+const SCORES = ['flux','total','absorption','fission','nu-fission','scatter','(n,gamma)','(n,p)','(n,a)','heating','current'];
 
 /* ───────── State ───────── */
 const clone = o => JSON.parse(JSON.stringify(o));
@@ -506,12 +506,15 @@ function matSig(m) { return JSON.stringify([m.name, m.color, m.density, m.frac, 
 const isUntouchedCopy = m => !!m.pristine && m.pristine === matSig(m);
 
 const DEFAULT_SETTINGS = {name:'Shielding demo', runMode:'fixed source', particles:10000, batches:10, inactive:0, seed:12345,
-  maxTracks:50, track:'', photon:false, worldShape:'box', worldR:100, worldBC:'vacuum', worldFill:'void'};
+  maxTracks:50, track:'', photon:false, photonCutoff:1000, temperatureDefault:293.6, temperatureMethod:'interpolation',
+  entropyMesh:false, entropyNx:10, entropyNy:10, entropyNz:10,
+  worldShape:'box', worldR:100, worldBC:'vacuum', worldFill:'void'};
 
 function newSource(id, name, particle = 'neutron') {
   return {id, name, particle, strength:1, space:'point', x:0, y:0, z:0, rin:0, r:5, h:10,
     x0:-5, y0:-5, z0:-5, x1:5, y1:5, z1:5, angle:'isotropic', u:0, v:0, w:1,
     energy:'lines', lines: particle === 'photon' ? '0.662:1' : '14.1:1', wa:0.988, wb:2.249, theta:1.2895, emin:0.1, emax:2,
+    muir_e0:14.08, muir_mrat:5.0, muir_kt:20000.0,
     tab_e:'0.0, 1.0, 2.0, 5.0', tab_p:'0.2, 0.5, 0.3'};
 }
 function newPart(id, name, shape) {
@@ -543,10 +546,41 @@ function sampleModel() {
 const STORE_KEY = 'openmc-studio-v1';
 function normalizeProject(o) { // fill fields added in later versions
   o.settings = {...DEFAULT_SETTINGS, ...o.settings};
+  o.settings.photonCutoff = Number.isFinite(o.settings.photonCutoff) ? o.settings.photonCutoff : 1000;
+  o.settings.temperatureDefault = Number.isFinite(o.settings.temperatureDefault) ? o.settings.temperatureDefault : 293.6;
+  o.settings.temperatureMethod = o.settings.temperatureMethod || 'interpolation';
+  o.settings.entropyNx = Number.isFinite(o.settings.entropyNx) ? o.settings.entropyNx : 10;
+  o.settings.entropyNy = Number.isFinite(o.settings.entropyNy) ? o.settings.entropyNy : 10;
+  o.settings.entropyNz = Number.isFinite(o.settings.entropyNz) ? o.settings.entropyNz : 10;
+  (o.materials || []).forEach(m => {
+    if (m.temperature !== undefined && m.temperature !== null && m.temperature !== '') {
+      m.temperature = Number.isFinite(Number(m.temperature)) ? Number(m.temperature) : null;
+    } else {
+      m.temperature = null;
+    }
+  });
+  (o.sources || []).forEach(s => {
+    s.particle = s.particle || 'neutron';
+    s.muir_e0 = Number.isFinite(s.muir_e0) ? s.muir_e0 : 14.08;
+    s.muir_mrat = Number.isFinite(s.muir_mrat) ? s.muir_mrat : 5.0;
+    s.muir_kt = Number.isFinite(s.muir_kt) ? s.muir_kt : 20000.0;
+  });
   (o.tallies || []).forEach(t => {
+    t.particle = t.particle || 'all';
+    t.materialFilter = t.materialFilter || '';
+    t.surfaces = Array.isArray(t.surfaces) ? t.surfaces : [];
     t.detector = t.detector || 'none';
     t.responseMat = t.responseMat || '';
-    t.responseScore = t.responseScore || '(n,p)';
+    if (t.detector === 'b10') {
+      if (!t.responseScore || t.responseScore === '(n,p)') t.responseScore = '(n,a)';
+      t.responseNuc = t.responseNuc || 'B10';
+    } else if (t.detector === 'he3') {
+      if (!t.responseScore || t.responseScore === '(n,a)') t.responseScore = '(n,p)';
+      t.responseNuc = t.responseNuc || 'He3';
+    } else {
+      t.responseScore = t.responseScore || '(n,p)';
+      t.responseNuc = t.responseNuc || 'all';
+    }
     t.responseScale = t.responseScale || 'macro';
   });
   (o.parts || []).forEach(p => ['rx', 'ry', 'rz'].forEach(k => { if (p[k] === undefined || p[k] === null) p[k] = 0; }));
@@ -1055,6 +1089,39 @@ function makeNamer() {
   };
 }
 
+// MCNP reaction MT mapping and detector tally resolution
+const MT = {total:'-1', absorption:'-2', fission:'-6', 'nu-fission':'-6 -7', elastic:'2', '(n,2n)':'16', '(n,gamma)':'102', '(n,p)':'103', '(n,a)':'107'};
+
+function resolveDetector(t) {
+  let respScore = t.responseScore;
+  let respNuc = t.responseNuc;
+  let mt = '103';
+  let respMatId = t.responseMat || '';
+
+  if (t.detector === 'he3') {
+    respScore = '(n,p)';
+    mt = '103';
+    respNuc = 'He3';
+    if (!respMatId) {
+      const autoMat = S.materials.find(m => (m.comps && m.comps.includes('He3')) || /he-?3/i.test(m.name));
+      if (autoMat) respMatId = autoMat.id;
+    }
+  } else if (t.detector === 'b10') {
+    respScore = '(n,a)';
+    mt = '107';
+    respNuc = 'B10';
+    if (!respMatId) {
+      const autoMat = S.materials.find(m => (m.comps && (m.comps.includes('B10') || m.comps.includes('B0') || /\bB\b/.test(m.comps))) || /b-?10|bf3|boron/i.test(m.name));
+      if (autoMat) respMatId = autoMat.id;
+    }
+  } else if (t.detector === 'custom') {
+    respScore = t.responseScore || '(n,p)';
+    mt = MT[respScore] ? String(Math.abs(parseInt(MT[respScore]))) : '103';
+    if (!respNuc) respNuc = (t.responseScale === 'macro') ? 'all' : '';
+  }
+  return { respMatId, respNuc, respScore, mt };
+}
+
 // Builds model.py. With mark=true, every editable number is wrapped as \u0001<ref>\u0002text\u0003 and
 // the result carries a source map (map[ref] says which field the number came from), the owner object
 // of every line, and the surfaces in creation order (OpenMC IDs 1, 2, 3… = MCNP surface numbers).
@@ -1080,8 +1147,8 @@ function buildScript(probs, mark) {
   });
   (S.tallies || []).forEach(t => {
     if (t.detector && t.detector !== 'none') {
-      const respMat = t.responseMat || (t.detector === 'he3' ? (S.materials.find(m => m.comps && m.comps.includes('He3')) || {}).id : '');
-      if (respMat) usedIds.add(respMat);
+      const det = resolveDetector(t);
+      if (det.respMatId) usedIds.add(det.respMatId);
     }
   });
   const mats = S.materials.filter(m => usedIds.has(m.id));
@@ -1100,6 +1167,9 @@ function buildScript(probs, mark) {
     const v = mv[m.id] = name('mat', m.name);
     if (m.ref) push(`# ${m.ref}`);
     push(`${v} = openmc.Material(name=${pyStr(m.name)})`, `${v}.set_density("g/cm3", ${F(m, 'density', num(m.density))})`);
+    if (m.temperature !== null && m.temperature !== undefined && m.temperature !== '') {
+      push(`${v}.temperature = ${F(m, 'temperature', num(m.temperature))}`);
+    }
     parseComps(m.comps).out.forEach((c, i) =>
       push(`${v}.${c.nuclide ? 'add_nuclide' : 'add_element'}(${pyStr(c.sym)}, ${E(num(c.amt), {t:'comp', obj:m, index:i})}, ${pyStr(m.frac)})`));
     if (m.sab) push(`${v}.add_s_alpha_beta(${pyStr(m.sab)})`);
@@ -1166,6 +1236,13 @@ function buildScript(probs, mark) {
   else {
     const w = ['x', 'y', 'z'].map(ax => slab(ax, -R, R, true));
     push(`world = ${w.join(' & ')}`);
+    if (st.worldBC === 'periodic') {
+      ['x', 'y', 'z'].forEach(ax => {
+        const lo = surfs.get(`P${ax}|${Math.round(-R / SURF_BUCKET)}`)?.find(s => Math.abs(s.params[0] - (-R)) <= SURF_TOL)?.v;
+        const hi = surfs.get(`P${ax}|${Math.round(R / SURF_BUCKET)}`)?.find(s => Math.abs(s.params[0] - R) <= SURF_TOL)?.v;
+        if (lo && hi) push(`${lo}.periodic_surface = ${hi}`);
+      });
+    }
   }
   owner = null;
   push('');
@@ -1452,7 +1529,12 @@ function buildScript(probs, mark) {
       push(`${v}.energy = openmc.stats.Discrete([${ls.map((l, i) => E(num(l.e * 1e6), {t:'line', obj:s, index:i, part:'e', scale:1e-6})).join(', ')}], [${ls.map((l, i) => E(num(l.p), {t:'line', obj:s, index:i, part:'p'})).join(', ')}])  # eV`);
     } else if (s.energy === 'watt') push(`${v}.energy = openmc.stats.Watt(a=${F(s, 'wa', num(s.wa * 1e6), {scale:1e-6})}, b=${F(s, 'wb', num(s.wb / 1e6), {scale:1e6})})  # a in eV, b in 1/eV`);
     else if (s.energy === 'maxwell') push(`${v}.energy = openmc.stats.Maxwell(theta=${F(s, 'theta', num(s.theta * 1e6), {scale:1e-6})})  # eV`);
-    else if (s.energy === 'tabulated') {
+    else if (s.energy === 'muir') {
+      const e0 = (s.muir_e0 || 14.08) * 1e6;
+      const mrat = s.muir_mrat || 5.0;
+      const kt = s.muir_kt || 20000.0;
+      push(`${v}.energy = openmc.stats.muir(e0=${F(s, 'muir_e0', num(e0), {scale:1e-6})}, m_rat=${F(s, 'muir_mrat', num(mrat))}, kt=${F(s, 'muir_kt', num(kt))})  # eV`);
+    } else if (s.energy === 'tabulated') {
       const tab = parseTabular(s.tab_e, s.tab_p);
       const eList = tab.edges.map(e => num(e * 1e6)).join(', ');
       const pList = tab.probs.map(p => num(p)).join(', ');
@@ -1462,25 +1544,69 @@ function buildScript(probs, mark) {
     return v;
   });
   owner = null;
-
   push('# ── Tallies ────────────────────────────────────────────────');
   const hasDetectorTallies = S.tallies.some(t => t.detector && t.detector !== 'none');
   if (hasDetectorTallies) {
     push('def _get_detector_filter(mat, nuclide, mt, scale="macro"):',
+      '    import numpy as np',
+      '    import openmc.data',
       '    lib = openmc.data.DataLibrary.from_xml()',
-      '    entry = lib.get_by_material(nuclide)',
-      '    if not entry:',
-      '        raise ValueError(f"Nuclide {nuclide} not in cross sections library")',
-      '    nuc_data = openmc.data.IncidentNeutron.from_hdf5(entry["path"])',
-      '    rx = nuc_data.reactions[mt]',
-      '    temp = list(rx.xs.keys())[0]',
-      '    xs = rx.xs[temp]',
-      '    mult = mat.get_nuclide_atom_densities().get(nuclide, 1.0) if scale == "macro" else 1.0',
-      '    return openmc.EnergyFunctionFilter(xs.x, xs.y * mult)', '');
+      '    if scale == "macro":',
+      '        if mat is None:',
+      '            raise ValueError("Macroscopic detector response requires an assigned material with atom densities.")',
+      '        densities = mat.get_nuclide_atom_densities()',
+      '        if not densities:',
+      '            raise ValueError(f"Material \'{getattr(mat, \\\'name\\\', \\\'unnamed\\\')}\' has no defined nuclide atom densities.")',
+      '        if nuclide and nuclide != "all":',
+      '            target_nuclides = [nuclide]',
+      '        else:',
+      '            target_nuclides = sorted(densities.keys())',
+      '        contributions = []',
+      '        for nuc in target_nuclides:',
+      '            entry = lib.get_by_material(nuc)',
+      '            if not entry:',
+      '                continue',
+      '            nuc_data = openmc.data.IncidentNeutron.from_hdf5(entry["path"])',
+      '            if mt not in nuc_data.reactions:',
+      '                continue',
+      '            rx = nuc_data.reactions[mt]',
+      '            temp = list(rx.xs.keys())[0]',
+      '            xs = rx.xs[temp]',
+      '            N_i = densities.get(nuc, 1.0)',
+      '            contributions.append((xs.x, xs.y * N_i))',
+      '        if not contributions:',
+      '            mat_name = getattr(mat, "name", "unnamed")',
+      '            raise ValueError(f"No nuclides in material \'{mat_name}\' have reaction MT {mt} in cross sections library")',
+      '        if len(contributions) == 1:',
+      '            return openmc.EnergyFunctionFilter(contributions[0][0], contributions[0][1])',
+      '        all_e = np.unique(np.concatenate([c[0] for c in contributions]))',
+      '        total_macro = np.zeros_like(all_e)',
+      '        for e_grid, macro_vals in contributions:',
+      '            total_macro += np.interp(all_e, e_grid, macro_vals, left=0.0, right=0.0)',
+      '        return openmc.EnergyFunctionFilter(all_e, total_macro)',
+      '    else:',
+      '        if not nuclide or nuclide == "all":',
+      '            raise ValueError("Microscopic detector response requires an explicit target nuclide.")',
+      '        entry = lib.get_by_material(nuclide)',
+      '        if not entry:',
+      '            raise ValueError(f"Nuclide {nuclide} not in cross sections library")',
+      '        nuc_data = openmc.data.IncidentNeutron.from_hdf5(entry["path"])',
+      '        if mt not in nuc_data.reactions:',
+      '            raise ValueError(f"Nuclide {nuclide} does not have reaction MT {mt}")',
+      '        rx = nuc_data.reactions[mt]',
+      '        temp = list(rx.xs.keys())[0]',
+      '        xs = rx.xs[temp]',
+      '        return openmc.EnergyFunctionFilter(xs.x, xs.y)', '');
   }
   const talVars = S.tallies.map(t => {
     owner = {kind:'tally', id:t.id};
     const v = name('tally', t.name), filters = [];
+    if (t.particle && t.particle !== 'all') {
+      filters.push(`openmc.ParticleFilter([${pyStr(t.particle)}])`);
+    }
+    if (t.materialFilter && mv[t.materialFilter]) {
+      filters.push(`openmc.MaterialFilter([${mv[t.materialFilter]}])`);
+    }
     if (t.kind === 'mesh') {
       const m = name('mesh', t.name);
       const I = k => F(t, k, int(t[k]), {int:true});
@@ -1488,17 +1614,18 @@ function buildScript(probs, mark) {
         `${m}.lower_left = [${F(t, 'lx', num(t.lx))}, ${F(t, 'ly', num(t.ly))}, ${F(t, 'lz', num(t.lz))}]`,
         `${m}.upper_right = [${F(t, 'ux', num(t.ux))}, ${F(t, 'uy', num(t.uy))}, ${F(t, 'uz', num(t.uz))}]`);
       filters.push(`openmc.MeshFilter(${m})`);
-    } else filters.push(`openmc.CellFilter([${t.cells.filter(c => cv[c]).map(c => cv[c]).join(', ')}])`);
+    } else if (t.kind === 'surface') {
+      const surfVars = (t.surfaces || []).map(sid => shapeVar[sid] || cv[sid] || null).filter(Boolean);
+      if (surfVars.length) filters.push(`openmc.SurfaceFilter([${surfVars.join(', ')}])`);
+    } else {
+      filters.push(`openmc.CellFilter([${t.cells.filter(c => cv[c]).map(c => cv[c]).join(', ')}])`);
+    }
     if (t.ebins.trim()) filters.push(`openmc.EnergyFilter([${parseNums(t.ebins).vals.map((e, i) => E(num(e * 1e6), {t:'ebin', obj:t, index:i, scale:1e-6})).join(', ')}])`);
     if (t.detector && t.detector !== 'none') {
-      const respMatId = t.responseMat || (t.detector === 'he3' ? (S.materials.find(m => m.comps && m.comps.includes('He3')) || {}).id : '');
-      const respMat = S.materials.find(m => m.id === respMatId);
-      const respNuc = (respMat && respMat.comps ? respMat.comps.split(':')[0].trim() : '') || (t.detector === 'he3' ? 'He3' : 'B10');
-      const respScore = t.responseScore || (t.detector === 'he3' ? '(n,p)' : '(n,a)');
-      const mtNum = MT[respScore] ? Math.abs(parseInt(MT[respScore])) : 103;
-      const matVar = mv[respMatId] || 'None';
+      const det = resolveDetector(t);
+      const matVar = mv[det.respMatId] || 'None';
       const effVar = name('eff', t.name);
-      push(`${effVar} = _get_detector_filter(${matVar}, ${pyStr(respNuc)}, ${mtNum}, ${pyStr(t.responseScale || 'macro')})`);
+      push(`${effVar} = _get_detector_filter(${matVar}, ${pyStr(det.respNuc)}, ${det.mt}, ${pyStr(t.responseScale || 'macro')})`);
       filters.push(effVar);
     }
     push(`${v} = openmc.Tally(name=${pyStr(t.name)})`, `${v}.filters = [${filters.join(', ')}]`,
@@ -1513,9 +1640,26 @@ function buildScript(probs, mark) {
   push('# ── Settings ───────────────────────────────────────────────', 'settings = openmc.Settings()',
     `settings.run_mode = ${pyStr(st.runMode)}`, `settings.particles = ${IS('particles')}`, `settings.batches = ${IS('batches')}`);
   if (eig) push(`settings.inactive = ${IS('inactive')}`);
+  if (st.temperatureDefault !== undefined && st.temperatureDefault !== null) {
+    push(`settings.temperature = {'default': ${num(st.temperatureDefault)}, 'method': ${pyStr(st.temperatureMethod || 'interpolation')}}`);
+  }
   push(`settings.seed = ${IS('seed')}  # same seed + same model = the same particle histories`,
     `settings.source = [${srcVars.join(', ')}]`);
-  if (st.photon) push('settings.photon_transport = True');
+  if (st.photon) {
+    push('settings.photon_transport = True');
+    if (st.photonCutoff) {
+      push(`settings.cutoff = {'energy_photon': ${num(st.photonCutoff)}}`);
+    }
+  }
+  if (eig && st.entropyMesh) {
+    const eMeshVar = name('entropy_mesh', 'grid');
+    const nx = st.entropyNx || 10, ny = st.entropyNy || 10, nz = st.entropyNz || 10;
+    push(`${eMeshVar} = openmc.RegularMesh(name="Shannon entropy mesh")`,
+      `${eMeshVar}.dimension = [${nx}, ${ny}, ${nz}]`,
+      `${eMeshVar}.lower_left = [-${num(R)}, -${num(R)}, -${num(R)}]`,
+      `${eMeshVar}.upper_right = [${num(R)}, ${num(R)}, ${num(R)}]`,
+      `settings.entropy_mesh = ${eMeshVar}`);
+  }
   if (wantAll) push(`settings.max_tracks = ${IS('maxTracks')}`);
   if (tracks.length) push(`settings.track = [${tracks.map(t => `(${t.join(', ')})`).join(', ')}]  # (batch, generation, particle)`);
   owner = null;
@@ -1549,7 +1693,10 @@ function mcnpSource(s) {
     else if (ls.length > 1) parts.push(`ERG=${dist(`L ${ls.map(l => mcnpNum(l.e)).join(' ')}`, `D ${ls.map(l => mcnpNum(l.p)).join(' ')}`)}`);
   } else if (s.energy === 'watt') parts.push(`ERG=${dist('', `-3 ${mcnpNum(s.wa)} ${mcnpNum(s.wb)}`)}`);
   else if (s.energy === 'maxwell') parts.push(`ERG=${dist('', `-2 ${mcnpNum(s.theta)}`)}`);
-  else if (s.energy === 'tabulated') {
+  else if (s.energy === 'muir') {
+    parts.push(`c Muir fusion spectrum (E0=${s.muir_e0 || 14.08} MeV, kT=${s.muir_kt || 20000} eV)`);
+    parts.push(`ERG=${mcnpNum(s.muir_e0 || 14.08)}`);
+  } else if (s.energy === 'tabulated') {
     const tab = parseTabular(s.tab_e, s.tab_p);
     const eList = tab.edges.map(mcnpNum).join(' ');
     const pList = ['0', ...tab.probs.map(mcnpNum)].join(' ');
@@ -1559,7 +1706,6 @@ function mcnpSource(s) {
 }
 // Mirrors src/mcnp_cards.py in openmc-mcnp-project: one MCNP tally per score, numbered 4, 14, 24… across all
 // tallies, cell/material numbers = the OpenMC IDs model.py creates (used materials in order; parts, then World).
-const MT = {total:'-1', absorption:'-2', fission:'-6', 'nu-fission':'-6 -7', elastic:'2', '(n,2n)':'16', '(n,gamma)':'102', '(n,p)':'103', '(n,a)':'107'};
 function mcnpIds() {
   const used = new Set(S.parts.map(p => p.material).concat(S.settings.worldFill));
   (S.groups || []).forEach(g => {
@@ -1567,8 +1713,8 @@ function mcnpIds() {
   });
   (S.tallies || []).forEach(t => {
     if (t.detector && t.detector !== 'none') {
-      const respMat = t.responseMat || (t.detector === 'he3' ? (S.materials.find(m => m.comps && m.comps.includes('He3')) || {}).id : '');
-      if (respMat) used.add(respMat);
+      const det = resolveDetector(t);
+      if (det.respMatId) used.add(det.respMatId);
     }
   });
   const mats = S.materials.filter(m => used.has(m.id));
@@ -1580,17 +1726,20 @@ function mcnpTally(t) {
   const k0 = S.tallies.slice(0, S.tallies.indexOf(t)).reduce((a, x) => a + x.scores.length, 0);
   const eb = t.ebins.trim() ? parseNums(t.ebins).vals : null;
   const isDetector = t.detector && t.detector !== 'none';
-  const respMatId = t.responseMat || (t.detector === 'he3' ? (S.materials.find(m => m.comps && m.comps.includes('He3')) || {}).id : '');
-  const respScore = t.responseScore || (t.detector === 'he3' ? '(n,p)' : '(n,a)');
+  const det = resolveDetector(t);
   const scale = t.responseScale === 'micro' ? '1' : '-1';
-  const mt = MT[respScore] || '103';
+  const pTag = t.particle === 'photon' ? 'P' : 'N';
 
   t.scores.forEach((score, j) => {
     const n = 10 * (k0 + j) + 4;
-    if (t.kind === 'cell') {
-      out.push(`F${n}:N ${t.cells.map(ids.cell).join(' ')}`);
+    if (t.kind === 'surface') {
+      const fn = score === 'current' ? (10 * (k0 + j) + 1) : (10 * (k0 + j) + 2);
+      out.push(`F${fn}:${pTag} ${(t.surfaces || []).map(ids.cell).join(' ')}`);
+      if (eb) out.push(`E${fn} ${eb.slice(1).map(mcnpNum).join(' ')}`);
+    } else if (t.kind === 'cell') {
+      out.push(`F${n}:${pTag} ${t.cells.map(ids.cell).join(' ')}`);
       if (isDetector) {
-        out.push(`FM${n} (${scale} ${ids.mat(respMatId)} ${mt})`);
+        out.push(`FM${n} (${scale} ${ids.mat(det.respMatId)} ${det.mt})`);
       } else if (score !== 'flux') {
         const mats = [...new Set(t.cells.map(c => c === 'world' ? S.settings.worldFill : (partById(c) || {}).material))];
         if (!MT[score]) out.push(`c ${score}: not exportable to MCNP`);
@@ -1603,10 +1752,10 @@ function mcnpTally(t) {
     } else if (score !== 'flux') {
       out.push(`c ${score}: mesh tallies export flux only`);
     } else {
-      out.push(`FMESH${n}:N GEOM=XYZ ORIGIN=${[t.lx, t.ly, t.lz].map(mcnpNum).join(' ')}`,
+      out.push(`FMESH${n}:${pTag} GEOM=XYZ ORIGIN=${[t.lx, t.ly, t.lz].map(mcnpNum).join(' ')}`,
         `     IMESH=${mcnpNum(t.ux)} IINTS=${t.nx} JMESH=${mcnpNum(t.uy)} JINTS=${t.ny} KMESH=${mcnpNum(t.uz)} KINTS=${t.nz}`);
       if (isDetector) {
-        out.push(`     FM=${scale} ${ids.mat(respMatId)} ${mt}`);
+        out.push(`     FM=${scale} ${ids.mat(det.respMatId)} ${det.mt}`);
       }
       if (eb) out.push(`     EMESH=${eb.slice(1).map(mcnpNum).join(' ')}`);
     }
@@ -2265,6 +2414,7 @@ function specFor(kind, o) {
         F('select', 'frac', 'Fractions', {options:() => [['wo', 'Weight (MCNP negative)'], ['ao', 'Atom (MCNP positive)']]}),
         F('text', 'comps', 'Components', {wide:true, hint:'Element or nuclide : amount, comma separated. H:2 adds natural hydrogen; U235:0.03 adds one nuclide. Amounts are normalized.'}),
         F('text', 'sab', 'S(α,β)', {placeholder:'none', hint:'Thermal scattering table for moderators, like c_H_in_H2O. Same role as the MT card in MCNP.'}),
+        F('num', 'temperature', 'Temperature', {unit:'K', placeholder:'293.6', hint:'Material temperature in Kelvin for Doppler broadening (optional, defaults to project default).'}),
         note(o.ref ? `Source: <code>${esc(o.ref)}</code>${o.ref.startsWith('PNNL') ? ' — PNNL-15870 Rev. 1.' : ''}` : 'Custom material.')
       ]}
     ];
@@ -2342,10 +2492,13 @@ function specFor(kind, o) {
         F('vec', null, 'Direction', {keys:['u', 'v', 'w'], show:() => o.angle === 'mono', hint:'Any length; it is normalized. Same as VEC with DIR=1.'})
       ]},
       {title:'Energy', fields:[
-        F('select', 'energy', 'Spectrum', {options:() => [['lines', 'Discrete lines'], ['watt', 'Watt fission'], ['maxwell', 'Maxwell fission'], ['uniform', 'Uniform'], ['tabulated', 'Tabulated (histogram)']]}),
+        F('select', 'energy', 'Spectrum', {options:() => [['lines', 'Discrete lines'], ['watt', 'Watt fission'], ['maxwell', 'Maxwell fission'], ['muir', 'Muir (fusion plasma)'], ['uniform', 'Uniform'], ['tabulated', 'Tabulated (histogram)']]}),
         F('text', 'lines', 'Lines', {show:en('lines'), hint:'MeV:intensity, comma separated. 14.1:1 is D-T; 2.45:1 is D-D; 1.1732:1, 1.3325:1 is Co-60.'}),
         F('num', 'wa', 'a', {unit:'MeV', show:en('watt')}), F('num', 'wb', 'b', {unit:'1/MeV', show:en('watt'), hint:'U-235 thermal fission: a = 0.988, b = 2.249.'}),
         F('num', 'theta', 'Temperature', {unit:'MeV', show:en('maxwell')}),
+        F('num', 'muir_e0', 'Peak energy (E0)', {unit:'MeV', show:en('muir'), hint:'Mean fusion energy: 14.08 MeV for D-T, 2.45 MeV for D-D.'}),
+        F('num', 'muir_mrat', 'Mass ratio (m_rat)', {show:en('muir'), hint:'Mass ratio: 5.0 for D-T, 4.0 for D-D.'}),
+        F('num', 'muir_kt', 'Ion temp (kT)', {unit:'eV', show:en('muir'), hint:'Plasma ion temperature in eV (default 20,000 eV = 20 keV).'}),
         F('num', 'emin', 'Minimum', {unit:'MeV', show:en('uniform')}), F('num', 'emax', 'Maximum', {unit:'MeV', show:en('uniform')}),
         F('text', 'tab_e', 'Bin edges', {show:en('tabulated'), hint:'MeV, rising boundaries (e.g. 0.0, 0.5, 1.0, 2.0). Or paste MCNP SI/SP cards.'}),
         F('text', 'tab_p', 'Probabilities', {show:en('tabulated'), hint:'Bin weights or relative probabilities (N-1 values for N edges).'}),
@@ -2356,12 +2509,18 @@ function specFor(kind, o) {
   }
   if (kind === 'tally') {
     const mesh = () => o.kind === 'mesh';
+    const surf = () => o.kind === 'surface';
     const cellOpts = () => S.parts.map(p => [p.id, p.name]).concat([['world', 'World']]);
+    const partOpts = () => S.parts.map(p => [p.id, p.name]);
+    const matOpts = () => [['', 'None (all materials)'], ...S.materials.map(m => [m.id, m.name])];
     const isDet = () => o.detector && o.detector !== 'none';
     return [
       {title:'Tally', fields:[F('text', 'name', 'Name'),
-        F('select', 'kind', 'Filter', {options:() => [['cell', 'Cells (like F4)'], ['mesh', 'Regular mesh (like FMESH)']]}),
-        F('multi', 'cells', 'Cells', {options:cellOpts, show:() => !mesh()}),
+        F('select', 'kind', 'Filter', {options:() => [['cell', 'Cells (like F4)'], ['mesh', 'Regular mesh (like FMESH)'], ['surface', 'Surfaces (like F1 current)']]}),
+        F('select', 'particle', 'Particle', {options:() => [['all', 'All particles'], ['neutron', 'Neutrons only'], ['photon', 'Photons only']], show:() => S.settings.photon, hint:'Filter tally to neutrons or photons.'}),
+        F('multi', 'cells', 'Cells', {options:cellOpts, show:() => !mesh() && !surf()}),
+        F('multi', 'surfaces', 'Surfaces', {options:partOpts, show:surf, hint:'Surfaces bounding selected parts.'}),
+        F('select', 'materialFilter', 'Material filter', {options:matOpts, show:() => !mesh(), hint:'Optionally filter reactions/flux to a specific material across cells.'}),
         F('vec', null, 'Bins', {keys:['nx', 'ny', 'nz'], int:true, show:mesh}),
         F('vec', null, 'Lower corner', {keys:['lx', 'ly', 'lz'], unit:'cm', show:mesh}),
         F('vec', null, 'Upper corner', {keys:['ux', 'uy', 'uz'], unit:'cm', show:mesh}),
@@ -2376,7 +2535,30 @@ function specFor(kind, o) {
           ['custom', 'Custom material & reaction']
         ]}),
         F('select', 'responseMat', 'Detector material', {
-          options: () => S.materials.map(m => [m.id, m.name]),
+          options: () => {
+            const det = resolveDetector(o);
+            const autoMat = matById(det.respMatId);
+            const autoLabel = autoMat ? `Auto (${autoMat.name})` : 'Auto (none found)';
+            return [['', autoLabel], ...S.materials.map(m => [m.id, m.name])];
+          },
+          show: isDet,
+          hint: () => {
+            const det = resolveDetector(o);
+            if (!det.respMatId && o.responseScale === 'macro') {
+              return 'Warning: Macroscopic scaling requires a detector material with atom densities in the model.';
+            }
+            return o.detector === 'custom' ? 'Select material whose composition defines the detector medium.' : 'Detected automatically from model materials or override with a specific material.';
+          }
+        }),
+        F('select', 'responseNuc', 'Target nuclide', {
+          options: () => {
+            const det = resolveDetector(o);
+            const mat = matById(det.respMatId);
+            const nucs = mat && mat.comps ? mat.comps.split(',').map(s => s.split(':')[0].trim()).filter(Boolean) : [];
+            const list = [['all', 'All applicable in material (Σ = Σ_i N_i · σ_i)'], ...nucs.map(n => [n, n])];
+            if (nucs.length === 0) list.push(['B10', 'B10'], ['He3', 'He3'], ['U235', 'U235']);
+            return list;
+          },
           show: () => o.detector === 'custom'
         }),
         F('select', 'responseScore', 'Reaction score', {
@@ -2396,7 +2578,7 @@ function specFor(kind, o) {
     return [{title:'World boundary', fields:[
       F('select', 'worldShape', 'Shape', {options:() => [['box', 'Cube'], ['sphere', 'Sphere']]}),
       F('num', 'worldR', st.worldShape === 'box' ? 'Half-width' : 'Radius', {unit:'cm'}),
-      F('select', 'worldBC', 'Boundary', {options:() => [['vacuum', 'Vacuum (particles escape)'], ['reflective', 'Reflective']]}),
+      F('select', 'worldBC', 'Boundary', {options:() => [['vacuum', 'Vacuum (particles escape)'], ['reflective', 'Reflective (specular)'], ['periodic', 'Periodic (paired opposite faces)'], ['white', 'White (isotropic return)']]}),
       F('material', 'worldFill', 'Fill', {hint:'What fills the world outside every part. Vacuum boundary is the IMP:N=0 graveyard in MCNP.'})
     ]}];
   }
@@ -2407,7 +2589,14 @@ function specFor(kind, o) {
       F('int', 'particles', 'Particles', {unit:'per batch'}),
       F('int', 'batches', 'Batches'),
       F('int', 'inactive', 'Inactive', {show:() => st.runMode === 'eigenvalue', hint:'Batches discarded while the fission source converges, like the skipped cycles in KCODE.'}),
-      F('check', 'photon', 'Photons', {text:'Transport photons'})
+      F('check', 'photon', 'Photons', {text:'Transport photons'}),
+      F('num', 'photonCutoff', 'Photon cutoff', {unit:'eV', show:() => st.photon, hint:'Energy cutoff below which photons are killed (default 1000 eV = 1 keV).'}),
+      F('check', 'entropyMesh', 'Shannon entropy', {show:() => st.runMode === 'eigenvalue', text:'Calculate Shannon entropy mesh', hint:'Assess fission source spatial convergence across batches.'}),
+      F('vec', null, 'Entropy bins', {keys:['entropyNx', 'entropyNy', 'entropyNz'], int:true, show:() => st.runMode === 'eigenvalue' && st.entropyMesh})
+    ]},
+    {title:'Temperature', fields:[
+      F('num', 'temperatureDefault', 'Default temperature', {unit:'K', hint:'Global default temperature for Doppler broadening when materials do not specify one.'}),
+      F('select', 'temperatureMethod', 'Interpolation method', {options:() => [['interpolation', 'Interpolation (stochastic)'], ['nearest', 'Nearest']], hint:'Cross section temperature treatment method.'})
     ]},
     {title:'Random numbers', fields:[
       F('seed', 'seed', 'Seed', {hint:'Same seed and same model give the same particle histories, so a run can be repeated exactly.'})
@@ -2503,7 +2692,15 @@ function fieldEl(f, obj) {
     case 'select': {
       const s = document.createElement('select'); s.id = fid;
       f.options().forEach(([v, t]) => s.add(new Option(t, v, false, String(obj[f.key]) === String(v))));
-      s.addEventListener('change', () => { obj[f.key] = s.value; renderProps(); schedule(); const again = document.getElementById(fid); if (again) again.focus(); });
+      s.addEventListener('change', () => {
+        obj[f.key] = s.value;
+        if (f.key === 'detector') {
+          if (s.value === 'b10') { obj.responseScore = '(n,a)'; obj.responseNuc = 'B10'; }
+          else if (s.value === 'he3') { obj.responseScore = '(n,p)'; obj.responseNuc = 'He3'; }
+          else if (s.value === 'custom') { obj.responseScore = obj.responseScore || '(n,p)'; obj.responseNuc = obj.responseNuc || 'all'; }
+        }
+        renderProps(); schedule(); const again = document.getElementById(fid); if (again) again.focus();
+      });
       ctl.appendChild(s); break;
     }
     case 'color': {
@@ -2670,12 +2867,100 @@ async function loadResults(id, switchTab) {
 }
 const relClass = r => r === null ? '' : r < 0.1 ? 'rel-ok' : r < 0.5 ? 'rel-q' : 'rel-bad';
 const sci = v => v === 0 ? '0' : Math.abs(v) >= 1e-2 && Math.abs(v) < 1e4 ? (+v.toPrecision(4)).toString() : v.toExponential(3);
+function renderKeffChart(s) {
+  if (!s || !s.k_generation || !s.k_generation.length) return '';
+  const kg = s.k_generation, n = kg.length;
+  const inact = s.inactive || 0;
+  const w = 540, h = 170, padL = 50, padR = 20, padT = 20, padB = 30;
+  const pw = w - padL - padR, ph = h - padT - padB;
+  let minK = Math.min(...kg), maxK = Math.max(...kg);
+  if (s.keff) { minK = Math.min(minK, s.keff[0] - s.keff[1]); maxK = Math.max(maxK, s.keff[0] + s.keff[1]); }
+  const span = (maxK - minK) || 0.05;
+  minK -= span * 0.08; maxK += span * 0.08;
+  const x = i => padL + (n > 1 ? (i / (n - 1)) * pw : pw / 2);
+  const y = k => padT + ph - ((k - minK) / (maxK - minK)) * ph;
+
+  let inactRect = '';
+  if (inact > 0 && inact < n) {
+    const xInact = x(inact - 1);
+    inactRect = `<rect x="${padL}" y="${padT}" width="${xInact - padL}" height="${ph}" fill="rgba(255,255,255,0.04)" stroke="none"/>` +
+      `<line x1="${xInact}" y1="${padT}" x2="${xInact}" y2="${padT + ph}" stroke="#e27d60" stroke-dasharray="3,3" stroke-width="1.5"/>` +
+      `<text x="${xInact - 4}" y="${padT + 12}" fill="#e27d60" font-size="10" text-anchor="end" font-family="sans-serif">Inactive (${inact})</text>` +
+      `<text x="${xInact + 4}" y="${padT + 12}" fill="#85dcba" font-size="10" text-anchor="start" font-family="sans-serif">Active</text>`;
+  }
+
+  let meanLine = '', bandRect = '';
+  if (s.keff) {
+    const yMean = y(s.keff[0]);
+    const yLo = y(s.keff[0] - s.keff[1]), yHi = y(s.keff[0] + s.keff[1]);
+    bandRect = `<rect x="${padL}" y="${Math.min(yLo, yHi)}" width="${pw}" height="${Math.abs(yLo - yHi)}" fill="rgba(65,179,163,0.15)" stroke="none"/>`;
+    meanLine = `<line x1="${padL}" y1="${yMean}" x2="${padL + pw}" y2="${yMean}" stroke="#41b3a3" stroke-dasharray="4,4" stroke-width="1.5"/>` +
+      `<text x="${padL + pw - 4}" y="${yMean - 4}" fill="#41b3a3" font-size="10" text-anchor="end" font-family="sans-serif">k = ${s.keff[0].toFixed(5)} ± ${s.keff[1].toFixed(5)}</text>`;
+  }
+
+  const pts = kg.map((k, i) => `${x(i).toFixed(1)},${y(k).toFixed(1)}`).join(' ');
+  const dots = kg.map((k, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(k).toFixed(1)}" r="2.5" fill="${i < inact ? '#e27d60' : '#41b3a3'}"><title>Batch ${i + 1}: k = ${k.toFixed(5)}</title></circle>`).join('');
+
+  const yTicks = [minK, (minK + maxK) / 2, maxK].map(val => {
+    const py = y(val);
+    return `<line x1="${padL - 4}" y1="${py}" x2="${padL}" y2="${py}" stroke="#666"/>` +
+      `<text x="${padL - 6}" y="${py + 3}" fill="#888" font-size="9" text-anchor="end" font-family="sans-serif">${val.toFixed(4)}</text>`;
+  }).join('');
+
+  const xTicks = [0, Math.floor(n / 2), n - 1].map(i => {
+    const px = x(i);
+    return `<line x1="${px}" y1="${padT + ph}" x2="${px}" y2="${padT + ph + 4}" stroke="#666"/>` +
+      `<text x="${px}" y="${padT + ph + 15}" fill="#888" font-size="9" text-anchor="middle" font-family="sans-serif">Batch ${i + 1}</text>`;
+  }).join('');
+
+  let entropySvg = '';
+  if (s.entropy && s.entropy.length > 0) {
+    const eh = s.entropy;
+    let minH = Math.min(...eh), maxH = Math.max(...eh);
+    const hSpan = (maxH - minH) || 0.1;
+    minH -= hSpan * 0.08; maxH += hSpan * 0.08;
+    const yH = val => padT + ph - ((val - minH) / (maxH - minH)) * ph;
+    const hPts = eh.map((v, i) => `${x(i).toFixed(1)},${yH(v).toFixed(1)}`).join(' ');
+    const hDots = eh.map((v, i) => `<circle cx="${x(i).toFixed(1)}" cy="${yH(v).toFixed(1)}" r="2" fill="#c38d9e"><title>Batch ${i + 1}: H = ${v.toFixed(4)}</title></circle>`).join('');
+    const hTicks = [minH, maxH].map(val => {
+      const py = yH(val);
+      return `<text x="${padL - 6}" y="${py + 3}" fill="#c38d9e" font-size="9" text-anchor="end" font-family="sans-serif">${val.toFixed(3)}</text>`;
+    }).join('');
+
+    entropySvg = `<h5 style="margin:12px 0 4px;font-size:12px;color:#c38d9e">Shannon Entropy (Fission Source Convergence)</h5>` +
+      `<svg width="100%" height="150" viewBox="0 0 ${w} 150" style="background:rgba(0,0,0,0.25);border-radius:4px;display:block">` +
+      inactRect +
+      `<line x1="${padL}" y1="${padT + ph}" x2="${padL + pw}" y2="${padT + ph}" stroke="#555"/>` +
+      `<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + ph}" stroke="#555"/>` +
+      hTicks + xTicks +
+      `<polyline points="${hPts}" fill="none" stroke="#c38d9e" stroke-width="1.8"/>` +
+      hDots +
+      `</svg>`;
+  }
+
+  return `<div class="keff-chart" style="margin:12px 0">` +
+    `<h5 style="margin:0 0 6px;font-size:12px;color:#85dcba">Eigenvalue Convergence (k_eff by batch)</h5>` +
+    `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" style="background:rgba(0,0,0,0.25);border-radius:4px;display:block">` +
+    inactRect + bandRect + meanLine +
+    `<line x1="${padL}" y1="${padT + ph}" x2="${padL + pw}" y2="${padT + ph}" stroke="#555"/>` +
+    `<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + ph}" stroke="#555"/>` +
+    yTicks + xTicks +
+    `<polyline points="${pts}" fill="none" stroke="#e8a87c" stroke-width="1.8"/>` +
+    dots +
+    `</svg>` +
+    entropySvg +
+    `</div>`;
+}
+
 function renderResults() {
   const box = $('#results'), R = LOCAL.results;
   if (!R) { box.innerHTML = '<p class="envline">Run the model to see tallies here. Past runs are under Runs.</p>'; $('#layers').hidden = true; return; }
   const s = R.summary || {};
   let h = `<h4>Run ${esc(LOCAL.resultsRun)}</h4><p class="envline">${esc(s.run_mode || '')} · ${s.particles?.toLocaleString?.() ?? '?'} × ${s.batches ?? '?'} batches · seed ${s.seed ?? '?'} · ${s.runtime_s ? s.runtime_s.toFixed(1) + ' s' : ''}` +
     (s.keff ? ` · k-eff ${s.keff[0].toFixed(5)} ± ${s.keff[1].toFixed(5)}` : '') + `</p>`;
+  if (s.k_generation && s.k_generation.length) {
+    h += renderKeffChart(s);
+  }
   R.tallies.forEach(t => {
     if (t.kind === 'table') {
       const nl = t.rows[0]?.labels.length || 0;
@@ -3986,7 +4271,7 @@ uniform float uTMax;
 out vec4 fragColor;
 
 const float BIG = 1e9;
-const int MAX_CAND = 96;
+const int MAX_CAND = 128;
 
 vec4 miss(vec3 bg) { return uDepth > 0.5 ? vec4(1.0) : vec4(bg, 1.0); }
 
@@ -4219,14 +4504,16 @@ void main() {
 
   vec3 invRd = 1.0 / (rd + vec3(equal(rd, vec3(0.0))) * 1e-12);
 
-  // Traverse BVH using integer stack
+  // Traverse BVH using integer stack and filter by actual primitive intersection
   int candParts[MAX_CAND];
+  float T0[MAX_CAND]; float T1[MAX_CAND]; vec3 N0[MAX_CAND]; vec3 N1[MAX_CAND];
   int numCand = 0;
+  bool overflow = false;
   int stack[64];
   int stackPtr = 0;
   stack[stackPtr++] = uBvhRoot;
 
-  while (stackPtr > 0 && numCand < MAX_CAND) {
+  while (stackPtr > 0) {
     int nodeIdx = stack[--stackPtr];
     if (nodeIdx < 0) continue;
     vec4 n0 = fetchTex1D(uBvhTex, 2 * nodeIdx, uBvhTexW);
@@ -4236,7 +4523,24 @@ void main() {
     if (n1.w < -0.5) { // Leaf node
       int pIdx = int(n0.w + 0.5);
       if (pIdx >= 0 && pIdx < uN) {
-        candParts[numCand++] = pIdx;
+        vec4 cType = fetchTex1D(uPartTex, 4 * pIdx, uPartTexW);
+        vec4 m0 = fetchTex1D(uPartTex, 4 * pIdx + 1, uPartTexW);
+        vec4 m1 = fetchTex1D(uPartTex, 4 * pIdx + 2, uPartTexW);
+        vec4 dCol = fetchTex1D(uPartTex, 4 * pIdx + 3, uPartTexW);
+        vec3 m2 = cross(m0.xyz, m1.xyz);
+        float a0, a1; vec3 b0, b1;
+        if (intersectPart(cType.xyz, m0.xyz, m1.xyz, m2, dCol.xyz, cType.w, ro, rd, a0, a1, b0, b1)) {
+          if (a1 > tA + 1e-6 && a0 < tB - 1e-6) {
+            if (numCand < MAX_CAND) {
+              candParts[numCand] = pIdx;
+              T0[numCand] = a0; T1[numCand] = a1;
+              N0[numCand] = b0; N1[numCand] = b1;
+              numCand++;
+            } else {
+              overflow = true;
+            }
+          }
+        }
       }
     } else { // Internal node
       int lChild = int(n0.w + 0.5);
@@ -4246,36 +4550,27 @@ void main() {
     }
   }
 
-  if (numCand == 0) { fragColor = miss(bg); return; }
+  if (numCand == 0) {
+    fragColor = (overflow && uDepth <= 0.5) ? vec4(mix(bg, vec3(1.0, 0.35, 0.85), 0.45), 1.0) : miss(bg);
+    return;
+  }
 
   // Sort candidate parts by part index ascending (model CSG priority) using insertion sort
   for (int i = 1; i < MAX_CAND; i++) {
     if (i >= numCand) break;
     int key = candParts[i];
+    float keyT0 = T0[i], keyT1 = T1[i];
+    vec3 keyN0 = N0[i], keyN1 = N1[i];
     int j = i - 1;
     while (j >= 0 && candParts[j] > key) {
       candParts[j + 1] = candParts[j];
+      T0[j + 1] = T0[j]; T1[j + 1] = T1[j];
+      N0[j + 1] = N0[j]; N1[j + 1] = N1[j];
       j--;
     }
     candParts[j + 1] = key;
-  }
-
-  // Intersect candidate parts
-  float T0[MAX_CAND]; float T1[MAX_CAND]; vec3 N0[MAX_CAND]; vec3 N1[MAX_CAND];
-  for (int i = 0; i < MAX_CAND; i++) {
-    if (i >= numCand) break;
-    int pIdx = candParts[i];
-    vec4 cType = fetchTex1D(uPartTex, 4 * pIdx, uPartTexW);
-    vec4 m0 = fetchTex1D(uPartTex, 4 * pIdx + 1, uPartTexW);
-    vec4 m1 = fetchTex1D(uPartTex, 4 * pIdx + 2, uPartTexW);
-    vec4 dCol = fetchTex1D(uPartTex, 4 * pIdx + 3, uPartTexW);
-    vec3 m2 = cross(m0.xyz, m1.xyz);
-    float a0, a1; vec3 b0, b1;
-    if (intersectPart(cType.xyz, m0.xyz, m1.xyz, m2, dCol.xyz, cType.w, ro, rd, a0, a1, b0, b1)) {
-      T0[i] = a0; T1[i] = a1; N0[i] = b0; N1[i] = b1;
-    } else {
-      T0[i] = BIG; T1[i] = -BIG;
-    }
+    T0[j + 1] = keyT0; T1[j + 1] = keyT1;
+    N0[j + 1] = keyN0; N1[j + 1] = keyN1;
   }
 
   // Segment ray through candidate parts (exact CSG priority)
@@ -4314,13 +4609,14 @@ void main() {
         vec3 col = colRgb * lam;
         if (fromCut > 0.5) col = colRgb * 0.82 + 0.05;
         if (alphaFlag > 1.5) col = mix(col, vec3(0.32, 0.72, 1.0), 0.28);
+        if (overflow) col = mix(col, vec3(1.0, 0.35, 0.85), 0.45);
         fragColor = vec4(col, 1.0);
         return;
       }
     }
     tc = tn; nc = nn; fromCut = 0.0;
   }
-  fragColor = miss(bg);
+  fragColor = (overflow && uDepth <= 0.5) ? vec4(mix(bg, vec3(1.0, 0.35, 0.85), 0.45), 1.0) : miss(bg);
 }`;
 
 function v3init() {
@@ -4692,7 +4988,23 @@ function pick3(px, py) {
     }
     if (enter > exit) continue;
     if (nd.isLeaf) {
-      if (nd.partIdx >= 0 && nd.partIdx < S.parts.length) cand.push(nd.partIdx);
+      if (nd.partIdx >= 0 && nd.partIdx < S.parts.length) {
+        const p = S.parts[nd.partIdx];
+        const q = partUniform(p), o = v3sub(ro, q.c), lo = q.cols.map(m => v3dot(o, m)), ld = q.cols.map(m => v3dot(rd, m)), d = q.dims;
+        let hit = false;
+        if (q.type === 0) { const b = v3dot(lo, ld), disc = b * b - (v3dot(lo, lo) - d[0] * d[0]); if (disc >= 0) { const t0 = -b - Math.sqrt(disc), t1 = -b + Math.sqrt(disc); if (t1 > tA + 1e-6 && t0 < tB - 1e-6) hit = true; } }
+        else if (q.type === 1) {
+          let t0 = -Infinity, t1 = Infinity;
+          for (let k = 0; k < 3; k++) {
+            if (Math.abs(ld[k]) < 1e-12) { if (Math.abs(lo[k]) > d[k]) { t0 = Infinity; break; } }
+            else { const a = (-d[k] - lo[k]) / ld[k], b = (d[k] - lo[k]) / ld[k]; t0 = Math.max(t0, Math.min(a, b)); t1 = Math.min(t1, Math.max(a, b)); }
+          }
+          if (t0 <= t1 && t1 > tA + 1e-6 && t0 < tB - 1e-6) hit = true;
+        } else {
+          hit = true;
+        }
+        if (hit) cand.push(nd.partIdx);
+      }
     } else {
       if (nd.right >= 0) stack.push(nd.right);
       if (nd.left >= 0) stack.push(nd.left);

@@ -38,14 +38,30 @@ def load(run_dir):
             summary = {"run_mode": sp.run_mode, "batches": int(sp.n_batches), "particles": int(sp.n_particles),
                        "seed": int(sp.seed), "runtime_s": _num(sp.runtime.get("total", float("nan"))),
                        "statepoint": os.path.basename(sps[-1])}
-            if sp.run_mode == "eigenvalue" and sp.keff is not None:
-                summary["keff"] = [_num(sp.keff.nominal_value), _num(sp.keff.std_dev)]
+            if sp.run_mode == "eigenvalue":
+                summary["inactive"] = int(sp.n_inactive) if hasattr(sp, "n_inactive") else 0
+                if sp.keff is not None:
+                    summary["keff"] = [_num(sp.keff.nominal_value), _num(sp.keff.std_dev)]
+                if getattr(sp, "k_generation", None) is not None:
+                    summary["k_generation"] = [float(k) for k in sp.k_generation]
+                if getattr(sp, "entropy", None) is not None and len(sp.entropy) > 0:
+                    summary["entropy"] = [float(h) for h in sp.entropy]
+                if getattr(sp, "k_combined", None) is not None:
+                    kc = sp.k_combined
+                    nom = getattr(kc, "nominal_value", None)
+                    std = getattr(kc, "std_dev", None)
+                    if nom is None and isinstance(kc, (list, tuple)) and len(kc) >= 2:
+                        nom, std = kc[0], kc[1]
+                    summary["k_combined"] = [_num(nom), _num(std)]
             out["summary"] = summary
             cell_names = {}
+            mat_names = {}
             if sp.summary is not None:
                 cell_names = {c.id: (c.name or f"cell {c.id}") for c in sp.summary.geometry.get_all_cells().values()}
+                if hasattr(sp.summary, "materials") and sp.summary.materials is not None:
+                    mat_names = {m.id: (m.name or f"mat {m.id}") for m in sp.summary.materials}
             for t in sp.tallies.values():
-                out["tallies"].append(_tally(t, cell_names, openmc))
+                out["tallies"].append(_tally(t, cell_names, mat_names, openmc))
 
     tpath = os.path.join(run_dir, "tracks.h5")
     if os.path.exists(tpath):
@@ -53,7 +69,7 @@ def load(run_dir):
     return out
 
 
-def _tally(t, cell_names, openmc):
+def _tally(t, cell_names, mat_names, openmc):
     mean, std = t.mean, t.std_dev  # (filter bins, nuclides, scores); last filter varies fastest
     scores = list(t.scores)
     mesh_f = next((f for f in t.filters if isinstance(f, openmc.MeshFilter)), None)
@@ -91,6 +107,12 @@ def _tally(t, cell_names, openmc):
             labels_per_filter.append([cell_names.get(int(b), f"cell {int(b)}") for b in f.bins])
         elif isinstance(f, openmc.EnergyFilter):
             labels_per_filter.append([_energy_label(lo, hi) for lo, hi in f.bins])
+        elif isinstance(f, openmc.ParticleFilter):
+            labels_per_filter.append([str(b) for b in f.bins])
+        elif isinstance(f, openmc.MaterialFilter):
+            labels_per_filter.append([mat_names.get(int(b), f"material {int(b)}") for b in f.bins])
+        elif isinstance(f, openmc.SurfaceFilter):
+            labels_per_filter.append([f"surface {int(b)}" for b in f.bins])
         elif isinstance(f, openmc.EnergyFunctionFilter):
             labels_per_filter.append(["response"])
         elif hasattr(f, "bins"):

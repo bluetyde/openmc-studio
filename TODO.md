@@ -16,8 +16,12 @@ and the MCNP lattice work; fixes listed under Completed).
     `(unit < latcell[i j k] < filled cell)` bins (manual p. 452-455). The validator follows each bin through
     the lattice cards and compares it with the OpenMC instance point by point. Still to prove in real MCNP
     like the lattices themselves: compare a short run of `rect_tally_mcnp` against OpenMC.
-- **Surface current tallies in MCNP**: OpenMC counts the current leaving the chosen parts; MCNP F1 counts
-  crossings anywhere on a surface. Needs FS segmenting or per-part surfaces; the export refuses it now.
+- **Surface current tallies in MCNP**: done as one F1 + `C 0 1` + `FS` tally per (surface, part) bin; the
+  validator checks each FS face and direction against OpenMC at points on the surface. Still open:
+  - prove it in real MCNP: run `current_box_mcnp` and compare the FC-tagged bins with OpenMC's t_block;
+  - fold the bin and sign into one number with `CM` cosine multipliers (p. 472) once that's confirmed;
+  - Problems could warn when a surface tally ticks a part carved out of another ticked part (the export
+    refuses it, since OpenMC then counts crossings of the whole surface inside the outer part).
 - **He-3 reaction**: confirm with the course which reaction is meant. The pre-lab names (n,alpha) and
   (n,2alpha), MT 107/108, but ENDF/B-VIII.0 He-3 has neither; Studio uses MT 103, He-3(n,p)T.
 - **PuBe spectrum**: the pile uses a Maxwell stand-in (T = 2.8 MeV). Paste the course's starter SI/SP
@@ -54,6 +58,8 @@ and the MCNP lattice work; fixes listed under Completed).
   - Expand source export beyond the single-source restriction (`len(sources) > 1`) to support multiple distributed sources (e.g. reactor core + external PuBe startup source + background).
 - **Tally Segmenting Cards (`FS`)**:
   - Geometric segmentation of cell and surface tallies using secondary dividing surfaces (manual §10.2.4, Examples 33 & 34).
+  - The exporter already writes FS for surface currents (to cut a surface down to one part's face); a
+    user-facing segmented tally is still to do.
 
 ### 2. Package: Reactor Physics & Core Safety
 - **Automated Reactivity Coefficient Sweeps**:
@@ -223,7 +229,6 @@ and the MCNP lattice work; fixes listed under Completed).
 - Absorption can't be exported for actinide materials (MontePy can't parse `FM ... -2:-6`).
 - Mesh tallies export flux only (`FMESH`, reaction rate mesh tallies not exported).
 - The geometry check follows universes and LAT=1 / LAT=2 lattices, but not TRCL or rotated fills.
-- Surface current tallies aren't exported.
 - Special tally treatment cards (`FT` cards) are not exported: capture multiplicity (`FT CAP`), residual nuclei (`FT RES`), ROC curve discrimination (`FT ROC`), surface normal redefinition (`FT FRV`), cell-partitioned detector tallies (`FT ICD`), or charge-separated current (`FT ELC`) (manual §10.2.5).
 - Embedded unstructured meshes (`EMBED` card for Abaqus/HDF5 finite-element meshes inside CSG cells; manual §10.1.4) are not supported.
 - User-compiled Fortran subroutines (`TALLYX`, `SOURCE`, `SRCDX`; manual §10.2.8 & §10.3.4) cannot be generated or executed from CSG/Python models.

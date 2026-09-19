@@ -115,9 +115,9 @@ hexagonal rings. With **RectLattice** / **HexLattice** ticked (later: the array 
   - A hexagonal array becomes MCNP `LAT=2`: a hexagonal prism element with its 8 faces in the manual's
     order, and a FILL list over the rings (sites outside the rings are the surrounding material).
 - **Cell tallies on parts inside a lattice work in model.py.** Such a part has no cell of its own, so its
-  tally bin is the lattice's unit cell in that part's element (`openmc.CellInstanceFilter`). The MCNP export
-  doesn't write these bins yet (it will be `(cell < lattice[i j k] < cell)`), so model.mcnp shows an error
-  for such a tally. Use a mesh tally meanwhile.
+  tally bin is the lattice's unit cell in that part's element (`openmc.CellInstanceFilter`). In model.mcnp
+  each bin is a path through the lattice, `(unit cell < lattice cell[i j k] < filled cell)` (manual
+  p. 452-455), and the export checks that each path holds the same points as its OpenMC bin.
 - **A lattice's box has to sit inside one other part (or the world) that nothing else overlaps**, because
   the box is filled with that part's material. A cell tally on that surrounding part also isn't allowed,
   since in lattice form it would miss the space between the array's parts. If either rule is broken, the

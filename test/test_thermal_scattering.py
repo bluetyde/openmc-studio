@@ -97,7 +97,8 @@ def test_thermal_scattering_physics():
 
 def test_mcnp_mt_export():
     print("\n--- 2. Testing MCNP Exporter MT Card Generation ---")
-    exporter_path = os.path.expanduser("~/agents/antigravity/openmc-mcnp-project/src")
+    # the exporter the server would use: OPENMC_MCNP_PROJECT, else ~/openmc-mcnp-project
+    exporter_path = os.path.join(os.path.expanduser(os.environ.get("OPENMC_MCNP_PROJECT", "~/openmc-mcnp-project")), "src")
     if exporter_path not in sys.path:
         sys.path.insert(0, exporter_path)
         

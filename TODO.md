@@ -12,9 +12,10 @@ and the MCNP lattice work; fixes listed under Completed).
   - Still open: prove it once in real MCNP. Plot the pile deck and a hex deck with lattice index labels
     (manual p. 290), or compare short runs against the cell-by-cell decks.
   - **RPP Macrobody Element**: Represent the `LAT=1` base element cell using a single `RPP` macrobody card instead of 6 individual `PX/PY/PZ` planes (improves deck readability and matches human-written deck conventions; requires adding `RPP` support to `geometry_check.py`).
-  - Cell tallies on parts inside a lattice: done in model.py (CellInstanceFilter). **MCNP export still to
-    do**: write each bin as `(unit < latcell[i j k] < filled cell)` (manual p. 452-455) from OpenMC's
-    distribcell paths. openmc-mcnp-project refuses CellInstanceFilter tallies until then.
+  - Cell tallies on parts inside a lattice: done in model.py (CellInstanceFilter) and in model.mcnp as
+    `(unit < latcell[i j k] < filled cell)` bins (manual p. 452-455). The validator follows each bin through
+    the lattice cards and compares it with the OpenMC instance point by point. Still to prove in real MCNP
+    like the lattices themselves: compare a short run of `rect_tally_mcnp` against OpenMC.
 - **Surface current tallies in MCNP**: OpenMC counts the current leaving the chosen parts; MCNP F1 counts
   crossings anywhere on a surface. Needs FS segmenting or per-part surfaces; the export refuses it now.
 - **He-3 reaction**: confirm with the course which reaction is meant. The pre-lab names (n,alpha) and

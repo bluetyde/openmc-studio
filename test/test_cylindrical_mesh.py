@@ -1,4 +1,5 @@
 import unittest
+import tempfile
 import numpy as np
 import openmc
 import sys
@@ -43,10 +44,9 @@ class TestCylindricalMesh(unittest.TestCase):
         settings.source = openmc.IndependentSource(space=openmc.stats.Point((0, 0, 0)))
 
         model = openmc.Model(geometry=geom, materials=materials, settings=settings, tallies=tallies)
-        sp_path = model.run(output=False)
-
-        try:
-            res = results.load('.')
+        with tempfile.TemporaryDirectory(prefix='studio_test_') as run_dir:
+            model.run(output=False, cwd=run_dir)
+            res = results.load(run_dir)
             t_data = next((t for t in res["tallies"] if t["name"] == "cyl_flux_tally"), None)
             self.assertIsNotNone(t_data, "Cylindrical tally data should be extracted")
             self.assertEqual(t_data["kind"], "mesh")
@@ -59,11 +59,6 @@ class TestCylindricalMesh(unittest.TestCase):
             self.assertEqual(len(t_data["values"]["flux"]), 3 * 2 * 2)
             # Ensure non-zero values were recorded
             self.assertTrue(any(v > 0 for v in t_data["values"]["flux"]))
-        finally:
-            for p in Path('.').glob('*.h5'):
-                p.unlink(missing_ok=True)
-            for p in Path('.').glob('*.xml'):
-                p.unlink(missing_ok=True)
 
 if __name__ == '__main__':
     unittest.main()

@@ -58,10 +58,9 @@ and the MCNP lattice work; fixes listed under Completed).
   - **Critical Mass / Dimension Search**: Binary search routine for critical radius, enrichment, or soluble boron concentration to achieve $k_{\text{eff}} = 1.00000$.
 - **Point Kinetics Parameters via Iterated Fission Probability (IFP)**:
   - Calculation and dashboard display of effective delayed neutron fraction $\beta_{\text{eff}}$, delayed group precursors $(\beta_i, \lambda_i)$, and prompt neutron lifetime $\ell_p$ / generation time $\Lambda$.
-- **Thermal Scattering Tables $S(\alpha, \beta)$**:
-  - Material inspector selector and automatic composition suggestion for `c_H_in_H2O`, `c_H_in_polyethylene`, `c_Graphite`, `c_D_in_D2O`, `c_Be` with MCNP `MT` cards.
 - **Core Depletion & Fuel Burnup (`openmc.deplete`)**:
   - Power history (MW), depletion timesteps (EFPD / MWd/kgHM), and interactive evolution curves for $k_{\text{eff}}$, U-235 consumption, Pu-239 breeding, and fission product equilibrium (Xe-135, Sm-149).
+
 
 ### 3. Package: Radiation Protection & Detection Lab
 - **Pulse Height Multichannel Analyzer (MCA) Spectrum (`openmc.PulseHeightFilter`)**:
@@ -146,6 +145,13 @@ and the MCNP lattice work; fixes listed under Completed).
   - Analytical ray-ellipsoid quadratic intersection in WebGL 2 raymarching fragment shader (`ty == 6`).
   - Exact CPU ray picking and 2D canvas slice cross-section rendering.
   - MCNP: MCNPy translates the openmc.Quadric like other quadrics (not checked separately for ellipsoids).
+- **Thermal Neutron Scattering $S(\alpha, \beta)$ Integration**:
+  - Full catalog of all 34 ENDF/B-VIII.0 thermal scattering tables with descriptions and MCNP SABID tags.
+  - Material Inspector UI with smart dropdown, heuristic "Auto" suggest button, and custom text fallback.
+  - Live MCNP Material preview (`M<n>` + companion `MT<n>`) in properties inspector.
+  - Model script generation (`mat.add_s_alpha_beta`) and MCNP exporter expansion (`SAB_MCNP_MAP`).
+  - Multi-SAB grouping on a single space-separated `MT<m>` card in `remediate_deck.py` per MCNP 6.3 Manual §5.6.2.
+
 
 - **Coupled Neutron-Photon Transport**:
   - Toggle `settings.photon_transport = True`, energy cutoff (`settings.cutoff = {'energy_photon': ...}`), source particle selection (`neutron`/`photon`), and tally particle filters (`openmc.ParticleFilter`).

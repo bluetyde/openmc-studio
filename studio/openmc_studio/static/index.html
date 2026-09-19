@@ -3744,7 +3744,7 @@ function annotateMcnp(deck, ctx, editable) {
         if (d.kind === 'plane') return (T === 'P' && c === 3) || (/^P[XYZ]$/.test(T) && c === 0) ? {t:'plane', ax:d.ax, value:d.value} : null;
         if (d.kind === 'gplane') return T === 'P' && c === 3 ? {t:'gplane', n:d.n, value:d.value} : null;
         if (d.kind === 'sphere') {
-          const which = T === 'SO' ? ['r'][c] : T === 'S' ? ['x', 'y', 'z', 'r'][c] : null;
+          const which = T === 'SO' ? ['r'][c] : (T === 'S' || T === 'SPH') ? ['x', 'y', 'z', 'r'][c] : null;
           return which ? {t:'sphere', x:d.x, y:d.y, z:d.z, r:d.r, which} : null;
         }
         if (d.kind === 'cyl') {

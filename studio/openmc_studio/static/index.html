@@ -3573,6 +3573,13 @@ function annotateMcnp(deck, ctx, editable) {
       if ((m = H.match(/^E(\d+)$/))) { const t = ctx.tallyScores[(+m[1] - 4) / 10]; return t ? {t:'ebin', obj:t, index:n + 1} : null; }
       if ((m = H.match(/^FMESH(\d+)/))) {
         const t = ctx.tallyScores[(+m[1] - 4) / 10]; if (!t) return null;
+        if (t.meshGeom === 'cylindrical') {
+          // ORIGIN.z, radial/axial/angular endpoints and axes can be derived or
+          // repeated grid values. Keep them read-only rather than editing a wrong field.
+          if (kw === 'ORIGIN' && kwIndex < 2) return fieldRef(t, ['ox', 'oy'][kwIndex]);
+          const key = {IINTS:'nr', JINTS:'nz', KINTS:'nphi'}[kw];
+          return key && kwIndex === 0 ? fieldRef(t, key, {int:true}) : null;
+        }
         const map = {ORIGIN:['lx', 'ly', 'lz'], IMESH:['ux'], JMESH:['uy'], KMESH:['uz'], IINTS:['nx'], JINTS:['ny'], KINTS:['nz']};
         if (kw === 'EMESH') return {t:'ebin', obj:t, index:kwIndex + 1};
         const key = map[kw] && map[kw][kwIndex];
@@ -5386,10 +5393,12 @@ function drawTracks3D(ctx, B, res) {
 function drawMesh3D(ctx, B, t, W, H) {
   const M = meshLayer(t);
   if (!M) return;
-  const [ua, va, wa] = M.ax, lo = t.lower, hi = t.upper, nu = M.n[ua], nv = M.n[va];
+  const [ua, va, wa] = M.isCyl ? [0, 1, 2] : M.ax;
+  const lo = t.lower, hi = t.upper;
+  const nu = M.isCyl ? M.nr : M.n[ua], nv = M.isCyl ? M.nphi : M.n[va];
   const cols = new Uint8ClampedArray(nu * nv * 4);
   for (let a = 0; a < nu; a++) for (let b = 0; b < nv; b++) {
-    const x = M.at(a, b);
+    const x = M.isCyl ? t.values[t.scores[0]][a + nu * (b + nv * M.kIdx)] : M.at(a, b);
     if (!(x > 0)) continue;
     const k = 4 * (a + nu * b), c = ramp(VIRIDIS, (Math.log10(x) - M.lmn) / M.span);
     cols[k] = c[0]; cols[k + 1] = c[1]; cols[k + 2] = c[2]; cols[k + 3] = 204;
@@ -5397,7 +5406,14 @@ function drawMesh3D(ctx, B, t, W, H) {
   const off = V3.meshCanvas || (V3.meshCanvas = document.createElement('canvas'));
   off.width = W; off.height = H;
   const octx = off.getContext('2d'), img = octx.createImageData(W, H), out = img.data;
-  const su = nu / (hi[ua] - lo[ua]), sv = nv / (hi[va] - lo[va]), pos = B.pos, D = V3.depth;
+  const su = M.isCyl ? 0 : nu / (hi[ua] - lo[ua]), sv = M.isCyl ? 0 : nv / (hi[va] - lo[va]);
+  const pos = B.pos, D = V3.depth;
+  const bin = (grid, value) => {
+    if (value < grid[0] || value >= grid[grid.length - 1]) return -1;
+    let low = 0, high = grid.length - 1;
+    while (high - low > 1) { const mid = (low + high) >> 1; if (value < grid[mid]) high = mid; else low = mid; }
+    return low;
+  };
   for (let y = 0; y < H; y++) {
     const fy = -(y + 0.5 - H / 2) / B.focal;
     for (let x = 0; x < W; x++) {
@@ -5407,7 +5423,15 @@ function drawMesh3D(ctx, B, t, W, H) {
       if (Math.abs(dn) < 1e-9) continue;
       const tp = (view.slice - pos[wa]) / dn;
       if (!(tp > 0)) continue;
-      const iu = Math.floor((pos[ua] + dir[ua] * tp - lo[ua]) * su), iv = Math.floor((pos[va] + dir[va] * tp - lo[va]) * sv);
+      let iu, iv;
+      if (M.isCyl) {
+        const dx = pos[0] + d0 * tp - M.ox, dy = pos[1] + d1 * tp - M.oy;
+        const phi = (Math.atan2(dy, dx) + 2 * Math.PI) % (2 * Math.PI);
+        iu = bin(t.r_grid, Math.hypot(dx, dy)); iv = bin(t.phi_grid, phi);
+      } else {
+        iu = Math.floor((pos[ua] + dir[ua] * tp - lo[ua]) * su);
+        iv = Math.floor((pos[va] + dir[va] * tp - lo[va]) * sv);
+      }
       if (iu < 0 || iv < 0 || iu >= nu || iv >= nv) continue;
       const k = 4 * (iu + nu * iv);
       if (!cols[k + 3]) continue;

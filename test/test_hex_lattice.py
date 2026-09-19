@@ -1,4 +1,5 @@
 import unittest
+import tempfile
 import numpy as np
 import openmc
 import sys
@@ -55,21 +56,15 @@ class TestHexLattice(unittest.TestCase):
         settings.source = openmc.IndependentSource(space=openmc.stats.Point((1.26, 0.0, 0.0)))
 
         model = openmc.Model(geometry=geom, materials=materials, settings=settings)
-        sp_path = model.run(output=False)
-
-        try:
-            res = results.load('.')
+        with tempfile.TemporaryDirectory(prefix='studio_test_') as run_dir:
+            model.run(output=False, cwd=run_dir)
+            res = results.load(run_dir)
             summary = res.get("summary")
             self.assertIsNotNone(summary, "Simulation summary should exist")
             self.assertIn("k_combined", summary)
             k_val = summary["k_combined"][0]
             self.assertGreater(k_val, 0.0)
             self.assertEqual(summary["batches"], 10)
-        finally:
-            for p in Path('.').glob('*.h5'):
-                p.unlink(missing_ok=True)
-            for p in Path('.').glob('*.xml'):
-                p.unlink(missing_ok=True)
 
 if __name__ == '__main__':
     unittest.main()

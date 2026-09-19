@@ -119,7 +119,10 @@ def _tally(t, cell_names, mat_names, openmc):
 
     labels_per_filter = []
     for f in t.filters:
-        if isinstance(f, openmc.CellFilter):
+        if isinstance(f, openmc.CellInstanceFilter):  # (cell, instance): a part inside a lattice, or a plain cell (0)
+            labels_per_filter.append([cell_names.get(int(c), f"cell {int(c)}") + (f" #{int(i)}" if int(i) else "")
+                                      for c, i in f.bins])
+        elif isinstance(f, openmc.CellFilter):
             labels_per_filter.append([cell_names.get(int(b), f"cell {int(b)}") for b in f.bins])
         elif isinstance(f, openmc.EnergyFilter):
             labels_per_filter.append([_energy_label(lo, hi) for lo, hi in f.bins])

@@ -3,7 +3,7 @@
 //   node test/generate_fixtures.js
 // Lattice fixtures also get a "_flat" twin (arrays written cell by cell); the Python test checks that both
 // describe the same geometry. Each fixture also gets "_mcnp", the script Studio's MCNP export sends
-// (mcnpScript: hexagonal lattices cell by cell, rectangular ones kept for MCNP LAT=1).
+// (mcnpScript: lattices kept, as MCNP LAT=1 or LAT=2).
 const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
@@ -48,6 +48,9 @@ const pointSource = (x = 0, y = 0, z = 0) => ({id: 's1', name: 'Source', particl
 const part = (id, shape, x, y, z, dims, material, group) => ({id, name: id, shape, x, y, z, r: 1, h: 1, axis: 'z',
   sx: 1, sy: 1, sz: 1, rx: 0, ry: 0, rz: 0, ...dims, material, ...(group ? {group} : {})});
 const cellTally = (id, cells, extra = {}) => ({id, name: id, kind: 'cell', cells, scores: ['flux'], ebins: '', ...extra});
+// A mesh tally over a box (a cell tally on the part around a lattice would turn the lattice off)
+const meshTally = (id, lo, hi, n = [4, 4, 2]) => ({id, name: id, kind: 'mesh', cells: [], scores: ['flux'], ebins: '',
+  nx: n[0], ny: n[1], nz: n[2], lx: lo[0], ly: lo[1], lz: lo[2], ux: hi[0], uy: hi[1], uz: hi[2]});
 
 // 1. The NE403 graphite pile example (a 12 x 1 x 11 RectLattice of tilted boxes)
 write('graphite_pile', JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'examples', 'ne403-graphite-pile', 'graphite-pile.openmc-studio.json'), 'utf8')), {flatTwin: true});
@@ -63,7 +66,7 @@ write('graphite_pile', JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'ex
   parts.push(part('tank', 'box', 0, 0, 20, {sx: 50, sy: 40, sz: 30}, 'm_water'));
   write('rect_array', {materials: [water, steel], parts, sources: [pointSource(0, 0, 20)],
     groups: [{id: 'g_rods', name: 'Rods', parent: null, x: 0, y: 0, z: 20, lattice: {nx: 3, ny: 2, nz: 1, dx: 10, dy: 10, dz: 12, fill: 'auto', asLattice: true}}],
-    tallies: [cellTally('t_tank', ['tank'])], settings: settings({worldR: 40})}, {flatTwin: true});
+    tallies: [meshTally('t_tank', [-25, -20, 5], [25, 20, 35])], settings: settings({worldR: 40})}, {flatTwin: true});
 }
 
 // 3. Hex arrays of pins (3 rings), 'y' orientation with the centre site empty and 'x' orientation full
@@ -78,7 +81,7 @@ for (const [orientation, skipCentre] of [['y', true], ['x', false]]) {
   parts.push(part('pool', 'box', 5, -4, 3, {sx: 40, sy: 40, sz: 40}, 'm_water'));
   write(`hex_array_${orientation}`, {materials: [water, steel], parts, sources: [pointSource(5, -4, 3)],
     groups: [{id: 'g_hex', name: 'Hex pins', parent: null, x: 5, y: -4, z: 3, lattice: {type: 'hex', rings: 3, pitch: p, orientation, fill: 'auto', asLattice: true}}],
-    tallies: [cellTally('t_pool', ['pool'])], settings: settings({worldR: 30})}, {flatTwin: true});
+    tallies: [meshTally('t_pool', [-15, -24, -17], [25, 16, 23])], settings: settings({worldR: 30})}, {flatTwin: true});
 }
 
 // 4. Detector responses on the flux in a water cell: He-3 macro and micro, BF3 macro over all nuclides
@@ -98,3 +101,30 @@ write('surface_current', {materials: [water],
   sources: [pointSource()], groups: [],
   tallies: [{id: 't_current', name: 't_current', kind: 'surface', surfaces: ['ball'], cells: [], scores: ['current'], ebins: ''}],
   settings: settings({worldR: 40})});
+
+// 6. Cell tallies on parts inside lattices (CellInstanceFilter), rectangular and hexagonal, with a plain part (a
+//    probe outside the lattice box) in the same tally. The flat twin tallies the same parts as ordinary cells; the
+//    Python test compares the two. (A tally on the part around a lattice turns the lattice off; see latticeHost.)
+{
+  const parts = [];
+  for (let ix = 0; ix < 3; ix++) for (let iy = 0; iy < 2; iy++)
+    parts.push(part(`rod_${ix}_${iy}`, 'cylinder', -10 + 10 * ix, -5 + 10 * iy, 20, {r: 2, h: 12}, 'm_steel', 'g_rods'));
+  parts.push(part('probe', 'box', 20, 0, 20, {sx: 4, sy: 4, sz: 4}, 'm_steel'), part('tank', 'box', 0, 0, 20, {sx: 50, sy: 40, sz: 30}, 'm_water'));
+  write('rect_tally', {materials: [water, steel], parts, sources: [pointSource(-5, 0, 20)],
+    groups: [{id: 'g_rods', name: 'Rods', parent: null, x: 0, y: 0, z: 20, lattice: {nx: 3, ny: 2, nz: 1, dx: 10, dy: 10, dz: 12, fill: 'auto', asLattice: true}}],
+    tallies: [cellTally('t_rods', ['rod_0_0', 'rod_2_1', 'probe'], {scores: ['flux', 'absorption']})],
+    settings: settings({worldR: 40, particles: 20000, batches: 5})}, {flatTwin: true});
+}
+{
+  const parts = [], p = 3;
+  for (let x = -2; x <= 2; x++) for (let a = -2; a <= 2; a++) {
+    if (Math.max(Math.abs(x), Math.abs(a), Math.abs(x + a)) > 2) continue;
+    parts.push(part(`pin_${x}_${a}`, 'cylinder', +(5 + Math.sqrt(3) / 2 * p * x).toFixed(12), +(-4 + (0.5 * x + a) * p).toFixed(12), 3,
+      {r: 1.1, h: 30}, 'm_steel', 'g_hex'));
+  }
+  parts.push(part('probe', 'box', 20, -4, 3, {sx: 3, sy: 3, sz: 3}, 'm_steel'), part('pool', 'box', 5, -4, 3, {sx: 40, sy: 40, sz: 40}, 'm_water'));
+  write('hex_tally', {materials: [water, steel], parts, sources: [pointSource(5, -4, 3)],
+    groups: [{id: 'g_hex', name: 'Hex pins', parent: null, x: 5, y: -4, z: 3, lattice: {type: 'hex', rings: 3, pitch: p, orientation: 'y', fill: 'auto', asLattice: true}}],
+    tallies: [cellTally('t_pins', ['pin_0_0', 'pin_1_0', 'pin_-2_1', 'probe'])],
+    settings: settings({worldR: 30, particles: 20000, batches: 5})}, {flatTwin: true});
+}

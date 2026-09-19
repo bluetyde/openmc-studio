@@ -5,10 +5,15 @@ What's next for OpenMC Studio, roughly in priority order. Updated 2026-09-19 aft
 
 ## Open items carried over
 
-- **MCNP lattices**: model.mcnp writes arrays cell by cell because MCNPy's lattice translation is wrong
-  (for the graphite pile: TRCL on the unit cells, an off-centre element box, uncovered rows). The pre-lab
-  asks for LAT/FILL cards. Options: fix the translation in openmc-mcnp-project (remediate or write
-  LAT/FILL from Studio's array data directly), then extend geometry_check to universes and lattices.
+- **MCNP lattices, remaining**:
+  - Rectangular lattices now export as `LAT=1`/`FILL` and pass the geometry check. That covers the
+    pile, a deleted site, a 3D array and a 2D array with an outer universe.
+  - Still open: prove it once in real MCNP. Plot the pile deck with lattice index labels (manual p. 290),
+    or compare a short run against the cell-by-cell deck.
+  - Hexagonal `LAT=2`: eight planes in the manual's order (p. 290, 766), plus mapping OpenMC's rings to
+    MCNP's skewed indices.
+  - Cell tallies on parts inside a lattice: OpenMC needs a per-instance cell filter, MCNP
+    `(c < L[i j k] < cell)` (p. 452-455). Problems refuses them for now.
 - **Surface current tallies in MCNP**: OpenMC counts the current leaving the chosen parts; MCNP F1 counts
   crossings anywhere on a surface. Needs FS segmenting or per-part surfaces; the export refuses it now.
 - **He-3 reaction**: confirm with the course which reaction is meant. The pre-lab names (n,alpha) and
@@ -118,7 +123,7 @@ What's next for OpenMC Studio, roughly in priority order. Updated 2026-09-19 aft
 - **Hexagonal Lattices (`openmc.HexLattice`)**:
   - Hexagonal arrays with flat-to-flat pitch, concentric rings, $x$/$y$ orientation and solid moderator fill.
   - Interactive Hexagonal array tool in editor UI with pitch, rings, and orientation settings.
-  - Python `openmc.HexLattice` generation. MCNP gets the pins cell by cell (see Open items).
+  - Python `openmc.HexLattice` generation. MCNP gets the pins cell by cell until LAT=2 is done (see Open items).
 - **Cylindrical Mesh Tallies**:
   - Support for `openmc.CylindricalMesh` ($r, \phi, z$) with custom radial, azimuthal, and axial binning grids and arbitrary spatial origin.
   - Full simulation extraction in `results.py` and 2D canvas annular-sector slice rendering in UI.
@@ -167,7 +172,7 @@ What's next for OpenMC Studio, roughly in priority order. Updated 2026-09-19 aft
 - **EnergyFunctionFilter MCNP Export**:
   - Translated virtual detector response tallies using `openmc.EnergyFunctionFilter` into standard MCNP `FM` multiplier cards.
 - **Array Tool & RectLattice Export**:
-  - Native `openmc.RectLattice` in model.py with unit universes and oriented tilted surfaces, reducing code from >1000 lines down to ~216 lines. (MCNP `LAT 1` didn't translate correctly; see Open items.)
+  - Native `openmc.RectLattice` in model.py with unit universes and oriented tilted surfaces, reducing code from >1000 lines down to ~216 lines. MCNP `LAT=1`/`FILL` written by openmc-mcnp-project (2026-09-19).
   - Support for missing/deleted array lattice elements using solid moderator universes.
   - Automatic host moderator material detection and UI selector.
 - **He-3 Proportional Counter Detector Response**:
@@ -188,6 +193,6 @@ What's next for OpenMC Studio, roughly in priority order. Updated 2026-09-19 aft
 - One `SDEF` source only in the MCNP export.
 - Absorption can't be exported for actinide materials (MontePy can't parse `FM ... -2:-6`).
 - Mesh tallies export flux only (`FMESH`).
-- The geometry check doesn't cover universes or lattices (Studio's decks have none: arrays are written cell by cell).
+- The geometry check follows universes and LAT=1 lattices, but not TRCL, rotated fills or LAT=2.
 - Surface current tallies aren't exported.
 - MCNP decks are validated with MontePy parser but require an MCNP installation to execute transport.

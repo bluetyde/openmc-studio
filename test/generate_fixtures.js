@@ -1,8 +1,9 @@
 // Writes the model.py files OpenMC Studio generates for a set of fixtures into test/generated/, so
 // test_generated_models.py can run the real output (not a copy of its logic) in OpenMC.
 //   node test/generate_fixtures.js
-// Lattice fixtures also get a "_flat" twin (arrays written cell by cell, as the MCNP export does); the Python
-// test checks that both describe the same geometry.
+// Lattice fixtures also get a "_flat" twin (arrays written cell by cell); the Python test checks that both
+// describe the same geometry. Each fixture also gets "_mcnp", the script Studio's MCNP export sends
+// (mcnpScript: hexagonal lattices cell by cell, rectangular ones kept for MCNP LAT=1).
 const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
@@ -27,9 +28,10 @@ function write(name, project, {flatTwin = false} = {}) {
   const P = vm.runInContext('problems()', sandbox);
   const errors = P.filter(p => p.sev === 'error');
   if (errors.length) throw new Error(`${name}: ${errors.map(e => e.text).join('; ')}`);
-  const save = (file, flat) => fs.writeFileSync(path.join(out, file), vm.runInContext(`buildScript(problems(), false, {flat:${flat}}).text`, sandbox));
-  save(`${name}.py`, false);
-  if (flatTwin) save(`${name}_flat.py`, true);
+  const save = (file, code) => fs.writeFileSync(path.join(out, file), vm.runInContext(code, sandbox));
+  save(`${name}.py`, 'buildScript(problems(), false).text');
+  if (flatTwin) save(`${name}_flat.py`, 'buildScript(problems(), false, {flat:true}).text');
+  save(`${name}_mcnp.py`, 'mcnpScript(problems())');
   const notes = P.filter(p => p.sev !== 'info').map(p => `${p.sev}: ${p.text}`);
   console.log(`${name}${flatTwin ? ' (+ flat twin)' : ''}${notes.length ? '  ' + notes.join(' | ') : ''}`);
 }

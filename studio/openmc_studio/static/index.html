@@ -437,14 +437,77 @@ function hslHex(h, s, l) {
   const f = n => { const k = (n + h / 30) % 12, a = s * Math.min(l, 1 - l); return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))).toString(16).padStart(2, '0'); };
   return `#${f(0)}${f(8)}${f(4)}`;
 }
-// The thermal scattering table a library material gets when its line doesn't name one.
-function sabFor(name) {
-  const n = name.toLowerCase();
-  if (/^water, liquid/.test(n)) return 'c_H_in_H2O';
-  if (/^water, heavy/.test(n)) return 'c_D_in_D2O';
-  if (/^polyethylene(, (non-)?borated)?$|^polyethylene, borated \(|^wax, paraffin|paraffin wax/.test(n)) return 'c_H_in_CH2'; // not PET
+// S(alpha, beta) thermal neutron scattering libraries available in ENDF/B-VIII.0 and MCNP 6.2/6.3
+var THERMAL_SCATTERING_TABLES = [
+  { id: '', label: 'None (Free gas treatment)', mcnp: '' },
+  // Hydrogen / Water
+  { id: 'c_H_in_H2O', label: 'Light water (c_H_in_H2O)', mcnp: 'h-h2o.40t' },
+  { id: 'c_H_in_H2O_solid', label: 'Light water ice (c_H_in_H2O_solid)', mcnp: 'h-ice.40t' },
+  { id: 'c_ortho_H', label: 'Liquid ortho-hydrogen (c_ortho_H)', mcnp: 'orthoH.40t' },
+  { id: 'c_para_H', label: 'Liquid para-hydrogen (c_para_H)', mcnp: 'paraH.40t' },
+  // Heavy Water / Deuterium
+  { id: 'c_D_in_D2O', label: 'Heavy water D (c_D_in_D2O)', mcnp: 'd-d2o.40t' },
+  { id: 'c_O_in_D2O', label: 'Heavy water O (c_O_in_D2O)', mcnp: 'o-d2o.40t' },
+  { id: 'c_ortho_D', label: 'Liquid ortho-deuterium (c_ortho_D)', mcnp: 'orthoD.40t' },
+  { id: 'c_para_D', label: 'Liquid para-deuterium (c_para_D)', mcnp: 'paraD.40t' },
+  // Carbon / Graphite
+  { id: 'c_Graphite', label: 'Reactor graphite (c_Graphite)', mcnp: 'grph.40t' },
+  { id: 'c_Graphite_10p', label: '10% porous graphite (c_Graphite_10p)', mcnp: 'grph10.40t' },
+  { id: 'c_Graphite_30p', label: '30% porous graphite (c_Graphite_30p)', mcnp: 'grph30.40t' },
+  { id: 'c_C6H6', label: 'Benzene (c_C6H6)', mcnp: 'benz.40t' },
+  // Polymers / Hydrocarbons
+  { id: 'c_H_in_CH2', label: 'Polyethylene (c_H_in_CH2)', mcnp: 'h-poly.40t' },
+  { id: 'c_H_in_C5O2H8', label: 'Lucite / Plexiglas (c_H_in_C5O2H8)', mcnp: 'h-luci.40t' },
+  { id: 'c_H_in_CH4_liquid', label: 'Liquid methane (c_H_in_CH4_liquid)', mcnp: 'lmeth.40t' },
+  { id: 'c_H_in_CH4_solid', label: 'Solid methane (c_H_in_CH4_solid)', mcnp: 'smeth.40t' },
+  // Beryllium
+  { id: 'c_Be', label: 'Beryllium metal (c_Be)', mcnp: 'be-met.40t' },
+  { id: 'c_Be_in_BeO', label: 'Beryllium in BeO (c_Be_in_BeO)', mcnp: 'be-beo.40t' },
+  { id: 'c_O_in_BeO', label: 'Oxygen in BeO (c_O_in_BeO)', mcnp: 'o-beo.40t' },
+  // Hydrides
+  { id: 'c_H_in_ZrH', label: 'Hydrogen in ZrH (c_H_in_ZrH)', mcnp: 'h-zrh.40t' },
+  { id: 'c_Zr_in_ZrH', label: 'Zirconium in ZrH (c_Zr_in_ZrH)', mcnp: 'zr-zrh.40t' },
+  { id: 'c_H_in_YH2', label: 'Hydrogen in YH2 (c_H_in_YH2)', mcnp: 'h-yh2.40t' },
+  { id: 'c_Y_in_YH2', label: 'Yttrium in YH2 (c_Y_in_YH2)', mcnp: 'y-yh2.40t' },
+  // Fuels: Uranium Oxides / Nitrides
+  { id: 'c_U_in_UO2', label: 'Uranium in UO2 (c_U_in_UO2)', mcnp: 'u-uo2.40t' },
+  { id: 'c_O_in_UO2', label: 'Oxygen in UO2 (c_O_in_UO2)', mcnp: 'o-uo2.40t' },
+  { id: 'c_U_in_UN', label: 'Uranium in UN (c_U_in_UN)', mcnp: 'u-un.40t' },
+  { id: 'c_N_in_UN', label: 'Nitrogen in UN (c_N_in_UN)', mcnp: 'n-un.40t' },
+  // Silicon / Oxides / Carbides
+  { id: 'c_SiO2_alpha', label: 'alpha-Quartz SiO2 (c_SiO2_alpha)', mcnp: 'sio2.40t' },
+  { id: 'c_SiO2_beta', label: 'beta-Cristobalite SiO2 (c_SiO2_beta)', mcnp: 'sio2.40t' },
+  { id: 'c_Si_in_SiC', label: 'Silicon in SiC (c_Si_in_SiC)', mcnp: 'si-sic.40t' },
+  { id: 'c_C_in_SiC', label: 'Carbon in SiC (c_C_in_SiC)', mcnp: 'c-sic.40t' },
+  // Metals
+  { id: 'c_Al27', label: 'Aluminum-27 (c_Al27)', mcnp: 'al-27.40t' },
+  { id: 'c_Fe56', label: 'Iron-56 (c_Fe56)', mcnp: 'fe-56.40t' },
+  { id: 'c_O_in_H2O_solid', label: 'Oxygen in ice (c_O_in_H2O_solid)', mcnp: 'o-ice.40t' }
+];
+
+// The thermal scattering table a library or custom material gets by auto-suggestion.
+function sabFor(name, comps) {
+  const n = (name || '').toLowerCase();
+  const c = (comps || '').toLowerCase();
+  if (/^water, heavy|^heavy water/.test(n) || (c.includes('h2') && c.includes('o') && n.includes('heavy'))) return 'c_D_in_D2O';
+  if (/^water, liquid|^water\b|light water/.test(n) || (c.includes('h:2') && c.includes('o:1') && !c.includes('c:'))) return 'c_H_in_H2O';
+  if (/^ice\b|water, solid/.test(n)) return 'c_H_in_H2O_solid';
+  if (/^polyethylene(, (non-)?borated)?$|^polyethylene, borated \(|^wax, paraffin|paraffin wax|^poly\b/.test(n)) return 'c_H_in_CH2';
+  if (/^lucite|^plexiglas|^pmma|^acrylic/.test(n) || c.includes('c5o2h8')) return 'c_H_in_C5O2H8';
   if (/graphite/.test(n)) return 'c_Graphite';
-  if (n === 'beryllium') return 'c_Be';
+  if (/^beryllium oxide|^beo\b/.test(n)) return 'c_Be_in_BeO';
+  if (/^beryllium\b|^be\b/.test(n)) return 'c_Be';
+  if (/zirconium hydride|zrh/.test(n)) return 'c_H_in_ZrH';
+  if (/yttrium hydride|yh2/.test(n)) return 'c_H_in_YH2';
+  if (/uranium (di)?oxide|uo2/.test(n)) return 'c_U_in_UO2';
+  if (/uranium nitride|\bun\b/.test(n)) return 'c_U_in_UN';
+  if (/silicon dioxide|quartz|silica|\bsio2\b/.test(n)) return 'c_SiO2_alpha';
+  if (/silicon carbide|\bsic\b/.test(n)) return 'c_Si_in_SiC';
+  if (/benzene|c6h6/.test(n)) return 'c_C6H6';
+  if (/liquid methane/.test(n)) return 'c_H_in_CH4_liquid';
+  if (/solid methane/.test(n)) return 'c_H_in_CH4_solid';
+  if (/^aluminum\b|^al-?27\b/.test(n)) return 'c_Al27';
+  if (/^iron\b|^steel\b|^fe-?56\b/.test(n)) return 'c_Fe56';
   return '';
 }
 function parseLibrary(text) {
@@ -1289,7 +1352,7 @@ function buildScript(probs, mark, opts = {}) {
     }
     parseComps(m.comps).out.forEach((c, i) =>
       push(`${v}.${c.nuclide ? 'add_nuclide' : 'add_element'}(${pyStr(c.sym)}, ${E(num(c.amt), {t:'comp', obj:m, index:i})}, ${pyStr(m.frac)})`));
-    if (m.sab) push(`${v}.add_s_alpha_beta(${pyStr(m.sab)})`);
+    if (m.sab && m.sab !== 'none') push(`${v}.add_s_alpha_beta(${pyStr(m.sab)})`);
     push('');
   });
   owner = null;
@@ -1834,6 +1897,22 @@ function mcnpIds() {
   const cells = buildScript([], false, MCNP_OPTS).cells;
   const cellNum = c => cells.findIndex(o => c === 'world' ? o.kind === 'world' : o.kind === 'part' && o.id === c) + 1;
   return {cell: c => cellNum(c) || '?', mat: id => mats.findIndex(m => m.id === id) + 1};
+}
+function mcnpMaterial(m) {
+  const ids = mcnpIds();
+  const matNum = ids.mat(m.id);
+  const out = [];
+  const comps = parseComps(m.comps).out;
+  const isAo = m.frac === 'ao';
+  const prefix = `M${matNum || 1}`;
+  const parts = comps.map(c => `${c.sym} ${isAo ? num(c.amt) : '-' + num(c.amt)}`);
+  out.push(`${prefix} ${parts.join(' ')}`);
+  if (m.sab && m.sab !== 'none') {
+    const table = THERMAL_SCATTERING_TABLES.find(t => t.id === m.sab);
+    const sabid = table && table.mcnp ? table.mcnp : (m.sab.startsWith('c_') ? m.sab.slice(2).toLowerCase() + '.40t' : m.sab);
+    out.push(`MT${matNum || 1} ${sabid}`);
+  }
+  return out.join('\n');
 }
 // FM for a detector response: MCNP multiplies by C times material m's cross section for reaction R. A macroscopic
 // response needs C = the detector material's atom density (the export computes it); -1 would use the tallied cell's own.
@@ -2547,10 +2626,11 @@ function specFor(kind, o) {
         F('num', 'density', 'Density', {unit:'g/cm³'}),
         F('select', 'frac', 'Fractions', {options:() => [['wo', 'Weight (MCNP negative)'], ['ao', 'Atom (MCNP positive)']]}),
         F('text', 'comps', 'Components', {wide:true, hint:'Element or nuclide : amount, comma separated. H:2 adds natural hydrogen; U235:0.03 adds one nuclide. Amounts are normalized.'}),
-        F('text', 'sab', 'S(α,β)', {placeholder:'none', hint:'Thermal scattering table for moderators, like c_H_in_H2O. Same role as the MT card in MCNP.'}),
+        F('sab', 'sab', 'S(α,β)', {hint:'Thermal neutron scattering table for moderators and bound atoms. Select a standard ENDF/B-VIII.0 table, choose Custom, or click Auto-suggest.'}),
         F('num', 'temperature', 'Temperature', {unit:'K', placeholder:'293.6', hint:'Material temperature in Kelvin for Doppler broadening (optional, defaults to project default).'}),
         note(o.ref ? `Source: <code>${esc(o.ref)}</code>${o.ref.startsWith('PNNL') ? ' — PNNL-15870 Rev. 1.' : ''}` : 'Custom material.')
-      ]}
+      ]},
+      {title:'MCNP equivalent', fields:[{type:'mcnp', text:() => mcnpMaterial(o)}]}
     ];
   }
   if (kind === 'group' || kind === 'multi') {
@@ -2847,6 +2927,68 @@ function fieldEl(f, obj) {
       });
       ctl.appendChild(s); break;
     }
+    case 'sab': {
+      const cur = obj[f.key] || '';
+      const isCustom = cur && !THERMAL_SCATTERING_TABLES.some(t => t.id === cur);
+      const selEl = document.createElement('select'); selEl.id = fid;
+      THERMAL_SCATTERING_TABLES.forEach(t => {
+        selEl.add(new Option(t.label + (t.mcnp ? ` [${t.mcnp}]` : ''), t.id, false, cur === t.id));
+      });
+      selEl.add(new Option('Custom table name...', '__custom__', false, isCustom));
+
+      const customInput = document.createElement('input');
+      customInput.type = 'text';
+      customInput.placeholder = 'e.g. c_H_in_H2O';
+      customInput.value = cur;
+      customInput.style.marginTop = '4px';
+      customInput.hidden = !isCustom;
+
+      const autoBtn = document.createElement('button');
+      autoBtn.type = 'button';
+      autoBtn.className = 'tbtn';
+      autoBtn.style.marginLeft = '6px';
+      autoBtn.textContent = 'Auto';
+      autoBtn.title = 'Suggest S(α,β) table from material name and composition';
+
+      selEl.addEventListener('change', () => {
+        if (selEl.value === '__custom__') {
+          customInput.hidden = false;
+          customInput.focus();
+        } else {
+          customInput.hidden = true;
+          obj[f.key] = selEl.value;
+          customInput.value = selEl.value;
+          refreshMcnp();
+          schedule();
+        }
+      });
+
+      customInput.addEventListener('input', () => {
+        obj[f.key] = customInput.value.trim();
+        refreshMcnp();
+        schedule();
+      });
+
+      autoBtn.addEventListener('click', () => {
+        const rec = sabFor(obj.name, obj.comps);
+        if (rec) {
+          obj[f.key] = rec;
+          renderProps();
+          refreshMcnp();
+          schedule();
+          log('ok', `Suggested ${rec} for ${esc(obj.name)}.`);
+        } else {
+          log('info', `No standard S(α,β) table recognized for ${esc(obj.name)}.`);
+        }
+      });
+
+      const rowWrap = document.createElement('div');
+      rowWrap.style.display = 'flex';
+      rowWrap.style.alignItems = 'center';
+      rowWrap.append(selEl, autoBtn);
+      ctl.append(rowWrap, customInput);
+      break;
+    }
     case 'color': {
       const i = document.createElement('input'); i.type = 'color'; i.id = fid; i.value = obj[f.key];
       i.addEventListener('input', () => { obj[f.key] = i.value; schedule(); });
@@ -2902,7 +3044,7 @@ function renderProps() {
 function refreshMcnp() {
   const obj = getSel(); if (!obj) return;
   const pre = $('#props .mcnp');
-  if (pre) pre.textContent = sel.kind === 'source' ? mcnpSource(obj) : mcnpTally(obj);
+  if (pre) pre.textContent = sel.kind === 'source' ? mcnpSource(obj) : sel.kind === 'material' ? mcnpMaterial(obj) : mcnpTally(obj);
 }
 function renderPropsTitle() {
   const obj = getSel();

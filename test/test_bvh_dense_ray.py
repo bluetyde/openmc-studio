@@ -1,5 +1,7 @@
 """
-Regression test for dense ray BVH traversal:
+Model of the 3D view's dense-ray BVH candidate logic, written in Python. It does NOT run the WebGL shader
+(index.html, shaderFS300), so a change to the shader isn't covered here; check dense scenes in the browser too.
+
 Constructs a model with > 96 parts along a ray line and tests that:
 1. Primitive filtering at leaf nodes prevents premature AABB capacity exhaustion.
 2. CSG priority ordering is strictly maintained.

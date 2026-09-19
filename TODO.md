@@ -1,6 +1,31 @@
 # TODO
 
-What's next for OpenMC Studio, roughly in priority order. Latest pushed commit: `49f85da` (2026-09-18).
+What's next for OpenMC Studio, roughly in priority order. Updated 2026-09-19 after the review of
+`c44381e..be160fe` (fixes listed under Completed; the working tree has them until they're committed).
+
+## Open items carried over
+
+- **MCNP lattices**: model.mcnp writes arrays cell by cell because MCNPy's lattice translation is wrong
+  (for the graphite pile: TRCL on the unit cells, an off-centre element box, uncovered rows). The pre-lab
+  asks for LAT/FILL cards. Options: fix the translation in openmc-mcnp-project (remediate or write
+  LAT/FILL from Studio's array data directly), then extend geometry_check to universes and lattices.
+- **Surface current tallies in MCNP**: OpenMC counts the current leaving the chosen parts; MCNP F1 counts
+  crossings anywhere on a surface. Needs FS segmenting or per-part surfaces; the export refuses it now.
+- **He-3 reaction**: confirm with the course which reaction is meant. The pre-lab names (n,alpha) and
+  (n,2alpha), MT 107/108, but ENDF/B-VIII.0 He-3 has neither; Studio uses MT 103, He-3(n,p)T.
+- **PuBe spectrum**: the pile uses a Maxwell stand-in (T = 2.8 MeV). Paste the course's starter SI/SP
+  cards into the tabulated source.
+- **3D view at scale**: time the WebGL 2 BVH view on a few thousand parts; the 10,000-part figure is a
+  target, not a measurement. The 128-candidate-per-ray limit tints overflowing pixels magenta.
+- **Snap to grid**: re-check that a rotate drag lands on the typed step (e.g. 45°) in the browser.
+- **Artifact comments**: the 7 threads on the published copy are addressed but still open; resolve them
+  in the artifact view.
+- **Name**: "OpenMabc" was floated; not decided.
+- **openmc-mcnp-project**: commit `ea1854d` (EnergyFunctionFilter) and this review's exporter changes
+  need pushing, or the Mac copy can't export detector tallies.
+- **GEOUNED**: commit be160fe's title says "add GEOUNED integration", but only the backlog entry below
+  exists; nothing is integrated yet.
+
 
 ---
 
@@ -72,10 +97,28 @@ What's next for OpenMC Studio, roughly in priority order. Latest pushed commit: 
 
 ## Completed
 
+- **Review fixes (2026-09-19)**:
+  - model.py with a detector tally no longer fails on Python 3.11 (backslashes inside an f-string).
+  - Detector FM cards come from model.py's `detector_responses` (C = the gas's atom density, or
+    1 / atom fraction for microscopic), not from the tally name; -1 (the cell's own density) is gone.
+  - Lattices: one shape function for parts and lattice units (every shape works), 3D lattices so units
+    sit at the element centre (one-layer arrays off z = 0 were misplaced), top-row-first y order for
+    deleted sites, and a check that members are identical and on the grid (else cell by cell, with a
+    warning). model.mcnp writes arrays cell by cell; the pile's deck validates again (87,500 points).
+  - Surface current: SurfaceFilter of the part's own surfaces + CellFromFilter (it passed a region before).
+  - MCNP previews: Muir source as `SP -4` (no comment inside SDEF), cylindrical FMESH J = z, K = angle.
+  - The exporter handles CylindricalMesh (FMESH GEOM=CYL).
+  - Problems: periodic boundary needs a box world; surface tallies score current only; detector
+    tallies need a material (macro) or nuclide (micro); the "isn't used" note counts arrays and tallies,
+    and library materials used only by a detector or array fill aren't auto-removed.
+  - model.py groups list their sources again; MCNP group comments turn × ° µ into ASCII.
+  - Tests: `node test/generate_fixtures.js` writes Studio's real model.py for fixtures and
+    `python test/test_generated_models.py` runs them (lattice vs cell-by-cell at 20,000 points each,
+    OpenMC runs, He-3 macro/micro = N). test_detector_responses.py now tests the generated helper.
 - **Hexagonal Lattices (`openmc.HexLattice`)**:
-  - Full support for hexagonal arrays with flat-to-flat pitch, concentric ring universe assignments (outermost ring down to center), $x$/$y$ orientation, and solid moderator fill.
+  - Hexagonal arrays with flat-to-flat pitch, concentric rings, $x$/$y$ orientation and solid moderator fill.
   - Interactive Hexagonal array tool in editor UI with pitch, rings, and orientation settings.
-  - Python `openmc.HexLattice` script generation and MCNP `LAT 2` export compatibility.
+  - Python `openmc.HexLattice` generation. MCNP gets the pins cell by cell (see Open items).
 - **Cylindrical Mesh Tallies**:
   - Support for `openmc.CylindricalMesh` ($r, \phi, z$) with custom radial, azimuthal, and axial binning grids and arbitrary spatial origin.
   - Full simulation extraction in `results.py` and 2D canvas annular-sector slice rendering in UI.
@@ -84,7 +127,7 @@ What's next for OpenMC Studio, roughly in priority order. Latest pushed commit: 
   - General ellipsoid primitive (`openmc.Quadric`) supporting semi-axes $a, b, c$, arbitrary 3D center, and full 3D Euler rotations.
   - Analytical ray-ellipsoid quadratic intersection in WebGL 2 raymarching fragment shader (`ty == 6`).
   - Exact CPU ray picking and 2D canvas slice cross-section rendering.
-  - MCNP quadric/ellipsoid translation (`SQ`/`ELL`).
+  - MCNP: MCNPy translates the openmc.Quadric like other quadrics (not checked separately for ellipsoids).
 
 - **Coupled Neutron-Photon Transport**:
   - Toggle `settings.photon_transport = True`, energy cutoff (`settings.cutoff = {'energy_photon': ...}`), source particle selection (`neutron`/`photon`), and tally particle filters (`openmc.ParticleFilter`).
@@ -104,9 +147,11 @@ What's next for OpenMC Studio, roughly in priority order. Latest pushed commit: 
   - Supported Muir fusion neutron spectra for D-T ($14.08\text{ MeV}$) and D-D ($2.45\text{ MeV}$) with ion temperature Doppler broadening ($kT_{\text{ion}}$ in eV).
 - **Virtual Detector Response Quality (B-10 & Multi-Nuclide)**:
   - B-10 preset mapped to $(n,\alpha)$ [MT 107] with auto-detection of boron/BF3 media and UI override.
+  - (The MCNP side was wrong until the 2026-09-19 review fixes above.)
   - Multi-nuclide custom detector responses with $N_i$-weighted cross-section interpolation across all constituent nuclides on a unified energy grid, invariant to composition text order.
 - **3D Dense Raymarching BVH Acceleration**:
   - Primitive intersection filtering at BVH leaf nodes prior to stack insertion; increased candidate budget from 96 to 128 with visual overflow diagnostic tint.
+  - test_bvh_dense_ray.py models this logic in Python; it doesn't run the shader.
 - **Automated Regression Test Suite**:
   - `test_frontend_model.js`: verifies data model, script generation, and MCNP cards.
   - `test_bvh_dense_ray.py`: verifies 3D raymarching with 140 parts along a ray line.
@@ -122,13 +167,13 @@ What's next for OpenMC Studio, roughly in priority order. Latest pushed commit: 
 - **EnergyFunctionFilter MCNP Export**:
   - Translated virtual detector response tallies using `openmc.EnergyFunctionFilter` into standard MCNP `FM` multiplier cards.
 - **Array Tool & RectLattice Export**:
-  - Native `openmc.RectLattice` and MCNP `LAT 1` export with unit universes and oriented tilted surfaces, reducing code from >1000 lines down to ~216 lines.
+  - Native `openmc.RectLattice` in model.py with unit universes and oriented tilted surfaces, reducing code from >1000 lines down to ~216 lines. (MCNP `LAT 1` didn't translate correctly; see Open items.)
   - Support for missing/deleted array lattice elements using solid moderator universes.
   - Automatic host moderator material detection and UI selector.
 - **He-3 Proportional Counter Detector Response**:
   - Unperturbed virtual detector response tallies with `openmc.EnergyFunctionFilter` and MCNP `FM` multiplier cards.
 - **3D WebGL 2 Raymarching with BVH**:
-  - Accelerated rendering supporting 10,000+ parts using data textures and BVH stack traversal.
+  - Data textures and BVH stack traversal, so there's no fixed part cap (large scenes not yet timed).
 - **Additional Geometry Primitives**:
   - Right triangular prism / wedge (`wedge`), Hexagonal prism (`hex_prism`), and Truncated cone (`cone`).
 - **Tabulated Source Energy Spectrum**:
@@ -143,5 +188,6 @@ What's next for OpenMC Studio, roughly in priority order. Latest pushed commit: 
 - One `SDEF` source only in the MCNP export.
 - Absorption can't be exported for actinide materials (MontePy can't parse `FM ... -2:-6`).
 - Mesh tallies export flux only (`FMESH`).
-- The geometry check doesn't cover universes or lattices.
+- The geometry check doesn't cover universes or lattices (Studio's decks have none: arrays are written cell by cell).
+- Surface current tallies aren't exported.
 - MCNP decks are validated with MontePy parser but require an MCNP installation to execute transport.

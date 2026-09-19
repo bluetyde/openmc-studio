@@ -1,5 +1,5 @@
 """
-Regression tests for detector response tallies:
+Regression tests for detector response tallies, run against the helper OpenMC Studio writes into model.py:
 1. Validates B-10 preset reaction MT 107 and He-3 preset reaction MT 103.
 2. Validates multi-nuclide material composition order invariance on shared energy grids.
 3. Validates error handling for missing detector materials and invalid nuclides.
@@ -18,55 +18,30 @@ if 'OPENMC_CROSS_SECTIONS' not in os.environ:
 import openmc
 import openmc.data
 
-def _get_detector_filter(mat, nuclide, mt, scale="macro"):
-    """Detector filter generator mirroring Studio buildScript."""
-    lib = openmc.data.DataLibrary.from_xml()
-    if scale == "macro":
-        if mat is None:
-            raise ValueError("Macroscopic detector response requires an assigned material with atom densities.")
-        densities = mat.get_nuclide_atom_densities()
-        if not densities:
-            raise ValueError(f"Material '{getattr(mat, 'name', 'unnamed')}' has no defined nuclide atom densities.")
-        if nuclide and nuclide != "all":
-            target_nuclides = [nuclide]
-        else:
-            target_nuclides = sorted(densities.keys())
-        contributions = []
-        for nuc in target_nuclides:
-            entry = lib.get_by_material(nuc)
-            if not entry:
-                continue
-            nuc_data = openmc.data.IncidentNeutron.from_hdf5(entry["path"])
-            if mt not in nuc_data.reactions:
-                continue
-            rx = nuc_data.reactions[mt]
-            temp = list(rx.xs.keys())[0]
-            xs = rx.xs[temp]
-            N_i = densities.get(nuc, 1.0)
-            contributions.append((xs.x, xs.y * N_i))
-        if not contributions:
-            mat_name = getattr(mat, 'name', 'unnamed')
-            raise ValueError(f"No nuclides in material '{mat_name}' have reaction MT {mt} in cross sections library")
-        if len(contributions) == 1:
-            return openmc.EnergyFunctionFilter(contributions[0][0], contributions[0][1])
-        all_e = np.unique(np.concatenate([c[0] for c in contributions]))
-        total_macro = np.zeros_like(all_e)
-        for e_grid, macro_vals in contributions:
-            total_macro += np.interp(all_e, e_grid, macro_vals, left=0.0, right=0.0)
-        return openmc.EnergyFunctionFilter(all_e, total_macro)
-    else:
-        if not nuclide or nuclide == "all":
-            raise ValueError("Microscopic detector response requires an explicit target nuclide.")
-        entry = lib.get_by_material(nuclide)
-        if not entry:
-            raise ValueError(f"Nuclide {nuclide} not in cross sections library")
-        nuc_data = openmc.data.IncidentNeutron.from_hdf5(entry["path"])
-        if mt not in nuc_data.reactions:
-            raise ValueError(f"Nuclide {nuclide} does not have reaction MT {mt}")
-        rx = nuc_data.reactions[mt]
-        temp = list(rx.xs.keys())[0]
-        xs = rx.xs[temp]
-        return openmc.EnergyFunctionFilter(xs.x, xs.y)
+HERE = os.path.dirname(os.path.abspath(__file__))
+GENERATED = os.path.join(HERE, "generated", "detectors.py")
+
+
+def _load_studio_helper():
+    """The _get_detector_filter that OpenMC Studio writes into model.py, taken from a generated model
+    (node test/generate_fixtures.js), so these tests check Studio's real output rather than a copy."""
+    import ast
+    if not os.path.exists(GENERATED):
+        raise unittest.SkipTest("run `node test/generate_fixtures.js` first")
+    with open(GENERATED, encoding="utf-8") as fh:
+        tree = ast.parse(fh.read())
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_get_detector_filter")
+    ns = {"openmc": openmc, "np": np}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), GENERATED, "exec"), ns)
+    return ns["_get_detector_filter"]
+
+
+_get_detector_filter = None
+
+
+def setUpModule():
+    global _get_detector_filter
+    _get_detector_filter = _load_studio_helper()
 
 
 class TestDetectorResponses(unittest.TestCase):
@@ -75,7 +50,7 @@ class TestDetectorResponses(unittest.TestCase):
         """Passing None for macroscopic scale must raise a clear ValueError."""
         with self.assertRaises(ValueError) as ctx:
             _get_detector_filter(None, 'B10', 107, 'macro')
-        self.assertIn("Macroscopic detector response requires an assigned material", str(ctx.exception))
+        self.assertIn("needs a detector material", str(ctx.exception))
 
     def test_microscopic_requires_explicit_nuclide(self):
         """Microscopic scale requires an explicit target nuclide, not 'all' or empty."""
@@ -84,7 +59,7 @@ class TestDetectorResponses(unittest.TestCase):
         mat.add_nuclide('B10', 1.0, 'ao')
         with self.assertRaises(ValueError) as ctx:
             _get_detector_filter(mat, 'all', 107, 'micro')
-        self.assertIn("Microscopic detector response requires an explicit target nuclide", str(ctx.exception))
+        self.assertIn("needs one target nuclide", str(ctx.exception))
 
     def test_b10_preset_evaluation(self):
         """B-10 preset: MT 107 (n,a) with B-10 material produces physical macroscopic response."""
@@ -98,8 +73,9 @@ class TestDetectorResponses(unittest.TestCase):
         self.assertIsInstance(eff, openmc.EnergyFunctionFilter)
         self.assertTrue(len(eff.energy) > 100)
         # Verify thermal cross section value at ~0.0253 eV (3837 barns * N_B10)
-        thermal_idx = np.argmin(np.abs(eff.energy - 0.0253))
-        self.assertGreater(eff.y[thermal_idx], 0.0)
+        # About 3840 b at 0.0253 eV, times the B-10 atom density
+        n_b10 = mat_b10.get_nuclide_atom_densities()["B10"]
+        self.assertAlmostEqual(np.interp(0.0253, eff.energy, eff.y) / n_b10 / 3840.0, 1.0, delta=0.02)
 
     def test_he3_preset_evaluation(self):
         """He-3 preset: MT 103 (n,p) with He-3 gas produces physical macroscopic response."""
@@ -109,9 +85,9 @@ class TestDetectorResponses(unittest.TestCase):
 
         eff = _get_detector_filter(mat_he3, 'He3', 103, 'macro')
         self.assertIsInstance(eff, openmc.EnergyFunctionFilter)
-        thermal_idx = np.argmin(np.abs(eff.energy - 0.0253))
-        # Thermal microscopic cross section is ~5316 b; verify macro product
-        self.assertGreater(eff.y[thermal_idx], 0.0)
+        # About 5316 b at 0.0253 eV, times the He-3 atom density
+        n_he3 = mat_he3.get_nuclide_atom_densities()["He3"]
+        self.assertAlmostEqual(np.interp(0.0253, eff.energy, eff.y) / n_he3 / 5316.0, 1.0, delta=0.02)
 
     def test_composition_order_invariance(self):
         """Permuting the composition text/entry order must yield identical macroscopic response."""
@@ -144,8 +120,8 @@ class TestDetectorResponses(unittest.TestCase):
 
         with self.assertRaises(ValueError) as ctx:
             _get_detector_filter(mat_h, 'all', 107, 'macro')
-        self.assertIn("No nuclides in material 'Hydrogen gas' have reaction MT 107", str(ctx.exception))
+        self.assertIn("No nuclide in material 'Hydrogen gas' has reaction MT 107", str(ctx.exception))
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # python test/test_detector_responses.py (after node test/generate_fixtures.js)
     unittest.main()

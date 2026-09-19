@@ -981,9 +981,14 @@ function problems() {
   const pos = v => fin(v) && v > 0;
 
   if (!pos(st.worldR)) add('error', 'World size must be a positive number of cm.', 'world');
+  if (st.worldBC === 'periodic' && st.worldShape === 'sphere') add('error', 'A periodic boundary needs a box world (opposite faces are paired). Switch the world to a box or pick another boundary.', 'world');
+  (S.groups || []).filter(g => g.lattice && g.lattice.asLattice).forEach(g => {
+    const pl = latticePlan(g);
+    if (!pl.ok) add('warn', `${g.name} is written as separate cells, not a lattice, because ${pl.reason}. The geometry is the same.`, 'group', g.id);
+    else add('info', `${g.name} is a lattice in model.py. model.mcnp writes it cell by cell (MCNPy's lattice translation isn't reliable yet).`, 'group', g.id);
+  });
 
-  const used = new Set(S.parts.map(p => p.material));
-  used.add(st.worldFill);
+  const used = usedMaterialIds();
   if (st.worldFill !== 'void' && !matById(st.worldFill)) add('error', 'World fill points at a deleted material. Pick another fill.', 'world');
 
   S.materials.forEach(m => {
@@ -995,7 +1000,7 @@ function problems() {
     const noNat = [...new Set(out.filter(c => !c.nuclide && NO_NATURAL.includes(c.el)).map(c => c.el))];
     if (noNat.length && used.has(m.id)) add('error', `${m.name}: ${noNat.join(', ')} ${noNat.length === 1 ? 'has' : 'have'} no natural isotopes, so OpenMC can't add ${noNat.length === 1 ? 'it' : 'them'} as an element. List nuclides instead, like ${noNat[0]}${noNat[0] === 'Pu' ? '239' : noNat[0] === 'Ra' ? '226' : noNat[0] === 'Am' ? '241' : '…'}:1.`, 'material', m.id);
     if (m.sab && !/^c_\w+$/.test(m.sab)) add('warn', `${m.name}: thermal scattering table names start with c_, like c_H_in_H2O.`, 'material', m.id);
-    if (!used.has(m.id)) add('info', `${m.name} isn't used by any part, so model.py leaves it out.`, 'material', m.id);
+    if (!used.has(m.id)) add('info', `${m.name} isn't used by any part, array or tally, so model.py leaves it out.`, 'material', m.id);
   });
 
   S.parts.forEach(p => {
@@ -1044,10 +1049,27 @@ function problems() {
     if (t.kind === 'cell') {
       if (!t.cells.length) add('error', `${t.name}: tick at least one cell to tally.`, 'tally', t.id);
       t.cells.filter(c => c !== 'world' && !partById(c)).forEach(() => add('error', `${t.name} lists a part that was deleted.`, 'tally', t.id));
+    } else if (t.kind === 'surface') {
+      const ids = t.surfaces || [];
+      if (!ids.length) add('error', `${t.name}: tick at least one part whose surfaces to tally.`, 'tally', t.id);
+      if (ids.some(id => !partById(id))) add('error', `${t.name} lists a part that was deleted.`, 'tally', t.id);
+      const inLattice = ids.filter(id => (S.groups || []).some(g => latticePlan(g).ok && latticePlan(g).parts.some(p => p.id === id)));
+      if (inLattice.length) add('error', `${t.name}: ${partById(inLattice[0]).name} is inside a lattice, so it has no surfaces of its own. Untick "Export as RectLattice" (or HexLattice) on its array group, or tally another part.`, 'tally', t.id);
+      if (t.scores.some(sc => sc !== 'current')) add('error', `${t.name}: surface tallies can only score current.`, 'tally', t.id);
+    } else if (t.meshGeom === 'cylindrical') {
+      if (![t.nr, t.nphi, t.nz].every(n => Number.isInteger(+n) && +n >= 1)) add('error', `${t.name}: mesh bins must be whole numbers of 1 or more.`, 'tally', t.id);
+      if (!((t.rmin ?? 0) >= 0 && (t.rmin ?? 0) < (t.rmax ?? t.ux ?? 10))) add('error', `${t.name}: the radius range needs 0 ≤ min < max.`, 'tally', t.id);
+      if (!((t.zmin ?? t.lz ?? -10) < (t.zmax ?? t.uz ?? 10))) add('error', `${t.name}: the z range needs min < max.`, 'tally', t.id);
     } else {
       if (![t.nx, t.ny, t.nz].every(n => Number.isInteger(n) && n >= 1)) add('error', `${t.name}: mesh bins must be whole numbers of 1 or more.`, 'tally', t.id);
       if (!(t.lx < t.ux && t.ly < t.uy && t.lz < t.uz)) add('error', `${t.name}: each lower corner value must be below the upper one.`, 'tally', t.id);
       else if (t.nx * t.ny * t.nz > 1e6) add('warn', `${t.name} has over a million voxels. Expect a large statepoint file.`, 'tally', t.id);
+    }
+    if (t.detector && t.detector !== 'none') {
+      const det = resolveDetector(t), micro = t.responseScale === 'micro';
+      if (!micro && !matById(det.respMatId)) add('error', `${t.name}: pick the detector material (a macroscopic response needs its atom densities).`, 'tally', t.id);
+      if (micro && (!det.respNuc || det.respNuc === 'all')) add('error', `${t.name}: a microscopic response needs one target nuclide, like He3 or B10.`, 'tally', t.id);
+      if (t.scores.some(sc => sc !== 'flux')) add('error', `${t.name}: a detector response multiplies the flux, so score flux only.`, 'tally', t.id);
     }
     if (!t.scores.length) add('error', `${t.name}: tick at least one score.`, 'tally', t.id);
     if (t.ebins.trim()) {
@@ -1101,6 +1123,76 @@ function makeNamer() {
 // MCNP reaction MT mapping and detector tally resolution
 const MT = {total:'-1', absorption:'-2', fission:'-6', 'nu-fission':'-6 -7', elastic:'2', '(n,2n)':'16', '(n,gamma)':'102', '(n,p)':'103', '(n,a)':'107'};
 
+// Can an array group be written as an OpenMC lattice? Only when every member is the same single part (shape, size,
+// rotation, material) sitting on the array's grid, at most one per site. Returns {ok, reason} plus the layout.
+const LAT_DIMS = {sphere:['r'], cylinder:['r', 'h', 'axis'], box:['sx', 'sy', 'sz'], wedge:['sx', 'sy', 'sz'], hex_prism:['r', 'h'], cone:['r', 'r2', 'h'], ellipsoid:['a', 'b', 'c', 'r']};
+function latticePlan(g) {
+  const lat = g && g.lattice;
+  if (!lat || !lat.asLattice) return {ok:false, reason:'it isn\'t marked as a lattice'};
+  const no = reason => ({ok:false, reason});
+  const parts = groupMembers(g.id).filter(m => m.kind === 'part').map(m => m.o);
+  if (!parts.length) return no('it has no parts');
+  const base = parts[0], keys = ['shape', 'material', 'rx', 'ry', 'rz', ...(LAT_DIMS[base.shape] || ['r', 'h', 'sx', 'sy', 'sz'])];
+  const same = (a, b) => typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a)) : a === b;
+  if (!parts.every(p => keys.every(k => same(p[k], base[k])))) return no('its parts differ in shape, size, rotation or material (a lattice repeats one part)');
+  const h = partHalfExtents(base), tol = 1e-6;
+  const onGrid = v => Math.abs(v - Math.round(v)) < tol;
+  if (lat.type === 'hex') {
+    const pitch = +(lat.pitch || lat.dx), rings = Math.max(1, parseInt(lat.rings) || 1), orientation = lat.orientation === 'x' ? 'x' : 'y';
+    if (!(pitch > 0)) return no('its pitch isn\'t set');
+    if (Math.max(h[0], h[1]) * 2 > pitch * (1 + tol)) return no('its parts are wider than the pitch');
+    if (!parts.every(p => Math.abs(p.z - base.z) < tol)) return no('its parts aren\'t all at the same height');
+    const c3 = Math.sqrt(3) / 2, full = 1 + 3 * rings * (rings - 1);
+    const tryCenter = (cx, cy) => {
+      const seen = new Set();
+      for (const p of parts) {
+        const ox = (p.x - cx) / pitch, oy = (p.y - cy) / pitch;
+        const x = orientation === 'x' ? ox - (oy / c3) / 2 : ox / c3, a = orientation === 'x' ? oy / c3 : oy - x / 2;
+        if (!onGrid(x) || !onGrid(a)) return null;
+        const X = Math.round(x), Y = Math.round(a);
+        if (Math.max(Math.abs(X), Math.abs(Y), Math.abs(X + Y)) >= rings || seen.has(`${X},${Y}`)) return null;
+        seen.add(`${X},${Y}`);
+      }
+      return seen;
+    };
+    const mean = k => parts.reduce((t, p) => t + p[k], 0) / parts.length;
+    let cx = g.x, cy = g.y, seen = tryCenter(cx, cy);
+    if (!seen) { cx = mean('x'); cy = mean('y'); seen = tryCenter(cx, cy); }
+    if (!seen) return no('its parts aren\'t on a hexagonal grid around the group\'s centre');
+    const hasCenter = seen.has('0,0');
+    if (seen.size !== full && !(seen.size === full - 1 && !hasCenter)) return no('some of its sites are empty (only the centre site may be)');
+    const R = (rings - 0.2) * pitch;
+    return {ok:true, type:'hex', parts, pitch, rings, orientation, hasCenter, pz:2 * h[2], center:[cx, cy, base.z], R,
+      box:[[cx - R, cy - R, base.z - h[2]], [cx + R, cy + R, base.z + h[2]]]};
+  }
+  const n = [lat.nx, lat.ny, lat.nz].map(v => Math.max(1, parseInt(v) || 1)), d = [lat.dx, lat.dy, lat.dz].map(v => +v || 0);
+  const pitch = [0, 1, 2].map(k => n[k] > 1 ? d[k] : 2 * h[k]);
+  for (let k = 0; k < 3; k++) {
+    if (!(pitch[k] > 0)) return no('its spacing isn\'t set');
+    if (2 * h[k] > pitch[k] * (1 + tol)) return no('its parts are wider than the spacing, so neighbours overlap');
+  }
+  const origin = [0, 1, 2].map(k => Math.min(...parts.map(p => [p.x, p.y, p.z][k])));
+  const filled = new Set();
+  for (const p of parts) {
+    const idx = [p.x, p.y, p.z].map((v, k) => (v - origin[k]) / pitch[k]);
+    if (!idx.every(onGrid)) return no('its parts aren\'t on the array grid');
+    const I = idx.map(Math.round);
+    if (I.some((v, k) => v >= n[k]) || filled.has(I.join(','))) return no('its parts aren\'t on the array grid');
+    filled.add(I.join(','));
+  }
+  return {ok:true, type:'rect', parts, n, pitch, filled,
+    box:[origin.map((v, k) => v - pitch[k] / 2), origin.map((v, k) => v + (n[k] - 0.5) * pitch[k])]};
+}
+// Materials model.py writes: part fills, the world fill, array fills, detector materials and material filters.
+function usedMaterialIds() {
+  const used = new Set(S.parts.map(p => p.material).concat(S.settings.worldFill));
+  (S.groups || []).forEach(g => { if (g.lattice && g.lattice.fill && g.lattice.fill !== 'auto') used.add(g.lattice.fill); });
+  (S.tallies || []).forEach(t => {
+    if (t.detector && t.detector !== 'none') { const det = resolveDetector(t); if (det.respMatId) used.add(det.respMatId); }
+    if (t.materialFilter) used.add(t.materialFilter);
+  });
+  return used;
+}
 function resolveDetector(t) {
   let respScore = t.responseScore;
   let respNuc = t.responseNuc;
@@ -1135,7 +1227,7 @@ function resolveDetector(t) {
 // the result carries a source map (map[ref] says which field the number came from), the owner object
 // of every line, and the surfaces in creation order (OpenMC IDs 1, 2, 3… = MCNP surface numbers).
 const SURF_TOL = 1e-7, SURF_BUCKET = 1e-5; // cm
-function buildScript(probs, mark) {
+function buildScript(probs, mark, opts = {}) {
   const st = S.settings, eig = st.runMode === 'eigenvalue', L = [], OWN = [], MAP = [], SURF = [], name = makeNamer();
   let owner = null;
   const push = (...lines) => lines.forEach(l => { L.push(l); OWN.push(owner); });
@@ -1150,16 +1242,7 @@ function buildScript(probs, mark) {
   // --track (tracks=True) writes every particle up to max_tracks and ignores settings.track,
   // so a specific-particle list runs without it.
   const wantAll = st.maxTracks > 0 && !tracks.length;
-  const usedIds = new Set(S.parts.map(p => p.material).concat(st.worldFill));
-  (S.groups || []).forEach(g => {
-    if (g.lattice && g.lattice.fill && g.lattice.fill !== 'auto') usedIds.add(g.lattice.fill);
-  });
-  (S.tallies || []).forEach(t => {
-    if (t.detector && t.detector !== 'none') {
-      const det = resolveDetector(t);
-      if (det.respMatId) usedIds.add(det.respMatId);
-    }
-  });
+  const usedIds = usedMaterialIds();
   const mats = S.materials.filter(m => usedIds.has(m.id));
   const mv = {}, cv = {};
 
@@ -1256,44 +1339,14 @@ function buildScript(probs, mark) {
   owner = null;
   push('');
   const fill = id => id === 'void' || !mv[id] ? 'None' : mv[id];
-  // Check for RectLattice groups before defining individual shapes so lattice elements don't generate 100s of redundant surfaces
-  const latGroups = (S.groups || []).filter(g => g.lattice && g.lattice.asLattice);
-  const latMemberPartIds = new Set();
-  const latBoxes = [];
-  const latExtents = [];
-  const latCellVars = [];
+  // Arrays become OpenMC lattices only when every member is the same single part on the array's grid
+  // (latticePlan). Otherwise, and for the MCNP export (opts.flat), the parts are written one cell each.
+  const latGroups = opts.flat ? [] : (S.groups || []).filter(g => latticePlan(g).ok);
+  const latPlans = latGroups.map(g => latticePlan(g));
+  const latMemberPartIds = new Set(latPlans.flatMap(pl => pl.parts.map(p => p.id)));
+  const latBoxes = [], latExtents = latPlans.map(pl => pl.box), latCellVars = [];
 
-  latGroups.forEach(lg => {
-    const lat = lg.lattice;
-    const allMembers = groupMembers(lg.id);
-    const memberParts = allMembers.filter(m => m.kind === 'part').map(m => m.o);
-    if (!memberParts.length) return;
-    memberParts.forEach(p => latMemberPartIds.add(p.id));
-
-    // Determine lattice bounding box
-    const xs = memberParts.map(p => p.x), ys = memberParts.map(p => p.y), zs = memberParts.map(p => p.z);
-    const p_x0 = Math.min(...xs), p_y0 = Math.min(...ys), p_z0 = Math.min(...zs);
-    const is3D = (lat.nz || 1) > 1 && (lat.dz || 0) > 0;
-    if (lat.type === 'hex') {
-      const hexP = lat.pitch || lat.dx;
-      const rBound = (lat.rings || 3) * hexP;
-      const z_min = is3D ? (p_z0 - (lat.dz || memberParts[0].h || 20) / 2) : -R;
-      const z_max = is3D ? (p_z0 + (lat.dz || memberParts[0].h || 20) / 2) : R;
-      latExtents.push([[(lg.x || 0) - rBound, (lg.y || 0) - rBound, z_min], [(lg.x || 0) + rBound, (lg.y || 0) + rBound, z_max]]);
-    } else {
-      const dy = lat.dy || lat.dx;
-      const x_min = p_x0 - lat.dx / 2, x_max = p_x0 + (lat.nx - 0.5) * lat.dx;
-      const y_min = p_y0 - dy / 2, y_max = p_y0 + (lat.ny - 0.5) * dy;
-      const z_min = is3D ? (p_z0 - lat.dz / 2) : -R;
-      const z_max = is3D ? (p_z0 + (lat.nz - 0.5) * lat.dz) : R;
-      latExtents.push([[x_min, y_min, z_min], [x_max, y_max, z_max]]);
-    }
-  });
-
-  const shapeVar = {};
-  S.parts.forEach(p => {
-    if (latMemberPartIds.has(p.id)) return;
-    owner = {kind:'part', id:p.id};
+  const shapeExpr = p => {
     let expr;
     const fr = p.shape === 'sphere' ? null : partFrame(p), ctr = [p.x, p.y, p.z], col = k => [fr.M[0][k], fr.M[1][k], fr.M[2][k]];
     if (p.shape === 'sphere') expr = `-${sphere(p.x, p.y, p.z, p.r)}`;
@@ -1368,6 +1421,14 @@ function buildScript(probs, mark) {
         {kind:'cyl', ax, a:av, b:bv, r:rv});
       expr = `-${cyl} & ${slab(ax, p[ax] - p.h / 2, p[ax] + p.h / 2)}`;
     }
+    return expr;
+  };
+  const shapeVar = {}, shapeSurfs = {};
+  S.parts.forEach(p => {
+    if (latMemberPartIds.has(p.id)) return;
+    owner = {kind:'part', id:p.id};
+    const expr = shapeExpr(p);
+    shapeSurfs[p.id] = [...new Set([...expr.matchAll(/[+-]([A-Za-z_]\w*)/g)].map(m => m[1]))];
     shapeVar[p.id] = name('shape', p.name);
     push(`${shapeVar[p.id]} = ${expr}`);
   });
@@ -1378,60 +1439,12 @@ function buildScript(probs, mark) {
   const overlaps = (a, b) => [0, 1, 2].every(k => a[0][k] < b[1][k] - SURF_TOL && b[0][k] < a[1][k] - SURF_TOL);
   const standaloneParts = S.parts.filter(p => !latMemberPartIds.has(p.id));
 
-  // Generate RectLattice definitions
-  latGroups.forEach((lg, lgIdx) => {
-    const lat = lg.lattice;
-    const allMembers = groupMembers(lg.id);
-    const memberParts = allMembers.filter(m => m.kind === 'part').map(m => m.o);
-    if (!memberParts.length) return;
-
-    const baseChild = (S.groups || []).find(cg => cg.parent === lg.id);
-    const baseParts = baseChild ? S.parts.filter(p => p.group === baseChild.id) : [memberParts[0]];
-    const basePart = baseParts[0];
-
-    const is3D = (lat.nz || 1) > 1 && (lat.dz || 0) > 0;
-    const dy = lat.dy || lat.dx;
-    const [minCorner, maxCorner] = latExtents[lgIdx];
-    const [x_min, y_min, z_min] = minCorner;
-    const [x_max, y_max, z_max] = maxCorner;
-
-    // Unit universe element centered at (0, 0, 0)
-    let unitShape, unitComp;
-    const fr = basePart.shape === 'sphere' ? null : partFrame(basePart);
-    const col = k => [fr.M[0][k], fr.M[1][k], fr.M[2][k]];
-    const ctr = [0, 0, 0];
-
-    if (basePart.shape === 'cylinder') {
-      const cylV = surface('Cz', [0, 0, basePart.r], 'zcyl', `r${tag(basePart.r)}`, () => `openmc.ZCylinder(r=${num(basePart.r)})`, {kind:'cyl', ax:'z', a:0, b:0, r:basePart.r});
-      unitShape = `-${cylV}` + (is3D ? ` & +${plane('z', -lat.dz/2)} & -${plane('z', lat.dz/2)}` : ` & ${slab('z', -basePart.h/2, basePart.h/2)}`);
-      unitComp = `+${cylV}`;
-    } else if (basePart.shape === 'sphere') {
-      const sphV = surface('S', [0, 0, 0, basePart.r], 'sphere', `r${tag(basePart.r)}`, () => `openmc.Sphere(r=${num(basePart.r)})`, {kind:'sphere', x:0, y:0, z:0, r:basePart.r});
-      unitShape = `-${sphV}`;
-      unitComp = `+${sphV}`;
-    } else if (basePart.shape === 'box' && fr.aligned) {
-      unitShape = ['x', 'y', 'z'].map((ax, i) => {
-        const hs = [basePart.sx, basePart.sy, basePart.sz][fr.localOf[i]] / 2;
-        return slab(ax, -hs, hs);
-      }).join(' & ');
-      unitComp = ['x', 'y', 'z'].flatMap((ax, i) => {
-        const hs = [basePart.sx, basePart.sy, basePart.sz][fr.localOf[i]] / 2;
-        return [`-${plane(ax, -hs)}`, `+${plane(ax, hs)}`];
-      }).join(' | ');
-    } else if (basePart.shape === 'box') {
-      unitShape = [0, 1, 2].map(k => gslab(col(k), ctr, [basePart.sx, basePart.sy, basePart.sz][k] / 2)).join(' & ');
-      unitComp = [0, 1, 2].flatMap(k => {
-        const hs = [basePart.sx, basePart.sy, basePart.sz][k] / 2;
-        return [gplane(col(k), -hs, '-'), gplane(col(k), hs, '+')];
-      }).join(' | ');
-    } else {
-      unitShape = ['x', 'y', 'z'].map(ax => slab(ax, -lat['d' + ax]/4, lat['d' + ax]/4)).join(' & ');
-      unitComp = ['x', 'y', 'z'].flatMap(ax => [`-${plane(ax, -lat['d' + ax]/4)}`, `+${plane(ax, lat['d' + ax]/4)}`]).join(' | ');
-    }
-
-    const cellBaseVar = name('cell_unit', basePart.name);
-    const cellModVar = name('cell_mod', lg.name);
-    const uPinVar = name('u_unit', lg.name);
+  latPlans.forEach((pl, lgIdx) => {
+    const lg = latGroups[lgIdx], base = pl.parts[0];
+    owner = {kind:'group', id:lg.id};
+    // Every lattice is 3D, so each element's universe is centred on its element and the unit is the base part at the origin.
+    const unitShape = shapeExpr({...base, x:0, y:0, z:0});
+    const [[x_min, y_min, z_min], [x_max, y_max, z_max]] = pl.box;
     const overlappingHosts = standaloneParts.filter(p => overlaps(boxes[S.parts.indexOf(p)], latExtents[lgIdx]));
     const latCtr = [(x_min + x_max) / 2, (y_min + y_max) / 2, (z_min + z_max) / 2];
     const containsCtr = p => {
@@ -1439,108 +1452,55 @@ function buildScript(probs, mark) {
       return [0, 1, 2].every(k => b[0][k] <= latCtr[k] + SURF_TOL && latCtr[k] <= b[1][k] + SURF_TOL);
     };
     const hostPart = overlappingHosts.find(containsCtr) || overlappingHosts[0];
-    const modFill = (lat.fill && lat.fill !== 'auto') ? lat.fill : (hostPart ? hostPart.material : st.worldFill);
-
-    push(`${cellBaseVar} = openmc.Cell(name=${pyStr(basePart.name + " [unit]")}, fill=${fill(basePart.material)}, region=${unitShape})`);
-    push(`${cellModVar} = openmc.Cell(name=${pyStr(lg.name + " Mod")}, fill=${fill(modFill)}, region=${unitComp})`);
-    push(`${uPinVar} = openmc.Universe(name=${pyStr(lg.name + " Universe")}, cells=[${cellBaseVar}, ${cellModVar}])`);
-
-    // HexLattice or RectLattice definition
-    const latVar = name('lattice', lg.name);
-    const latCellVar = name('cell_lat', lg.name);
+    const modFill = (lg.lattice.fill && lg.lattice.fill !== 'auto') ? lg.lattice.fill : (hostPart ? hostPart.material : st.worldFill);
+    const cellBaseVar = name('cell_unit', base.name), cellModVar = name('cell_mod', lg.name), uPinVar = name('u_unit', lg.name);
+    push(`${cellBaseVar} = openmc.Cell(name=${pyStr(base.name + " [unit]")}, fill=${fill(base.material)}, region=${unitShape})`,
+      `${cellModVar} = openmc.Cell(name=${pyStr(lg.name + " Mod")}, fill=${fill(modFill)}, region=~(${unitShape}))`,
+      `${uPinVar} = openmc.Universe(name=${pyStr(lg.name + " Universe")}, cells=[${cellBaseVar}, ${cellModVar}])`);
+    const latVar = name('lattice', lg.name), latCellVar = name('cell_lat', lg.name);
     latCellVars.push(latCellVar);
-
-    if (lat.type === 'hex') {
-      const hexP = lat.pitch || lat.dx;
-      const rings = lat.rings || 3;
-      const orient = lat.orientation || 'y';
-      const uSolidVar = name('u_solid', lg.name);
-      const cellSolidVar = name('cell_solid', lg.name);
-      push(`${cellSolidVar} = openmc.Cell(name=${pyStr(lg.name + " Solid [unit]")}, fill=${fill(modFill)}, region=world)`);
-      push(`${uSolidVar} = openmc.Universe(name=${pyStr(lg.name + " Solid Universe")}, cells=[${cellSolidVar}])`);
-
-      push(`${latVar} = openmc.HexLattice(name=${pyStr(lg.name)})`);
-      push(`${latVar}.pitch = [${num(hexP)}]`);
-      push(`${latVar}.center = [${num(lg.x || 0)}, ${num(lg.y || 0)}]`);
-      push(`${latVar}.orientation = ${pyStr(orient)}`);
-      push(`${latVar}.outer = ${uSolidVar}`);
-
-      const ringCode = [];
-      for (let r = 0; r < rings; r++) {
-        const g = rings - 1 - r;
-        if (g === 0) {
-          const hasCenter = memberParts.some(p => Math.hypot(p.x - (lg.x || 0), p.y - (lg.y || 0)) < hexP / 2);
-          ringCode.push(`[${hasCenter ? uPinVar : uSolidVar}]`);
-        } else {
-          ringCode.push(`[${uPinVar}] * ${6 * g}`);
-        }
-      }
-      push(`${latVar}.universes = [`, ringCode.map(rc => `    ${rc},`).join('\n'), `]`);
-
-      const rBound = (rings - 0.2) * hexP;
-      const cylBound = surface('Cz', [lg.x || 0, lg.y || 0, rBound], 'zcyl', 'hex_bound',
-        () => `openmc.ZCylinder(x0=${num(lg.x || 0)}, y0=${num(lg.y || 0)}, r=${num(rBound)})`,
-        {kind:'cyl', ax:'z', a:lg.x || 0, b:lg.y || 0, r:rBound});
-      const latRegion = `-${cylBound}` + (is3D ? ` & +${plane('z', z_min)} & -${plane('z', z_max)}` : '');
-      latBoxes.push(latRegion);
-      push(`${latCellVar} = openmc.Cell(name=${pyStr(lg.name)}, fill=${latVar}, region=${latRegion} & world)`);
-      push('');
-      return;
-    }
-
-    push(`${latVar} = openmc.RectLattice(name=${pyStr(lg.name)})`);
-    push(`${latVar}.pitch = [${[lat.dx, dy, ...(is3D ? [lat.dz] : [])].map(num).join(', ')}]`);
-    push(`${latVar}.lower_left = [${[x_min, y_min, ...(is3D ? [z_min] : [])].map(num).join(', ')}]`);
-
-    // Check if any lattice sites are missing parts (e.g. user deleted an aperture)
-    const missingSites = [];
-    const nz = is3D ? lat.nz : 1;
-    const ny = lat.ny || 1;
-    for (let iz = 0; iz < nz; iz++) {
-      for (let iy = 0; iy < ny; iy++) {
-        for (let ix = 0; ix < lat.nx; ix++) {
-          const cx = x_min + (ix + 0.5) * lat.dx;
-          const cy = y_min + (iy + 0.5) * dy;
-          const cz = is3D ? (z_min + (iz + 0.5) * lat.dz) : basePart.z;
-          const hasPart = memberParts.some(p => Math.abs(p.x - cx) < lat.dx / 2 && (!is3D || Math.abs(p.z - cz) < (lat.dz || lat.dx) / 2));
-          if (!hasPart) missingSites.push([iz, iy, ix]);
-        }
-      }
-    }
-
-    if (!missingSites.length) {
-      if (is3D) {
-        push(`${latVar}.universes = [[[${uPinVar}] * ${lat.nx} for _ in range(${lat.ny})] for _ in range(${lat.nz})]`);
-      } else {
-        push(`${latVar}.universes = [[${uPinVar}] * ${lat.nx} for _ in range(${lat.ny})]`);
-      }
+    const solid = () => {
+      const uSolidVar = name('u_solid', lg.name), cellSolidVar = name('cell_solid', lg.name);
+      push(`${cellSolidVar} = openmc.Cell(name=${pyStr(lg.name + " Solid [unit]")}, fill=${fill(modFill)})`,
+        `${uSolidVar} = openmc.Universe(name=${pyStr(lg.name + " Solid Universe")}, cells=[${cellSolidVar}])`);
+      return uSolidVar;
+    };
+    let latRegion;
+    if (pl.type === 'hex') {
+      const uSolidVar = solid();
+      push(`${latVar} = openmc.HexLattice(name=${pyStr(lg.name)})`,
+        `${latVar}.pitch = [${num(pl.pitch)}, ${num(pl.pz)}]`,
+        `${latVar}.center = [${pl.center.map(num).join(', ')}]`,
+        `${latVar}.orientation = ${pyStr(pl.orientation)}`,
+        `${latVar}.outer = ${uSolidVar}`);
+      const rings = [];
+      for (let g = pl.rings - 1; g >= 0; g--) rings.push(g ? `[${uPinVar}] * ${6 * g}` : `[${pl.hasCenter ? uPinVar : uSolidVar}]`);
+      push(`${latVar}.universes = [[${rings.join(', ')}]]  # one axial level, outer ring first`);
+      const [cx, cy] = pl.center;
+      const cylBound = surface('Cz', [cx, cy, pl.R], 'zcyl', 'hex_bound',
+        () => `openmc.ZCylinder(x0=${num(cx)}, y0=${num(cy)}, r=${num(pl.R)})`, {kind:'cyl', ax:'z', a:cx, b:cy, r:pl.R});
+      latRegion = `-${cylBound} & ${slab('z', z_min, z_max)}`;
     } else {
-      const uSolidVar = name('u_solid', lg.name);
-      const cellSolidVar = name('cell_solid', lg.name);
-      push(`${cellSolidVar} = openmc.Cell(name=${pyStr(lg.name + " Solid [unit]")}, fill=${fill(modFill)}, region=world)`);
-      push(`${uSolidVar} = openmc.Universe(name=${pyStr(lg.name + " Solid Universe")}, cells=[${cellSolidVar}])`);
-      if (is3D) {
-        push(`_lat_grid_${lgIdx} = [[[${uPinVar}] * ${lat.nx} for _ in range(${lat.ny})] for _ in range(${lat.nz})]`);
-        missingSites.forEach(([iz, iy, ix]) => {
-          push(`_lat_grid_${lgIdx}[${iz}][${iy}][${ix}] = ${uSolidVar}`);
-        });
-        push(`${latVar}.universes = _lat_grid_${lgIdx}`);
-      } else {
-        push(`_lat_grid_${lgIdx} = [[${uPinVar}] * ${lat.nx} for _ in range(${lat.ny})]`);
-        missingSites.forEach(([iz, iy, ix]) => {
-          push(`_lat_grid_${lgIdx}[${iy}][${ix}] = ${uSolidVar}`);
-        });
-        push(`${latVar}.universes = _lat_grid_${lgIdx}`);
+      const [nx, ny, nz] = pl.n;
+      push(`${latVar} = openmc.RectLattice(name=${pyStr(lg.name)})`,
+        `${latVar}.pitch = [${pl.pitch.map(num).join(', ')}]`,
+        `${latVar}.lower_left = [${[x_min, y_min, z_min].map(num).join(', ')}]`);
+      const missing = [];
+      for (let iz = 0; iz < nz; iz++) for (let iy = 0; iy < ny; iy++) for (let ix = 0; ix < nx; ix++)
+        if (!pl.filled.has(`${ix},${iy},${iz}`)) missing.push([ix, iy, iz]);
+      if (!missing.length) push(`${latVar}.universes = [[[${uPinVar}] * ${nx} for _ in range(${ny})] for _ in range(${nz})]`);
+      else {
+        const uSolidVar = solid(), grid = `_lat_grid_${lgIdx}`;
+        push(`${grid} = [[[${uPinVar}] * ${nx} for _ in range(${ny})] for _ in range(${nz})]  # [z][y, top row first][x]`);
+        missing.forEach(([ix, iy, iz]) => push(`${grid}[${iz}][${ny - 1 - iy}][${ix}] = ${uSolidVar}  # empty site`));
+        push(`${latVar}.universes = ${grid}`);
       }
+      latRegion = `${slab('x', x_min, x_max)} & ${slab('y', y_min, y_max)} & ${slab('z', z_min, z_max)}`;
     }
-
-    // Bounding region for lattice in root geometry
-    const latRegion = `+${plane('x', x_min)} & -${plane('x', x_max)} & +${plane('y', y_min)} & -${plane('y', y_max)}` +
-                      (is3D ? ` & +${plane('z', z_min)} & -${plane('z', z_max)}` : '');
     latBoxes.push(latRegion);
-    push(`${latCellVar} = openmc.Cell(name=${pyStr(lg.name)}, fill=${latVar}, region=${latRegion} & world)`);
-    push('');
+    push(`${latCellVar} = openmc.Cell(name=${pyStr(lg.name)}, fill=${latVar}, region=${latRegion} & world)`, '');
   });
+  owner = null;
 
   standaloneParts.forEach((p, i) => {
     owner = {kind:'part', id:p.id};
@@ -1577,6 +1537,8 @@ function buildScript(probs, mark) {
       push(`${indent}${pyStr(g.name)}: {`);
       push(`${indent}    "pivot": (${[g.x, g.y, g.z].map(num).join(', ')}),`);
       push(`${indent}    "cells": [${cellList}],`);
+      const srcNames = S.sources.filter(s => s.group === g.id).map(s => pyStr(s.name));
+      if (srcNames.length) push(`${indent}    "sources": [${srcNames.join(', ')}],  # source names (sources aren't cells)`);
       if (childGroups.length) {
         push(`${indent}    "groups": {`);
         childGroups.forEach(cg => serializeGroup(cg, indent + '        '));
@@ -1632,56 +1594,53 @@ function buildScript(probs, mark) {
   const hasDetectorTallies = S.tallies.some(t => t.detector && t.detector !== 'none');
   if (hasDetectorTallies) {
     push('def _get_detector_filter(mat, nuclide, mt, scale="macro"):',
-      '    import numpy as np',
+      '    """Detector response as an EnergyFunctionFilter (flux tally x response = reaction rate in the detector gas,',
+      '    which isn\'t in the geometry). macro: sum of N_i * sigma_i(E) in 1/cm, over `nuclide` or every nuclide of `mat`',
+      '    that has reaction `mt`; micro: sigma(E) of `nuclide` in barns. Cross sections at 294 K (or the nearest)."""',
       '    import openmc.data',
       '    lib = openmc.data.DataLibrary.from_xml()',
-      '    if scale == "macro":',
-      '        if mat is None:',
-      '            raise ValueError("Macroscopic detector response requires an assigned material with atom densities.")',
-      '        densities = mat.get_nuclide_atom_densities()',
-      '        if not densities:',
-      '            raise ValueError(f"Material \'{getattr(mat, \\\'name\\\', \\\'unnamed\\\')}\' has no defined nuclide atom densities.")',
-      '        if nuclide and nuclide != "all":',
-      '            target_nuclides = [nuclide]',
-      '        else:',
-      '            target_nuclides = sorted(densities.keys())',
-      '        contributions = []',
-      '        for nuc in target_nuclides:',
-      '            entry = lib.get_by_material(nuc)',
-      '            if not entry:',
-      '                continue',
-      '            nuc_data = openmc.data.IncidentNeutron.from_hdf5(entry["path"])',
-      '            if mt not in nuc_data.reactions:',
-      '                continue',
-      '            rx = nuc_data.reactions[mt]',
-      '            temp = list(rx.xs.keys())[0]',
-      '            xs = rx.xs[temp]',
-      '            N_i = densities.get(nuc, 1.0)',
-      '            contributions.append((xs.x, xs.y * N_i))',
-      '        if not contributions:',
-      '            mat_name = getattr(mat, "name", "unnamed")',
-      '            raise ValueError(f"No nuclides in material \'{mat_name}\' have reaction MT {mt} in cross sections library")',
-      '        if len(contributions) == 1:',
-      '            return openmc.EnergyFunctionFilter(contributions[0][0], contributions[0][1])',
-      '        all_e = np.unique(np.concatenate([c[0] for c in contributions]))',
-      '        total_macro = np.zeros_like(all_e)',
-      '        for e_grid, macro_vals in contributions:',
-      '            total_macro += np.interp(all_e, e_grid, macro_vals, left=0.0, right=0.0)',
-      '        return openmc.EnergyFunctionFilter(all_e, total_macro)',
-      '    else:',
-      '        if not nuclide or nuclide == "all":',
-      '            raise ValueError("Microscopic detector response requires an explicit target nuclide.")',
-      '        entry = lib.get_by_material(nuclide)',
+      '',
+      '    def xs_of(nuc):',
+      '        entry = lib.get_by_material(nuc)',
       '        if not entry:',
-      '            raise ValueError(f"Nuclide {nuclide} not in cross sections library")',
-      '        nuc_data = openmc.data.IncidentNeutron.from_hdf5(entry["path"])',
-      '        if mt not in nuc_data.reactions:',
-      '            raise ValueError(f"Nuclide {nuclide} does not have reaction MT {mt}")',
-      '        rx = nuc_data.reactions[mt]',
-      '        temp = list(rx.xs.keys())[0]',
-      '        xs = rx.xs[temp]',
-      '        return openmc.EnergyFunctionFilter(xs.x, xs.y)', '');
+      '            return None',
+      '        data = openmc.data.IncidentNeutron.from_hdf5(entry["path"])',
+      '        if mt not in data.reactions:',
+      '            return None',
+      '        table = data.reactions[mt].xs',
+      '        temp = min(table, key=lambda t: abs(float(t.rstrip("K")) - 294.0))',
+      '        return table[temp]',
+      '',
+      '    if scale == "micro":',
+      '        if not nuclide or nuclide == "all":',
+      '            raise ValueError("A microscopic detector response needs one target nuclide.")',
+      '        xs = xs_of(nuclide)',
+      '        if xs is None:',
+      '            raise ValueError(f"{nuclide} has no reaction MT {mt} in the cross section library.")',
+      '        return openmc.EnergyFunctionFilter(xs.x, xs.y)',
+      '    if mat is None:',
+      '        raise ValueError("A macroscopic detector response needs a detector material.")',
+      '    densities = mat.get_nuclide_atom_densities()',
+      '    if not densities:',
+      '        raise ValueError(f"Material {mat.name!r} has no nuclides.")',
+      '    if nuclide and nuclide != "all":',
+      '        if nuclide not in densities:',
+      '            raise ValueError(f"Material {mat.name!r} has no {nuclide}.")',
+      '        targets = [nuclide]',
+      '    else:',
+      '        targets = sorted(densities)',
+      '    parts = []',
+      '    for nuc in targets:',
+      '        xs = xs_of(nuc)',
+      '        if xs is not None:',
+      '            parts.append((xs.x, xs.y * densities[nuc]))',
+      '    if not parts:',
+      '        raise ValueError(f"No nuclide in material {mat.name!r} has reaction MT {mt} in the cross section library.")',
+      '    energy = np.unique(np.concatenate([e for e, _ in parts]))',
+      '    total = sum(np.interp(energy, e, y, left=0.0, right=0.0) for e, y in parts)',
+      '    return openmc.EnergyFunctionFilter(energy, total)', '');
   }
+  const responses = [];
   const talVars = S.tallies.map(t => {
     owner = {kind:'tally', id:t.id};
     const v = name('tally', t.name), filters = [];
@@ -1718,8 +1677,10 @@ function buildScript(probs, mark) {
       }
       filters.push(`openmc.MeshFilter(${m})`);
     } else if (t.kind === 'surface') {
-      const surfVars = (t.surfaces || []).map(sid => shapeVar[sid] || cv[sid] || null).filter(Boolean);
-      if (surfVars.length) filters.push(`openmc.SurfaceFilter([${surfVars.join(', ')}])`);
+      // Current leaving the selected parts through their own bounding surfaces.
+      const ids = (t.surfaces || []).filter(id => shapeSurfs[id] && cv[id]);
+      const surfVars = [...new Set(ids.flatMap(id => shapeSurfs[id]))];
+      if (surfVars.length) filters.push(`openmc.SurfaceFilter([${surfVars.join(', ')}])`, `openmc.CellFromFilter([${ids.map(id => cv[id]).join(', ')}])`);
     } else {
       filters.push(`openmc.CellFilter([${t.cells.filter(c => cv[c]).map(c => cv[c]).join(', ')}])`);
     }
@@ -1730,6 +1691,7 @@ function buildScript(probs, mark) {
       const effVar = name('eff', t.name);
       push(`${effVar} = _get_detector_filter(${matVar}, ${pyStr(det.respNuc)}, ${det.mt}, ${pyStr(t.responseScale || 'macro')})`);
       filters.push(effVar);
+      responses.push(`${v}.id: {"material": ${matVar === 'None' ? 'None' : matVar + '.id'}, "nuclide": ${pyStr(det.respNuc || 'all')}, "mt": ${det.mt}, "scale": ${pyStr(t.responseScale || 'macro')}}`);
     }
     push(`${v} = openmc.Tally(name=${pyStr(t.name)})`, `${v}.filters = [${filters.join(', ')}]`,
       `${v}.scores = [${t.scores.map(pyStr).join(', ')}]`, '');
@@ -1737,6 +1699,8 @@ function buildScript(probs, mark) {
   });
   owner = null;
   push(`tallies = openmc.Tallies([${talVars.join(', ')}])`, '');
+  if (responses.length) push('# Detector responses for the MCNP export (written as FM cards): tally ID -> response.',
+    'detector_responses = {', ...responses.map(r => `    ${r},`), '}', '');
 
   owner = {kind:'settings'};
   const IS = k => F(st, k, int(st[k]), {int:true});
@@ -1778,6 +1742,8 @@ function buildScript(probs, mark) {
   return {text: L.join('\n') + '\n', owners: OWN, map: MAP, surfaces: SURF, materials: mats};
 }
 function generate(probs) { return buildScript(probs, false).text; }
+// What the MCNP export translates: the same model with arrays written cell by cell.
+function mcnpScript(probs) { return buildScript(probs, false, {flat:true}).text; }
 
 /* ───────── MCNP equivalents (NE403 lab notation) shown beside sources and tallies ───────── */
 const mcnpNum = v => fin(v) ? String(+v.toPrecision(6)) : '?';
@@ -1797,8 +1763,9 @@ function mcnpSource(s) {
   } else if (s.energy === 'watt') parts.push(`ERG=${dist('', `-3 ${mcnpNum(s.wa)} ${mcnpNum(s.wb)}`)}`);
   else if (s.energy === 'maxwell') parts.push(`ERG=${dist('', `-2 ${mcnpNum(s.theta)}`)}`);
   else if (s.energy === 'muir') {
-    parts.push(`c Muir fusion spectrum (E0=${s.muir_e0 || 14.08} MeV, kT=${s.muir_kt || 20000} eV)`);
-    parts.push(`ERG=${mcnpNum(s.muir_e0 || 14.08)}`);
+    // MCNP's Gaussian fusion spectrum SP -4 a b: p(E) ~ exp(-((E-b)/a)^2), so a = sqrt(2)*sigma = sqrt(4*E0*kT/m_rat) in MeV, b = E0
+    const e0 = s.muir_e0 || 14.08, kt = (s.muir_kt || 20000) / 1e6, m = s.muir_mrat || 5;
+    parts.push(`ERG=${dist('', `-4 ${mcnpNum(Math.sqrt(4 * e0 * kt / m))} ${mcnpNum(e0)}`)}`);
   } else if (s.energy === 'tabulated') {
     const tab = parseTabular(s.tab_e, s.tab_p);
     const eList = tab.edges.map(mcnpNum).join(' ');
@@ -1810,19 +1777,19 @@ function mcnpSource(s) {
 // Mirrors src/mcnp_cards.py in openmc-mcnp-project: one MCNP tally per score, numbered 4, 14, 24… across all
 // tallies, cell/material numbers = the OpenMC IDs model.py creates (used materials in order; parts, then World).
 function mcnpIds() {
-  const used = new Set(S.parts.map(p => p.material).concat(S.settings.worldFill));
-  (S.groups || []).forEach(g => {
-    if (g.lattice && g.lattice.fill && g.lattice.fill !== 'auto') used.add(g.lattice.fill);
-  });
-  (S.tallies || []).forEach(t => {
-    if (t.detector && t.detector !== 'none') {
-      const det = resolveDetector(t);
-      if (det.respMatId) used.add(det.respMatId);
-    }
-  });
+  const used = usedMaterialIds();
   const mats = S.materials.filter(m => used.has(m.id));
   return {cell: c => c === 'world' ? S.parts.length + 1 : S.parts.findIndex(q => q.id === c) + 1,
           mat: id => mats.findIndex(m => m.id === id) + 1};
+}
+// FM for a detector response: MCNP multiplies by C times material m's cross section for reaction R. A macroscopic
+// response needs C = the detector material's atom density (the export computes it); -1 would use the tallied cell's own.
+function detectorFm(n, t, det, ids, mesh) {
+  const m = matById(det.respMatId), micro = t.responseScale === 'micro';
+  const c = micro ? '1' : 'N', card = mesh ? `     FM=${c} ${ids.mat(det.respMatId)} ${det.mt}` : `FM${n} (${c} ${ids.mat(det.respMatId)} ${det.mt})`;
+  const note = micro ? `c FM${n}: C = 1 / atom fraction of ${det.respNuc} in ${m ? m.name : 'the detector material'}`
+    : `c FM${n}: N = atom density of ${m ? m.name : 'the detector material'} in atoms/b-cm (the export writes the number)`;
+  return [card, note];
 }
 function mcnpTally(t) {
   const ids = mcnpIds(), out = [];
@@ -1836,14 +1803,10 @@ function mcnpTally(t) {
   t.scores.forEach((score, j) => {
     const n = 10 * (k0 + j) + 4;
     if (t.kind === 'surface') {
-      const fn = score === 'current' ? (10 * (k0 + j) + 1) : (10 * (k0 + j) + 2);
-      out.push(`F${fn}:${pTag} ${(t.surfaces || []).map(ids.cell).join(' ')}`);
-      if (eb) out.push(`E${fn} ${eb.slice(1).map(mcnpNum).join(' ')}`);
+      out.push(`c ${score} across part surfaces: not exported to MCNP yet (it needs F1 with the parts' surface numbers)`);
     } else if (t.kind === 'cell') {
       out.push(`F${n}:${pTag} ${t.cells.map(ids.cell).join(' ')}`);
-      if (isDetector) {
-        out.push(`FM${n} (${scale} ${ids.mat(det.respMatId)} ${det.mt})`);
-      } else if (score !== 'flux') {
+      if (isDetector) out.push(...detectorFm(n, t, det, ids, false)); else if (score !== 'flux') {
         const mats = [...new Set(t.cells.map(c => c === 'world' ? S.settings.worldFill : (partById(c) || {}).material))];
         if (!MT[score]) out.push(`c ${score}: not exportable to MCNP`);
         else if (score === 'absorption' && mats.length === 1 && matById(mats[0]) && isFissileMat(matById(mats[0]))) out.push(`c absorption in fuel: not exportable (MCNP -2 excludes fission)`);
@@ -1862,15 +1825,15 @@ function mcnpTally(t) {
         const nphi = t.nphi || 1;
         const zmax = t.zmax ?? t.uz ?? 10;
         const nz = t.nz || 10;
-        out.push(`FMESH${n}:${pTag} GEOM=CYL ORIGIN=${[ox, oy, oz].map(mcnpNum).join(' ')} AXS=0 0 1 VEC=1 0 0`,
-          `     IMESH=${mcnpNum(rmax)} IINTS=${nr} JMESH=1.0 JINTS=${nphi} KMESH=${mcnpNum(zmax)} KINTS=${nz}`);
+        // GEOM=CYL: I = radius, J = height along AXS from ORIGIN, K = angle in revolutions
+        const zmin = t.zmin ?? t.lz ?? -10;
+        out.push(`FMESH${n}:${pTag} GEOM=CYL ORIGIN=${[ox, oy, oz + zmin].map(mcnpNum).join(' ')} AXS=0 0 1 VEC=1 0 0`,
+          `     IMESH=${mcnpNum(rmax)} IINTS=${nr} JMESH=${mcnpNum(zmax - zmin)} JINTS=${nz} KMESH=1 KINTS=${nphi}`);
       } else {
         out.push(`FMESH${n}:${pTag} GEOM=XYZ ORIGIN=${[t.lx, t.ly, t.lz].map(mcnpNum).join(' ')}`,
           `     IMESH=${mcnpNum(t.ux)} IINTS=${t.nx} JMESH=${mcnpNum(t.uy)} JINTS=${t.ny} KMESH=${mcnpNum(t.uz)} KINTS=${t.nz}`);
       }
-      if (isDetector) {
-        out.push(`     FM=${scale} ${ids.mat(det.respMatId)} ${det.mt}`);
-      }
+      if (isDetector) out.push(...detectorFm(n, t, det, ids, true));
       if (eb) out.push(`     EMESH=${eb.slice(1).map(mcnpNum).join(' ')}`);
     }
   });
@@ -1953,7 +1916,7 @@ function materialForKey(key) {
   return have ? {m:have, added:false} : {m:createMaterial(key), added:true};
 }
 function pruneMaterials() {
-  const used = new Set(S.parts.map(p => p.material).concat(S.settings.worldFill));
+  const used = usedMaterialIds();
   const gone = S.materials.filter(m => !used.has(m.id) && isUntouchedCopy(m) && !(sel.kind === 'material' && sel.id === m.id));
   if (!gone.length) return;
   S.materials.splice(0, S.materials.length, ...S.materials.filter(m => !gone.includes(m)));
@@ -3460,7 +3423,7 @@ function renderMcnp(P) {
     CODEVIEW.mcnp = null;
     return;
   }
-  const script = generate(P), r = LIVE.report;
+  const script = mcnpScript(P), r = LIVE.report;
   const fresh = !!r && LIVE.sentScript === script;
   if (!r) {
     const p = LIVE.progress;
@@ -3489,7 +3452,7 @@ function renderMcnp(P) {
 function geometryPart(script) { const i = script.indexOf('# ── Sources'); return i < 0 ? script : script.slice(0, i); }
 function liveMcnpTick(P) {
   if (!LOCAL.on || !mcnpVisible()) return;
-  const script = generate(P);
+  const script = mcnpScript(P);
   if (script === LIVE.sentScript) return;
   const errs = P.filter(p => p.sev === 'error');
   if (errs.length) { setMcnpStatus('warn', `Fix ${errs.length} problem${errs.length === 1 ? '' : 's'} to update (see Problems)`); return; }
@@ -3513,7 +3476,7 @@ function stopMcnpProgress() {
 async function sendLive(force) {
   const P = problems();
   if (P.some(p => p.sev === 'error')) return;
-  const built = buildScript(P, false), script = built.text;
+  const built = buildScript(P, false, {flat:true}), script = built.text;
   if (!force && script === LIVE.sentScript) return;
   const seq = ++LIVE.seq, ctx = mcnpContext(P, built);
   const slow = !LIVE.report || !LIVE.sentScript || geometryPart(LIVE.sentScript) !== geometryPart(script);
@@ -3541,7 +3504,7 @@ async function sendLive(force) {
   if (r.superseded || seq !== LIVE.seq) return; // a newer edit is on its way
   LIVE.sentScript = script; LIVE.ctx = ctx; LIVE.report = r;
   if (EDITING.pane !== 'mcnp') renderMcnp(problems());
-  if (generate(problems()) !== script) liveMcnpTick(problems()); // edits made while this one ran
+  if (mcnpScript(problems()) !== script) liveMcnpTick(problems()); // edits made while this one ran
 }
 
 function scrollSelIntoView(pane) {
@@ -3629,7 +3592,7 @@ async function exportMcnp() {
     logProgress(progId, `Stage ${p.step} of ${p.total}: ${esc(p.text)} (${p.elapsed}s)`);
   });
   let r;
-  try { r = await api('/api/export-mcnp', {method:'POST', body:JSON.stringify({script:generate(P), project:S, name:S.settings.name})}); }
+  try { r = await api('/api/export-mcnp', {method:'POST', body:JSON.stringify({script:mcnpScript(P), project:S, name:S.settings.name})}); }
   catch (e) {
     stopMcnpProgress();
     finishLogProgress(progId, 'error', `MCNP export failed: ${esc(e.message)}`);

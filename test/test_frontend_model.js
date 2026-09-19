@@ -252,5 +252,138 @@ if (!mcnpMuir.includes('Muir fusion spectrum')) {
   process.exit(1);
 }
 
+// ── Test Phases 9-11 Advanced Capabilities ──
+console.log('\nTesting Phases 9-11 (HexLattice, CylindricalMesh, Ellipsoid Quadric)...');
+
+// 1. Hexagonal Lattice
+S_test.groups.push({
+  id: 'g_hex',
+  name: 'Hex Core',
+  x: 0, y: 0, z: 0,
+  lattice: {
+    asLattice: true,
+    type: 'hex',
+    pitch: 1.4,
+    rings: 3,
+    orientation: 'x',
+    fill: 'm_air',
+    dz: 20,
+    nz: 1
+  }
+});
+S_test.parts.push({
+  id: 'p_pin',
+  name: 'Fuel Pin',
+  shape: 'cylinder',
+  group: 'g_hex',
+  x: 0, y: 0, z: 0,
+  r: 0.4, h: 20,
+  material: 'm_bf3'
+});
+
+// 2. Ellipsoids (Axis-aligned and Rotated)
+S_test.parts.push({
+  id: 'p_ellip1',
+  name: 'Ellipsoid Aligned',
+  shape: 'ellipsoid',
+  x: 5, y: 5, z: 5,
+  a: 10, b: 15, c: 20,
+  rotX: 0, rotY: 0, rotZ: 0,
+  material: 'm_bf3'
+});
+S_test.parts.push({
+  id: 'p_ellip2',
+  name: 'Ellipsoid Rotated',
+  shape: 'ellipsoid',
+  x: 0, y: 0, z: 0,
+  a: 8, b: 12, c: 16,
+  rotX: 30, rotY: 45, rotZ: 0,
+  material: 'm_bf3'
+});
+
+// 3. Cylindrical Mesh Tally
+S_test.tallies.push({
+  id: 't_cylmesh',
+  name: 'Cylindrical Mesh Flux',
+  kind: 'mesh',
+  meshGeom: 'cylindrical',
+  scores: ['flux'],
+  nr: 10,
+  nphi: 8,
+  nz: 15,
+  rmin: 0,
+  rmax: 20,
+  phimin: 0,
+  phimax: 6.283185307179586,
+  zmin: -25,
+  zmax: 25,
+  ox: 0, oy: 0, oz: 0,
+  ebins: '',
+  particle: 'neutron'
+});
+
+sandbox.normalizeProject(S_test);
+vm.runInContext("S = " + JSON.stringify(S_test) + ";", sandbox);
+
+const py3 = sandbox.generate([]);
+console.log('Phases 9-11 Python script length:', py3.length);
+
+// Verify HexLattice Python emission
+if (!py3.includes('openmc.HexLattice(name="Hex Core")')) {
+  console.error('FAILED: Missing openmc.HexLattice in Python export');
+  process.exit(1);
+}
+if (!py3.includes('.pitch = [1.4]')) {
+  console.error('FAILED: Missing HexLattice pitch in Python export');
+  process.exit(1);
+}
+if (!py3.includes('.orientation = "x"')) {
+  console.error('FAILED: Missing HexLattice orientation in Python export');
+  process.exit(1);
+}
+if (!py3.includes('.universes = [')) {
+  console.error('FAILED: Missing HexLattice universes array in Python export');
+  process.exit(1);
+}
+
+// Verify Ellipsoid Quadric Python emission
+const quadricLines = py3.split('\n').filter(l => l.includes('openmc.Quadric('));
+console.log('Quadric declarations:', quadricLines);
+if (quadricLines.length < 2) {
+  console.error('FAILED: Expected at least 2 openmc.Quadric declarations for ellipsoids');
+  process.exit(1);
+}
+if (!py3.includes('shape_ellipsoid_aligned = -')) {
+  console.error('FAILED: Missing shape_ellipsoid_aligned definition in Python export');
+  process.exit(1);
+}
+if (!py3.includes('shape_ellipsoid_rotated = -')) {
+  console.error('FAILED: Missing shape_ellipsoid_rotated definition in Python export');
+  process.exit(1);
+}
+
+// Verify CylindricalMesh Python emission
+if (!py3.includes('openmc.CylindricalMesh(')) {
+  console.error('FAILED: Missing openmc.CylindricalMesh declaration in Python export');
+  process.exit(1);
+}
+if (!py3.includes('r_grid=np.linspace(0.0, 20.0, 11)')) {
+  console.error('FAILED: Missing CylindricalMesh r_grid in Python export');
+  process.exit(1);
+}
+if (!py3.includes('z_grid=np.linspace(-25.0, 25.0, 16)')) {
+  console.error('FAILED: Missing CylindricalMesh z_grid in Python export');
+  process.exit(1);
+}
+
+// Verify CylindricalMesh MCNP Tally emission
+const mcnpCyl = sandbox.mcnpTally(S_test.tallies[S_test.tallies.length - 1]);
+console.log('MCNP Cylindrical Mesh Tally:\n' + mcnpCyl);
+if (!mcnpCyl.includes('GEOM=CYL') || !mcnpCyl.includes('IMESH=20') || !mcnpCyl.includes('IINTS=10') || !mcnpCyl.includes('KMESH=25') || !mcnpCyl.includes('KINTS=15')) {
+  console.error('FAILED: MCNP Cylindrical mesh tally missing expected GEOM=CYL cards');
+  process.exit(1);
+}
+
 console.log('\nAll frontend model generation & MCNP translation tests PASSED!');
+
 

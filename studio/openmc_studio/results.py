@@ -42,10 +42,14 @@ def load(run_dir):
                 summary["inactive"] = int(sp.n_inactive) if hasattr(sp, "n_inactive") else 0
                 if sp.keff is not None:
                     summary["keff"] = [_num(sp.keff.nominal_value), _num(sp.keff.std_dev)]
-                if getattr(sp, "k_generation", None) is not None:
-                    summary["k_generation"] = [float(k) for k in sp.k_generation]
-                if getattr(sp, "entropy", None) is not None and len(sp.entropy) > 0:
-                    summary["entropy"] = [float(h) for h in sp.entropy]
+                if hasattr(sp, "k_generation") and sp.k_generation is not None:
+                    summary["k_generation"] = [float(x) for x in sp.k_generation]
+                    summary["n_inactive"] = int(sp.n_inactive)
+                try:
+                    if sp.entropy is not None and len(sp.entropy) > 0:
+                        summary["entropy"] = [float(x) for x in sp.entropy]
+                except Exception:
+                    pass
                 if getattr(sp, "k_combined", None) is not None:
                     kc = sp.k_combined
                     nom = getattr(kc, "nominal_value", None)
@@ -73,8 +77,9 @@ def _tally(t, cell_names, mat_names, openmc):
     mean, std = t.mean, t.std_dev  # (filter bins, nuclides, scores); last filter varies fastest
     scores = list(t.scores)
     mesh_f = next((f for f in t.filters if isinstance(f, openmc.MeshFilter)), None)
-    if mesh_f is not None and isinstance(mesh_f.mesh, openmc.RegularMesh):
+    if mesh_f is not None and isinstance(mesh_f.mesh, (openmc.RegularMesh, getattr(openmc, "CylindricalMesh", ()))):
         m = mesh_f.mesh
+        is_cyl = hasattr(openmc, "CylindricalMesh") and isinstance(m, openmc.CylindricalMesh)
         dims = [int(d) for d in m.dimension]
         dims += [1] * (3 - len(dims))
         shape = [f.num_bins for f in t.filters]
@@ -84,7 +89,7 @@ def _tally(t, cell_names, mat_names, openmc):
         other = tuple(i for i in range(len(shape)) if i != k)
         mean_m = np.moveaxis(mean_f, k, 0).sum(axis=tuple(a + 1 for a in range(len(other))) + (len(shape), ))
         var_m = np.moveaxis(var_f, k, 0).sum(axis=tuple(a + 1 for a in range(len(other))) + (len(shape), ))
-        # mean_m: (mesh bins, scores), in MeshFilter.bins order; place into an x-fastest grid explicitly
+        # mean_m: (mesh bins, scores), in MeshFilter.bins order; place into grid explicitly
         n = dims[0] * dims[1] * dims[2]
         values, rel = {}, {}
         idx = np.array([(b[0] - 1) + dims[0] * ((b[1] - 1) + dims[1] * (b[2] - 1)) for b in mesh_f.bins])
@@ -96,10 +101,21 @@ def _tally(t, cell_names, mat_names, openmc):
                 err[idx] = np.where(mean_m[:, s] > 0, np.sqrt(var_m[:, s]) / mean_m[:, s], 0.0)
             values[score] = [float(x) for x in grid]
             rel[score] = [round(float(x), 4) for x in err]
-        return {"name": t.name, "kind": "mesh", "dims": dims,
-                "lower": [float(x) for x in m.lower_left], "upper": [float(x) for x in m.upper_right],
-                "scores": scores, "values": values, "rel_err": rel,
-                "summed_over": [type(f).__name__ for i, f in enumerate(t.filters) if i != k]}
+        res = {
+            "name": t.name, "kind": "mesh", "dims": dims,
+            "mesh_type": "cylindrical" if is_cyl else "regular",
+            "scores": scores, "values": values, "rel_err": rel,
+            "summed_over": [type(f).__name__ for i, f in enumerate(t.filters) if i != k]
+        }
+        if is_cyl:
+            res["r_grid"] = [float(x) for x in m.r_grid]
+            res["phi_grid"] = [float(x) for x in m.phi_grid]
+            res["z_grid"] = [float(x) for x in m.z_grid]
+            res["origin"] = [float(x) for x in getattr(m, "origin", (0.0, 0.0, 0.0))]
+        else:
+            res["lower"] = [float(x) for x in m.lower_left]
+            res["upper"] = [float(x) for x in m.upper_right]
+        return res
 
     labels_per_filter = []
     for f in t.filters:

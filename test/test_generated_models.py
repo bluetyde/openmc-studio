@@ -55,6 +55,22 @@ def run(path):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def run_full(path):
+    """Like run(), but returns {tally name: (mean, std_dev)}."""
+    ns = load(path)
+    tmp = tempfile.mkdtemp(prefix="studio_gen_")
+    cwd = os.getcwd()
+    try:
+        os.chdir(tmp)
+        with contextlib.redirect_stdout(io.StringIO()):
+            sp_path = ns["model"].run(output=False)
+        with openmc.StatePoint(sp_path) as sp:
+            return {t.name: (t.mean.copy(), t.std_dev.copy()) for t in sp.tallies.values()}
+    finally:
+        os.chdir(cwd)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 @unittest.skipUnless(FILES, "no generated models: run `node test/generate_fixtures.js` first")
 class GeneratedModels(unittest.TestCase):
     def test_builds(self):
@@ -90,6 +106,17 @@ class GeneratedModels(unittest.TestCase):
                 for mean in means.values():
                     self.assertTrue(np.all(np.isfinite(mean)))
                     self.assertGreater(mean.sum(), 0)
+
+    def test_lattice_part_tallies(self):
+        """A tally on parts inside a lattice (CellInstanceFilter bins) equals the same tally on the cell-by-cell
+        twin (CellFilter), bin by bin, within Monte Carlo noise."""
+        for name, tally in (("rect_tally", "t_rods"), ("hex_tally", "t_pins")):
+            with self.subTest(name):
+                (m1, s1), (m2, s2) = run_full(os.path.join(GEN, f"{name}.py"))[tally], run_full(os.path.join(GEN, f"{name}_flat.py"))[tally]
+                self.assertEqual(m1.shape, m2.shape)
+                self.assertTrue(np.all(m1 > 0), "every bin scored")
+                z = np.abs(m1 - m2) / np.sqrt(s1 ** 2 + s2 ** 2)
+                self.assertTrue(np.all(z < 4), f"lattice vs cell-by-cell differ by {z.max():.1f} sigma: {m1.ravel()} vs {m2.ravel()}")
 
     def test_detector_responses(self):
         ns, means = run(os.path.join(GEN, "detectors.py"))

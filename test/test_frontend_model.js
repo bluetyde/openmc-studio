@@ -279,12 +279,15 @@ for (let x = -2; x <= 2; x++) for (let a = -2; a <= 2; a++) {
     x: +((x + 0.5 * a) * 1.4).toFixed(12), y: +(Math.sqrt(3) / 2 * 1.4 * a).toFixed(12), z: 0, r: 0.4, h: 20, rx: 0, ry: 0, rz: 0, material: 'm_bf3' });
 }
 
+// The hex array sits in its own box of air (a lattice box must lie inside one part that no cell tally counts)
+S_test.parts.push({ id: 'p_hexbox', name: 'Hex box', shape: 'box', x: 0, y: 0, z: 0, sx: 12, sy: 12, sz: 24, rx: 0, ry: 0, rz: 0, material: 'm_air' });
+
 // 2. Ellipsoids (Axis-aligned and Rotated)
 S_test.parts.push({
   id: 'p_ellip1',
   name: 'Ellipsoid Aligned',
   shape: 'ellipsoid',
-  x: 5, y: 5, z: 5,
+  x: 40, y: 40, z: 40,  // clear of the hex lattice (a lattice box must sit inside one host part)
   a: 10, b: 15, c: 20,
   rx: 0, ry: 0, rz: 0,
   material: 'm_bf3'
@@ -293,7 +296,7 @@ S_test.parts.push({
   id: 'p_ellip2',
   name: 'Ellipsoid Rotated',
   shape: 'ellipsoid',
-  x: 0, y: 0, z: 0,
+  x: -40, y: 0, z: 0,
   a: 8, b: 12, c: 16,
   rx: 30, ry: 45, rz: 0,
   material: 'm_bf3'

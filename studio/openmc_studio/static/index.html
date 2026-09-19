@@ -1050,8 +1050,6 @@ function problems() {
     if (t.kind === 'cell') {
       if (!t.cells.length) add('error', `${t.name}: tick at least one cell to tally.`, 'tally', t.id);
       t.cells.filter(c => c !== 'world' && !partById(c)).forEach(() => add('error', `${t.name} lists a part that was deleted.`, 'tally', t.id));
-      const inLat = t.cells.filter(id => (S.groups || []).some(g => { const pl = latticePlan(g); return pl.ok && pl.parts.some(p => p.id === id); }));
-      if (inLat.length) add('error', `${t.name}: ${partById(inLat[0]).name} is inside a lattice, so it has no cell of its own to tally yet. Untick "Export as RectLattice" (or HexLattice) on its array group, or use a mesh tally.`, 'tally', t.id);
     } else if (t.kind === 'surface') {
       const ids = t.surfaces || [];
       if (!ids.length) add('error', `${t.name}: tick at least one part whose surfaces to tally.`, 'tally', t.id);
@@ -1165,8 +1163,8 @@ function latticePlan(g) {
     const hasCenter = seen.has('0,0');
     if (seen.size !== full && !(seen.size === full - 1 && !hasCenter)) return no('some of its sites are empty (only the centre site may be)');
     const R = (rings - 0.2) * pitch;
-    return {ok:true, type:'hex', parts, pitch, rings, orientation, hasCenter, pz:2 * h[2], center:[cx, cy, base.z], R,
-      box:[[cx - R, cy - R, base.z - h[2]], [cx + R, cy + R, base.z + h[2]]]};
+    return latticeHost(g, {ok:true, type:'hex', parts, pitch, rings, orientation, hasCenter, pz:2 * h[2], center:[cx, cy, base.z], R,
+      box:[[cx - R, cy - R, base.z - h[2]], [cx + R, cy + R, base.z + h[2]]]});
   }
   const n = [lat.nx, lat.ny, lat.nz].map(v => Math.max(1, parseInt(v) || 1)), d = [lat.dx, lat.dy, lat.dz].map(v => +v || 0);
   const pitch = [0, 1, 2].map(k => n[k] > 1 ? d[k] : 2 * h[k]);
@@ -1183,8 +1181,32 @@ function latticePlan(g) {
     if (I.some((v, k) => v >= n[k]) || filled.has(I.join(','))) return no('its parts aren\'t on the array grid');
     filled.add(I.join(','));
   }
-  return {ok:true, type:'rect', parts, n, pitch, filled,
-    box:[origin.map((v, k) => v - pitch[k] / 2), origin.map((v, k) => v + (n[k] - 0.5) * pitch[k])]};
+  return latticeHost(g, {ok:true, type:'rect', parts, n, pitch, filled,
+    box:[origin.map((v, k) => v - pitch[k] / 2), origin.map((v, k) => v + (n[k] - 0.5) * pitch[k])]});
+}
+// The lattice's box is filled with one surrounding material, so it must lie inside a single part (or the world)
+// that no other part overlaps there. That part (the host) then loses the space between the array's parts to the
+// lattice's own cells, so a cell tally on the host would count less than on the cell-by-cell model: refuse that too.
+function latticeHost(g, pl) {
+  const [lo, hi] = pl.box, eps = 1e-6, members = new Set(pl.parts.map(p => p.id));
+  const no = reason => ({ok:false, reason});
+  const hits = S.parts.filter(p => {
+    if (members.has(p.id)) return false;
+    const h = partHalfExtents(p);
+    return [0, 1, 2].every(k => [p.x, p.y, p.z][k] - h[k] < hi[k] - eps && lo[k] + eps < [p.x, p.y, p.z][k] + h[k]);
+  });
+  if (hits.length > 1) return no(`its box overlaps more than one other part (${hits.slice(0, 3).map(p => p.name).join(', ')})`);
+  const corners = [];
+  for (const x of [lo[0] + eps, hi[0] - eps]) for (const y of [lo[1] + eps, hi[1] - eps]) for (const z of [lo[2] + eps, hi[2] - eps]) corners.push([x, y, z]);
+  const R = S.settings.worldR;
+  const inWorld = c => S.settings.worldShape === 'sphere' ? Math.hypot(...c) < R : c.every(v => Math.abs(v) < R);
+  const host = hits[0] || null;
+  if (host && !corners.every(c => inShape(host, ...c))) return no(`its box sticks out of ${host.name}`);
+  if (!host && !corners.every(inWorld)) return no('its box sticks out of the world');
+  const hostId = host ? host.id : 'world', hostName = host ? host.name : 'the World';
+  const t = S.tallies.find(t => t.kind === 'cell' && t.cells.includes(hostId));
+  if (t) return no(`the cell tally ${t.name} counts ${hostName}, which would lose the space between the array's parts`);
+  return {...pl, host: hostId};
 }
 // Materials model.py writes: part fills, the world fill, array fills, detector materials and material filters.
 function usedMaterialIds() {
@@ -1348,6 +1370,7 @@ function buildScript(probs, mark, opts = {}) {
   const latPlans = latGroups.map(g => latticePlan(g));
   const latMemberPartIds = new Set(latPlans.flatMap(pl => pl.parts.map(p => p.id)));
   const latBoxes = [], latExtents = latPlans.map(pl => pl.box), latCellVars = [];
+  const latMember = {}; // part id -> {cell: its lattice's unit cell variable, lat: the lattice variable}
 
   const shapeExpr = p => {
     let expr;
@@ -1462,6 +1485,7 @@ function buildScript(probs, mark, opts = {}) {
       `${uPinVar} = openmc.Universe(name=${pyStr(lg.name + " Universe")}, cells=[${cellBaseVar}, ${cellModVar}])`);
     const latVar = name('lattice', lg.name), latCellVar = name('cell_lat', lg.name);
     latCellVars.push(latCellVar);
+    pl.parts.forEach(p => { latMember[p.id] = {cell: cellBaseVar, lat: latVar}; });
     const solid = () => {
       const uSolidVar = name('u_solid', lg.name), cellSolidVar = name('cell_solid', lg.name);
       push(`${cellSolidVar} = openmc.Cell(name=${pyStr(lg.name + " Solid [unit]")}, fill=${fill(modFill)})`,
@@ -1644,6 +1668,21 @@ function buildScript(probs, mark, opts = {}) {
       '    return openmc.EnergyFunctionFilter(energy, total)', '');
   }
   const responses = [];
+  // A part inside a lattice has no cell of its own: it's the lattice's unit cell in one element, so its tally
+  // bin is (unit cell, instance) in a CellInstanceFilter. Instances are numbered by OpenMC (Geometry.determine_paths),
+  // and _instance() finds the one whose path goes through the lattice element holding the part.
+  if (S.tallies.some(t => t.kind === 'cell' && t.cells.some(c => latMember[c]))) {
+    push('def _instance(cell, lattice, point):',
+      '    """Instance number of the cell (as CellInstanceFilter counts them) in the lattice element holding the point."""',
+      '    idx = lattice.find_element(point)[0]',
+      '    key = f"->l{lattice.id}({\',\'.join(str(int(i)) for i in idx)})->"',
+      '    for n, path in enumerate(cell.paths):',
+      '        if key in path:',
+      '            return n',
+      '    raise ValueError(f"Cell {cell.id} has no instance in lattice element {key}.")',
+      '',
+      'geometry.determine_paths()  # numbers every cell instance, for the CellInstanceFilter bins below', '');
+  }
   const talVars = S.tallies.map(t => {
     owner = {kind:'tally', id:t.id};
     const v = name('tally', t.name), filters = [];
@@ -1684,6 +1723,12 @@ function buildScript(probs, mark, opts = {}) {
       const ids = (t.surfaces || []).filter(id => shapeSurfs[id] && cv[id]);
       const surfVars = [...new Set(ids.flatMap(id => shapeSurfs[id]))];
       if (surfVars.length) filters.push(`openmc.SurfaceFilter([${surfVars.join(', ')}])`, `openmc.CellFromFilter([${ids.map(id => cv[id]).join(', ')}])`);
+    } else if (t.cells.some(c => latMember[c])) {
+      const bins = t.cells.filter(c => cv[c] || latMember[c]).map(c => {
+        const m = latMember[c], p = partById(c);
+        return m ? `(${m.cell}, _instance(${m.cell}, ${m.lat}, (${num(p.x)}, ${num(p.y)}, ${num(p.z)})))` : `(${cv[c]}, 0)`;
+      });
+      filters.push(`openmc.CellInstanceFilter([${bins.join(', ')}])`);
     } else {
       filters.push(`openmc.CellFilter([${t.cells.filter(c => cv[c]).map(c => cv[c]).join(', ')}])`);
     }
@@ -1813,7 +1858,10 @@ function mcnpTally(t) {
     if (t.kind === 'surface') {
       out.push(`c ${score} across part surfaces: not exported to MCNP yet (it needs F1 with the parts' surface numbers)`);
     } else if (t.kind === 'cell') {
-      out.push(`F${n}:${pTag} ${t.cells.map(ids.cell).join(' ')}`);
+      const inLattice = MCNP_OPTS.flat ? [] : t.cells.filter(c => (S.groups || []).some(g => { const pl = latticePlan(g); return pl.ok && pl.parts.some(p => p.id === c); }));
+      if (inLattice.length) out.push(`c F${n}: the export writes each part inside a lattice as a bin (unit cell < lattice cell[i j k] < filled cell)`,
+        `c F${n}:${pTag} ${t.cells.map(c => inLattice.includes(c) ? `(${(partById(c) || {}).name} in its lattice)` : ids.cell(c)).join(' ')}`);
+      else out.push(`F${n}:${pTag} ${t.cells.map(ids.cell).join(' ')}`);
       if (isDetector) out.push(...detectorFm(n, t, det, ids, false)); else if (score !== 'flux') {
         const mats = [...new Set(t.cells.map(c => c === 'world' ? S.settings.worldFill : (partById(c) || {}).material))];
         if (!MT[score]) out.push(`c ${score}: not exportable to MCNP`);

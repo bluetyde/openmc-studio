@@ -95,11 +95,19 @@ write('detectors', {materials: [water, he3, bf3],
     cellTally('t_bf3_macro', ['slab'], {detector: 'custom', responseMat: 'm_bf3', responseNuc: 'all', responseScore: '(n,a)', responseScale: 'macro'})],
   settings: settings({worldR: 40})});
 
-// 5. Current leaving a sphere through its surface (OpenMC only: MCNP export of surface tallies isn't done yet)
+// 5. Current leaving a sphere through its surface (MCNP: F1 + C + FS per surface, see openmc-mcnp-project)
 write('surface_current', {materials: [water],
   parts: [part('ball', 'sphere', 0, 0, 0, {r: 8}, 'm_water'), part('shell', 'box', 0, 0, 0, {sx: 30, sy: 30, sz: 30}, 'm_water')],
   sources: [pointSource()], groups: [],
   tallies: [{id: 't_current', name: 't_current', kind: 'surface', surfaces: ['ball'], cells: [], scores: ['current'], ebins: ''}],
+  settings: settings({worldR: 40})});
+
+// 5b. Current leaving a box whose +x face is partly covered by a plug listed before it (the plug wins where they
+//     overlap), so the MCNP FS card has to cut the plug out of that face.
+write('current_box', {materials: [water],
+  parts: [part('plug', 'box', 10, 0, 0, {sx: 6, sy: 6, sz: 6}, 'm_water'), part('block', 'box', 0, 0, 0, {sx: 20, sy: 20, sz: 20}, 'm_water')],
+  sources: [pointSource()], groups: [],
+  tallies: [{id: 't_block', name: 't_block', kind: 'surface', surfaces: ['block'], cells: [], scores: ['current'], ebins: '0, 0.1, 20'}],
   settings: settings({worldR: 40})});
 
 // 6. Cell tallies on parts inside lattices (CellInstanceFilter), rectangular and hexagonal, with a plain part (a

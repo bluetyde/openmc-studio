@@ -118,6 +118,13 @@ class GeneratedModels(unittest.TestCase):
                 z = np.abs(m1 - m2) / np.sqrt(s1 ** 2 + s2 ** 2)
                 self.assertTrue(np.all(z < 4), f"lattice vs cell-by-cell differ by {z.max():.1f} sigma: {m1.ravel()} vs {m2.ravel()}")
 
+    def test_current_signs(self):
+        """OpenMC's current out of a part is signed by the surface's sense: + through its +x/+y/+z faces, - through
+        its -x/-y/-z faces (the MCNP export relies on this to pick the F1 cosine bin and sign)."""
+        ns, means = run(os.path.join(GEN, "current_box.py"))
+        per_face = means["t_block"].reshape(6, -1).sum(axis=1)  # SurfaceFilter order: -x, +x, -y, +y, -z, +z
+        self.assertTrue(np.all(per_face[0::2] < 0) and np.all(per_face[1::2] > 0), f"face currents {per_face}")
+
     def test_detector_responses(self):
         ns, means = run(os.path.join(GEN, "detectors.py"))
         macro, micro = means["t_he3_macro"].sum(), means["t_he3_micro"].sum()

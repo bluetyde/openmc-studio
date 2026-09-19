@@ -143,7 +143,11 @@ doesn't need to be in the geometry: model.py multiplies the flux by the gas's cr
 - **Sources**: energy as lines, Watt, Maxwell, uniform, tabulated (paste MCNP SI/SP cards) or a
   Muir fusion spectrum (MCNP `SP -4`).
 - **Tallies**: cells, Cartesian or cylindrical mesh, and surface current (the current leaving the
-  chosen parts; OpenMC only, not exported to MCNP yet).
+  chosen parts). OpenMC signs it by the surface's sense: + through a part's +x/+y/+z faces, - through the
+  others. In model.mcnp each (surface, part) bin is its own F1 tally, with a `C 0 1` card for the direction and
+  an `FS` card that cuts the surface down to the part's face (manual p. 459-460, 474-475). The FC comment
+  ends with where OpenMC's number is, e.g. `[S 14 C 2 SEG 12-17 COS 2 X+1]`: add FS segments 12-17 in cosine
+  bin 2 and keep the sign. Tick parts that don't overlap: a part carved out of another ticked part is refused.
 - **Settings**: photon transport, material temperatures, eigenvalue runs with a k and Shannon entropy
   convergence chart, and vacuum, reflective, white or periodic (box world only) boundaries.
 

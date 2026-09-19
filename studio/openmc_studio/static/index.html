@@ -171,6 +171,11 @@ pre.code.stale{opacity:.5;transition:opacity .15s}
 pre.code{margin:0;padding:10px 0;font:12.5px/1.6 var(--mono);counter-reset:ln;tab-size:4;min-width:max-content}
 pre.code .ln{display:block;padding-right:24px;white-space:pre}
 pre.code .ln::before{counter-increment:ln;content:counter(ln);display:inline-block;width:42px;padding-right:14px;text-align:right;color:var(--faint);user-select:none}
+#mcnpCode{position:relative;min-width:calc(56px + 128ch + 24px);min-height:100%;box-sizing:border-box;tab-size:8}
+#mcnpCode::after{content:"";position:absolute;left:calc(56px + 128ch);top:10px;bottom:10px;border-left:1px dashed var(--warn);opacity:.65;pointer-events:none}
+#mcnpCode .ln::before{box-sizing:content-box}
+#mcnpCode .ln[data-overlong]{background:rgba(240,117,117,.12)}
+.mcolumnhint{padding:4px 12px;color:var(--muted);font:11px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
 .t-com,.t-doc{color:#6f8a74}.t-str{color:#e3b378}.t-kw{color:#d38fd8}.t-mod{color:#7cc4ff}.t-num{color:#b5d78a}
 
 .output{border-top:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
@@ -332,6 +337,7 @@ input[type=checkbox]{accent-color:var(--accent)}
           <button class="tbtn" type="button" id="copyMcnp">Copy</button>
           <button class="tbtn" type="button" id="saveMcnp">Save .mcnp</button>
         </div>
+        <div class="mcolumnhint" title="MCNP 6.3 section 3.2.2: maximum 128 columns, after tabs expand to eight-column stops. Highlighted lines exceed the limit.">Dashed guide: 128-column limit · highlighted lines are too long</div>
         <div class="codewrap"><pre class="code" id="mcnpCode"></pre></div>
       </div>
 
@@ -3649,6 +3655,13 @@ function mcnpTallyNumbers(deck, tallies = S.tallies) {
   return byNum;
 }
 
+// Display tabs as spaces so the gutter cannot shift MCNP's eight-column tab stops.
+// This changes only presentation, never the exported/copied deck.
+function mcnpDisplayLine(line) {
+  let out = '';
+  for (const ch of line) out += ch === '\t' ? ' '.repeat(8 - out.length % 8) : ch;
+  return out;
+}
 function annotateMcnp(deck, ctx, editable) {
   const owners = [], refs = [];
   // the tallies as they were when this deck was requested (ctx.tallyScores lists each once per score)
@@ -3659,6 +3672,8 @@ function annotateMcnp(deck, ctx, editable) {
   const fieldRef = (obj, key, extra) => obj ? {t:'field', obj, key, ...extra} : null;
 
   const html = deck.replace(/\n$/, '').split('\n').map((line, li) => {
+    line = mcnpDisplayLine(line.replace(/\r$/, ''));
+    const lengthHint = line.length > 128 ? ` data-overlong="true" title="${line.length} columns; MCNP allows 128. Use continuation lines."` : '';
     const trimmed = line.trim();
     if (!trimmed) { block++; card = null; owners.push(null); return '<span class="ln"> </span>'; }
     if (li === 0 || /^(\$|c(\s|$))/i.test(trimmed)) {
@@ -3684,7 +3699,7 @@ function annotateMcnp(deck, ctx, editable) {
         own = cardOwnerFor('F' + tm[1], ctx, matOwner);
       }
       owners.push(own);
-      return `<span class="ln${ownerMatchesSel(own) ? ' sel' : ''}" data-line="${li}"><span class="t-mcom">${esc(line)}</span></span>`;
+      return `<span class="ln${ownerMatchesSel(own) ? ' sel' : ''}" data-line="${li}"${lengthHint}><span class="t-mcom">${esc(line)}</span></span>`;
     }
     const cont = /^\s/.test(line);
     const parts = line.split(/(\s+)/);
@@ -3776,7 +3791,7 @@ function annotateMcnp(deck, ctx, editable) {
       } else if (tok) out += esc(tok);
     }
     owners.push(cardOwner);
-    return `<span class="ln${ownerMatchesSel(cardOwner) ? ' sel' : ''}" data-line="${li}">${out || ' '}</span>`;
+    return `<span class="ln${ownerMatchesSel(cardOwner) ? ' sel' : ''}" data-line="${li}"${lengthHint}>${out || ' '}</span>`;
   }).join('');
   return {html, owners, refs};
 }

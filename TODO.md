@@ -1,7 +1,7 @@
 # TODO
 
-What's next for OpenMC Studio, roughly in priority order. Updated 2026-09-19 after the review of
-`c44381e..be160fe` (fixes listed under Completed; the working tree has them until they're committed).
+What's next for OpenMC Studio, roughly in priority order. Updated 2026-09-19 (review of `c44381e..be160fe`
+and the MCNP lattice work; fixes listed under Completed).
 
 ## Open items carried over
 
@@ -25,8 +25,8 @@ What's next for OpenMC Studio, roughly in priority order. Updated 2026-09-19 aft
 - **Artifact comments**: the 7 threads on the published copy are addressed but still open; resolve them
   in the artifact view.
 - **Name**: "OpenMabc" was floated; not decided.
-- **openmc-mcnp-project**: commit `ea1854d` (EnergyFunctionFilter) and this review's exporter changes
-  need pushing, or the Mac copy can't export detector tallies.
+- **Mac copy**: pull both repos (openmc-studio and openmc-mcnp-project) on the Mac; the exporter changes for
+  detector tallies and lattices are on GitHub `main` now.
 - **GEOUNED**: commit be160fe's title says "add GEOUNED integration", but only the backlog entry below
   exists; nothing is integrated yet.
 

@@ -156,6 +156,7 @@ def main():
         with contextlib.redirect_stdout(io.StringIO()):
             import openmc
             from export_mcnp import translate
+            import lattice_cards
             from mcnp_cards import UnsupportedFeature
             from remediate_deck import load_model, remediate
             from validate_deck import validate_deck
@@ -192,6 +193,8 @@ def main():
                 report = {"ok": False, "model": model_xml, "translated": translated, "runnable": runnable}
 
                 key = geometry_key(model_xml)
+                # same model changes as translate() makes, also when the translation comes from the cache
+                prep_notes = lattice_cards.prepare(model)
                 report["translation_cached"] = key in cache
                 if key in cache:
                     emit_progress(job.get("id"), 6, 8, "cached", "Reusing cached translation...", t0)
@@ -199,9 +202,7 @@ def main():
                 else:
                     report["stage"] = "translate"
                     forwarder = StageForwarder(job.get("id"), t0)
-                    with contextlib.redirect_stdout(forwarder):
-                        deck = openmc_to_mcnp(model.geometry, model.materials, model.settings)
-                        deck.write(translated)
+                    translate(model, translated, stdout=forwarder)
                     forwarder.flush()
                     if len(cache) >= 20:
                         cache.clear()
@@ -212,6 +213,7 @@ def main():
                 report["stage"] = "remediate"
                 emit_progress(job.get("id"), 7, 8, "remediate", "Remediating deck (sources, tallies, settings)...", t0)
                 report.update(remediate(translated, model, runnable, detector_responses=ns.get("detector_responses")))
+                report["notes"] = prep_notes + report.get("notes", [])
                 add_group_comments(runnable, ns.get("groups"))
 
                 report["stage"] = "validate"

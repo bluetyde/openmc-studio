@@ -985,7 +985,8 @@ function problems() {
   (S.groups || []).filter(g => g.lattice && g.lattice.asLattice).forEach(g => {
     const pl = latticePlan(g);
     if (!pl.ok) add('warn', `${g.name} is written as separate cells, not a lattice, because ${pl.reason}. The geometry is the same.`, 'group', g.id);
-    else add('info', `${g.name} is a lattice in model.py. model.mcnp writes it cell by cell (MCNPy's lattice translation isn't reliable yet).`, 'group', g.id);
+    else add('info', pl.type === 'hex' ? `${g.name} is a HexLattice in model.py. model.mcnp writes it cell by cell (MCNP LAT=2 export isn't done yet).`
+      : `${g.name} is a RectLattice in model.py and a LAT=1 lattice in model.mcnp.`, 'group', g.id);
   });
 
   const used = usedMaterialIds();
@@ -1049,6 +1050,8 @@ function problems() {
     if (t.kind === 'cell') {
       if (!t.cells.length) add('error', `${t.name}: tick at least one cell to tally.`, 'tally', t.id);
       t.cells.filter(c => c !== 'world' && !partById(c)).forEach(() => add('error', `${t.name} lists a part that was deleted.`, 'tally', t.id));
+      const inLat = t.cells.filter(id => (S.groups || []).some(g => { const pl = latticePlan(g); return pl.ok && pl.parts.some(p => p.id === id); }));
+      if (inLat.length) add('error', `${t.name}: ${partById(inLat[0]).name} is inside a lattice, so it has no cell of its own to tally yet. Untick "Export as RectLattice" (or HexLattice) on its array group, or use a mesh tally.`, 'tally', t.id);
     } else if (t.kind === 'surface') {
       const ids = t.surfaces || [];
       if (!ids.length) add('error', `${t.name}: tick at least one part whose surfaces to tally.`, 'tally', t.id);
@@ -1341,7 +1344,7 @@ function buildScript(probs, mark, opts = {}) {
   const fill = id => id === 'void' || !mv[id] ? 'None' : mv[id];
   // Arrays become OpenMC lattices only when every member is the same single part on the array's grid
   // (latticePlan). Otherwise, and for the MCNP export (opts.flat), the parts are written one cell each.
-  const latGroups = opts.flat ? [] : (S.groups || []).filter(g => latticePlan(g).ok);
+  const latGroups = opts.flat ? [] : (S.groups || []).filter(g => { const pl = latticePlan(g); return pl.ok && !(opts.flatHex && pl.type === 'hex'); });
   const latPlans = latGroups.map(g => latticePlan(g));
   const latMemberPartIds = new Set(latPlans.flatMap(pl => pl.parts.map(p => p.id)));
   const latBoxes = [], latExtents = latPlans.map(pl => pl.box), latCellVars = [];
@@ -1739,11 +1742,15 @@ function buildScript(probs, mark, opts = {}) {
     `    statepoint = model.run(${wantAll ? 'tracks=True' : ''})`,
     '    print(f"Finished: {statepoint}")');
   if (wantAll || tracks.length) push('    print("Particle tracks written to tracks.h5 (open with openmc.Tracks)")');
-  return {text: L.join('\n') + '\n', owners: OWN, map: MAP, surfaces: SURF, materials: mats};
+  // cells[n - 1] owns OpenMC cell n (IDs follow creation order), which MCNPy keeps as MCNP cell n
+  const cells = L.flatMap((l, i) => /= openmc\.Cell\(/.test(l) ? [OWN[i] || {kind:'world'}] : []);
+  return {text: L.join('\n') + '\n', owners: OWN, map: MAP, surfaces: SURF, materials: mats, cells};
 }
 function generate(probs) { return buildScript(probs, false).text; }
-// What the MCNP export translates: the same model with arrays written cell by cell.
-function mcnpScript(probs) { return buildScript(probs, false, {flat:true}).text; }
+// What the MCNP export translates: the same model, with hexagonal lattices written cell by cell (the exporter
+// writes rectangular lattices as LAT=1 cards; LAT=2 isn't done yet).
+const MCNP_OPTS = {flatHex:true};
+function mcnpScript(probs) { return buildScript(probs, false, MCNP_OPTS).text; }
 
 /* ───────── MCNP equivalents (NE403 lab notation) shown beside sources and tallies ───────── */
 const mcnpNum = v => fin(v) ? String(+v.toPrecision(6)) : '?';
@@ -1779,8 +1786,9 @@ function mcnpSource(s) {
 function mcnpIds() {
   const used = usedMaterialIds();
   const mats = S.materials.filter(m => used.has(m.id));
-  return {cell: c => c === 'world' ? S.parts.length + 1 : S.parts.findIndex(q => q.id === c) + 1,
-          mat: id => mats.findIndex(m => m.id === id) + 1};
+  const cells = buildScript([], false, MCNP_OPTS).cells;
+  const cellNum = c => cells.findIndex(o => c === 'world' ? o.kind === 'world' : o.kind === 'part' && o.id === c) + 1;
+  return {cell: c => cellNum(c) || '?', mat: id => mats.findIndex(m => m.id === id) + 1};
 }
 // FM for a detector response: MCNP multiplies by C times material m's cross section for reaction R. A macroscopic
 // response needs C = the detector material's atom density (the export computes it); -1 would use the tallied cell's own.
@@ -3291,12 +3299,12 @@ function mcnpContext(P, built) {
   }
   const tallyScores = [];
   S.tallies.forEach(t => t.scores.forEach(() => tallyScores.push(t)));
-  return {surfaces: built.surfaces, materials: built.materials, parts: S.parts.slice(), source: src, dists, tallyScores, groups: (S.groups || []).map(g => ({id:g.id, name:g.name, path:groupPath(g.id)}))};
+  return {surfaces: built.surfaces, materials: built.materials, cells: built.cells, source: src, dists, tallyScores, groups: (S.groups || []).map(g => ({id:g.id, name:g.name, path:groupPath(g.id)}))};
 }
 function annotateMcnp(deck, ctx, editable) {
   const owners = [], refs = [];
   let block = 0, card = null, cardOwner = null, kw = null, kwIndex = 0, valueIndex = 0;
-  const cellOwner = n => n >= 1 && n <= ctx.parts.length ? {kind:'part', id:ctx.parts[n - 1].id} : {kind:'world'};
+  const cellOwner = n => ctx.cells[n - 1] || {kind:'world'}; // MCNP-only cells (lattice element, outside) -> world
   const matOwner = n => ctx.materials[n - 1] ? {kind:'material', id:ctx.materials[n - 1].id} : null;
   const fieldRef = (obj, key, extra) => obj ? {t:'field', obj, key, ...extra} : null;
 
@@ -3476,7 +3484,7 @@ function stopMcnpProgress() {
 async function sendLive(force) {
   const P = problems();
   if (P.some(p => p.sev === 'error')) return;
-  const built = buildScript(P, false, {flat:true}), script = built.text;
+  const built = buildScript(P, false, MCNP_OPTS), script = built.text;
   if (!force && script === LIVE.sentScript) return;
   const seq = ++LIVE.seq, ctx = mcnpContext(P, built);
   const slow = !LIVE.report || !LIVE.sentScript || geometryPart(LIVE.sentScript) !== geometryPart(script);

@@ -9,16 +9,30 @@ What's next for OpenMC Studio, roughly in priority order. Latest pushed commit: 
 ### Core Capabilities for Future Sprints
 
 #### Lattices & Geometries
-- **Hexagonal Lattices (`openmc.HexLattice`)**:
-  - Support hexagonal arrays with flat-to-flat pitch and concentric ring universe assignments for VVER, fast reactors (SFR), and hexagonal graphite blocks.
-- **Cylindrical Mesh Tallies**:
-  - Support `openmc.CylindricalMesh` ($r, \theta, z$) in addition to `openmc.RegularMesh` for cylindrical reactor cores, pressure vessels, and beam tubes.
-- **Ellipsoid & Quadric Primitives**:
-  - Ellipsoid (`openmc.Ellipsoid`) and Elliptical Cylinder (`openmc.ZCylinder` / `openmc.Quadric`).
+- **Torus & Revolution Primitives**:
+  - Support `openmc.ZTorus` / `openmc.XTorus` / `openmc.YTorus` for tokamak fusion reactor geometries, circular pipe bends, and magnetic containment vessels.
+- **Spherical Mesh Tallies**:
+  - Support `openmc.SphericalMesh` ($r, \theta, \phi$) for spherical shielding containers, cosmic radiation dosimetry, and isotropically expanding weapon/source simulations.
+- **Depletion & Burnup Configuration**:
+  - OpenMC depletion integration (`openmc.deplete`) with burnup material volume tracking, decay chains, and timesteps.
 
 ---
 
 ## Completed
+
+- **Hexagonal Lattices (`openmc.HexLattice`)**:
+  - Full support for hexagonal arrays with flat-to-flat pitch, concentric ring universe assignments (outermost ring down to center), $x$/$y$ orientation, and solid moderator fill.
+  - Interactive Hexagonal array tool in editor UI with pitch, rings, and orientation settings.
+  - Python `openmc.HexLattice` script generation and MCNP `LAT 2` export compatibility.
+- **Cylindrical Mesh Tallies**:
+  - Support for `openmc.CylindricalMesh` ($r, \phi, z$) with custom radial, azimuthal, and axial binning grids and arbitrary spatial origin.
+  - Full simulation extraction in `results.py` and 2D canvas annular-sector slice rendering in UI.
+  - MCNP export with `FMESH ... GEOM=CYL ORIGIN=... AXS=0 0 1 VEC=1 0 0`.
+- **Ellipsoid & Quadric Primitives**:
+  - General ellipsoid primitive (`openmc.Quadric`) supporting semi-axes $a, b, c$, arbitrary 3D center, and full 3D Euler rotations.
+  - Analytical ray-ellipsoid quadratic intersection in WebGL 2 raymarching fragment shader (`ty == 6`).
+  - Exact CPU ray picking and 2D canvas slice cross-section rendering.
+  - MCNP quadric/ellipsoid translation (`SQ`/`ELL`).
 
 - **Coupled Neutron-Photon Transport**:
   - Toggle `settings.photon_transport = True`, energy cutoff (`settings.cutoff = {'energy_photon': ...}`), source particle selection (`neutron`/`photon`), and tally particle filters (`openmc.ParticleFilter`).

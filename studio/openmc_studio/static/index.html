@@ -364,6 +364,7 @@ const ICON = {
   wedge:'<path d="M3 14.5h9L3 5.5z"/><path d="M3 5.5l3.5-2.5 9 9-3.5 2.5"/>',
   hex_prism:'<path d="M9 2.5l5 2.5v3.5l-5 2.5-5-2.5V5z"/><path d="M4 8.5v4.5l5 2.5 5-2.5V8.5M9 11v4.5"/>',
   cone:'<ellipse cx="9" cy="4" rx="3.5" ry="1.4"/><path d="M5.5 4L3 14c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2L12.5 4"/>',
+  ellipsoid:'<ellipse cx="9" cy="9" rx="6.5" ry="4"/><path d="M2.5 9a6.5 2 0 0 0 13 0"/>',
   material:'<path d="M7 2.5h4M7.5 2.5V7L3.5 14a1.3 1.3 0 0 0 1.1 1.9h8.8a1.3 1.3 0 0 0 1.1-1.9L10.5 7V2.5"/><path d="M5.2 11h7.6"/>',
   source:'<circle cx="9" cy="9" r="2" fill="currentColor"/><path d="M9 1.5v3M9 13.5v3M1.5 9h3M13.5 9h3M3.7 3.7l2.1 2.1M12.2 12.2l2.1 2.1M3.7 14.3l2.1-2.1M12.2 5.8l2.1-2.1"/>',
   cellTally:'<circle cx="9" cy="9" r="6.5"/><circle cx="9" cy="9" r="3"/><circle cx="9" cy="9" r=".8" fill="currentColor"/>',
@@ -518,7 +519,7 @@ function newSource(id, name, particle = 'neutron') {
     tab_e:'0.0, 1.0, 2.0, 5.0', tab_p:'0.2, 0.5, 0.3'};
 }
 function newPart(id, name, shape) {
-  return {id, name, shape, x:0, y:0, z:0, r:10, r2:5, h:20, axis:'z', sx:20, sy:20, sz:20, rx:0, ry:0, rz:0, material:'void'};
+  return {id, name, shape, x:0, y:0, z:0, r:10, r2:5, h:20, a:15, b:10, c:8, axis:'z', sx:20, sy:20, sz:20, rx:0, ry:0, rz:0, material:'void'};
 }
 function sampleModel() {
   const part = (id, name, shape, o) => Object.assign(newPart(id, name, shape), o);
@@ -885,6 +886,10 @@ function inShape(p, x, y, z) {
     const r2 = p.r2 ?? p.r, rmid = (p.r + r2) / 2, k = (r2 - p.r) / p.h, R = rmid + k * lz;
     return R > 0 && lx * lx + ly * ly < R * R;
   }
+  if (p.shape === 'ellipsoid') {
+    const a = p.a || p.r || 1, b = p.b || p.r || 1, c = p.c || p.r || 1;
+    return (lx * lx) / (a * a) + (ly * ly) / (b * b) + (lz * lz) / (c * c) < 1;
+  }
   return Math.abs(lx) < p.sx/2 && Math.abs(ly) < p.sy/2 && Math.abs(lz) < p.sz/2;
 }
 function inWorld(x, y, z) {
@@ -903,6 +908,10 @@ function partHalfExtents(p) { // half-widths of the world-axis bounding box
   if (p.shape === 'box' || p.shape === 'wedge') { const hs = [p.sx/2, p.sy/2, p.sz/2]; return [0, 1, 2].map(i => Math.abs(M[i][0]) * hs[0] + Math.abs(M[i][1]) * hs[1] + Math.abs(M[i][2]) * hs[2]); }
   if (p.shape === 'hex_prism') { const hs = [1.1547005383792515 * p.r, p.r, p.h / 2]; return [0, 1, 2].map(i => Math.abs(M[i][0]) * hs[0] + Math.abs(M[i][1]) * hs[1] + Math.abs(M[i][2]) * hs[2]); }
   if (p.shape === 'cone') { const rmax = Math.max(p.r, p.r2 ?? p.r); return [0, 1, 2].map(i => Math.abs(M[i][2]) * p.h / 2 + rmax * Math.sqrt(Math.max(0, 1 - M[i][2] * M[i][2]))); }
+  if (p.shape === 'ellipsoid') {
+    const a = p.a || p.r || 1, b = p.b || p.r || 1, c = p.c || p.r || 1;
+    return [0, 1, 2].map(i => Math.sqrt(Math.pow(M[i][0] * a, 2) + Math.pow(M[i][1] * b, 2) + Math.pow(M[i][2] * c, 2)));
+  }
   return [0, 1, 2].map(i => Math.abs(M[i][2]) * p.h / 2 + p.r * Math.sqrt(Math.max(0, 1 - M[i][2] * M[i][2])));
 }
 // World-axis bounding box of a part or source, as [lo, hi].
@@ -990,7 +999,7 @@ function problems() {
   });
 
   S.parts.forEach(p => {
-    const dims = p.shape === 'sphere' ? [p.r] : p.shape === 'cylinder' ? [p.r, p.h] : [p.sx, p.sy, p.sz];
+    const dims = p.shape === 'sphere' ? [p.r] : p.shape === 'cylinder' ? [p.r, p.h] : p.shape === 'ellipsoid' ? [p.a || p.r || 1, p.b || p.r || 1, p.c || p.r || 1] : [p.sx, p.sy, p.sz];
     if (![p.x, p.y, p.z].every(fin)) add('error', `${p.name}: center needs three numbers.`, 'part', p.id);
     if (![p.rx || 0, p.ry || 0, p.rz || 0].every(fin)) add('error', `${p.name}: rotation angles must be numbers (degrees).`, 'part', p.id);
     if (!dims.every(pos)) add('error', `${p.name}: sizes must be above 0 cm.`, 'part', p.id);
@@ -1159,7 +1168,7 @@ function buildScript(probs, mark) {
     'Run it inside your OpenMC environment (OpenMC 0.14 or newer):', '    python model.py',
     'OPENMC_CROSS_SECTIONS must point at a cross_sections.xml.', '"""');
   if (errors) push(`# WARNING: the model has ${errors} problem${errors === 1 ? '' : 's'} (see the Problems panel). This script will not run until they are fixed.`);
-  push('import openmc', '');
+  push('import openmc', 'import numpy as np', '');
 
   push('# ── Materials ──────────────────────────────────────────────');
   mats.forEach(m => {
@@ -1265,12 +1274,20 @@ function buildScript(probs, mark) {
     const xs = memberParts.map(p => p.x), ys = memberParts.map(p => p.y), zs = memberParts.map(p => p.z);
     const p_x0 = Math.min(...xs), p_y0 = Math.min(...ys), p_z0 = Math.min(...zs);
     const is3D = (lat.nz || 1) > 1 && (lat.dz || 0) > 0;
-    const dy = lat.dy || lat.dx;
-    const x_min = p_x0 - lat.dx / 2, x_max = p_x0 + (lat.nx - 0.5) * lat.dx;
-    const y_min = p_y0 - dy / 2, y_max = p_y0 + (lat.ny - 0.5) * dy;
-    const z_min = is3D ? (p_z0 - lat.dz / 2) : -R;
-    const z_max = is3D ? (p_z0 + (lat.nz - 0.5) * lat.dz) : R;
-    latExtents.push([[x_min, y_min, z_min], [x_max, y_max, z_max]]);
+    if (lat.type === 'hex') {
+      const hexP = lat.pitch || lat.dx;
+      const rBound = (lat.rings || 3) * hexP;
+      const z_min = is3D ? (p_z0 - (lat.dz || memberParts[0].h || 20) / 2) : -R;
+      const z_max = is3D ? (p_z0 + (lat.dz || memberParts[0].h || 20) / 2) : R;
+      latExtents.push([[(lg.x || 0) - rBound, (lg.y || 0) - rBound, z_min], [(lg.x || 0) + rBound, (lg.y || 0) + rBound, z_max]]);
+    } else {
+      const dy = lat.dy || lat.dx;
+      const x_min = p_x0 - lat.dx / 2, x_max = p_x0 + (lat.nx - 0.5) * lat.dx;
+      const y_min = p_y0 - dy / 2, y_max = p_y0 + (lat.ny - 0.5) * dy;
+      const z_min = is3D ? (p_z0 - lat.dz / 2) : -R;
+      const z_max = is3D ? (p_z0 + (lat.nz - 0.5) * lat.dz) : R;
+      latExtents.push([[x_min, y_min, z_min], [x_max, y_max, z_max]]);
+    }
   });
 
   const shapeVar = {};
@@ -1311,6 +1328,35 @@ function buildScript(probs, mark) {
       const names = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'j', 'k'];
       const qv = surface('Q', co, 'quadric', 'cone', () => `openmc.Quadric(${co.map((v, i) => `${names[i]}=${num(v)}`).join(', ')})`, {kind:'quadric'});
       expr = `-${qv} & ${gslab(u, ctr, p.h / 2)}`;
+    }
+    else if (p.shape === 'ellipsoid') {
+      const a = p.a || p.r || 1, b = p.b || p.r || 1, c = p.c || p.r || 1;
+      const x0 = p.x, y0 = p.y, z0 = p.z;
+      const names = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'j', 'k'];
+      let co;
+      if (!fr || fr.aligned) {
+        const A = 1 / (a * a), B = 1 / (b * b), C = 1 / (c * c);
+        const G = -2 * x0 / (a * a), H = -2 * y0 / (b * b), J = -2 * z0 / (c * c);
+        const K = (x0 * x0) / (a * a) + (y0 * y0) / (b * b) + (z0 * z0) / (c * c) - 1;
+        co = [A, B, C, 0, 0, 0, G, H, J, K];
+      } else {
+        const M = fr.M;
+        const D = [1 / (a * a), 1 / (b * b), 1 / (c * c)];
+        const Q = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+        for (let r = 0; r < 3; r++) {
+          for (let s = 0; s < 3; s++) {
+            Q[r][s] = M[r][0] * D[0] * M[s][0] + M[r][1] * D[1] * M[s][1] + M[r][2] * D[2] * M[s][2];
+          }
+        }
+        const v0 = Q[0][0] * x0 + Q[0][1] * y0 + Q[0][2] * z0;
+        const v1 = Q[1][0] * x0 + Q[1][1] * y0 + Q[1][2] * z0;
+        const v2 = Q[2][0] * x0 + Q[2][1] * y0 + Q[2][2] * z0;
+        co = [Q[0][0], Q[1][1], Q[2][2], 2 * Q[0][1], 2 * Q[1][2], 2 * Q[0][2], -2 * v0, -2 * v1, -2 * v2, x0 * v0 + y0 * v1 + z0 * v2 - 1];
+      }
+      const qv = surface('Q', co, 'quadric', `ellip_${tag(a)}_${tag(b)}_${tag(c)}`,
+        () => `openmc.Quadric(${co.map((val, i) => `${names[i]}=${num(val)}`).join(', ')})`,
+        {kind:'quadric'});
+      expr = `-${qv}`;
     }
     else if (!fr.aligned) expr = `-${quadric(col(2), ctr, p.r)} & ${gslab(col(2), ctr, p.h / 2)}`;
     else {
@@ -1399,10 +1445,48 @@ function buildScript(probs, mark) {
     push(`${cellModVar} = openmc.Cell(name=${pyStr(lg.name + " Mod")}, fill=${fill(modFill)}, region=${unitComp})`);
     push(`${uPinVar} = openmc.Universe(name=${pyStr(lg.name + " Universe")}, cells=[${cellBaseVar}, ${cellModVar}])`);
 
-    // RectLattice definition
+    // HexLattice or RectLattice definition
     const latVar = name('lattice', lg.name);
     const latCellVar = name('cell_lat', lg.name);
     latCellVars.push(latCellVar);
+
+    if (lat.type === 'hex') {
+      const hexP = lat.pitch || lat.dx;
+      const rings = lat.rings || 3;
+      const orient = lat.orientation || 'y';
+      const uSolidVar = name('u_solid', lg.name);
+      const cellSolidVar = name('cell_solid', lg.name);
+      push(`${cellSolidVar} = openmc.Cell(name=${pyStr(lg.name + " Solid [unit]")}, fill=${fill(modFill)}, region=world)`);
+      push(`${uSolidVar} = openmc.Universe(name=${pyStr(lg.name + " Solid Universe")}, cells=[${cellSolidVar}])`);
+
+      push(`${latVar} = openmc.HexLattice(name=${pyStr(lg.name)})`);
+      push(`${latVar}.pitch = [${num(hexP)}]`);
+      push(`${latVar}.center = [${num(lg.x || 0)}, ${num(lg.y || 0)}]`);
+      push(`${latVar}.orientation = ${pyStr(orient)}`);
+      push(`${latVar}.outer = ${uSolidVar}`);
+
+      const ringCode = [];
+      for (let r = 0; r < rings; r++) {
+        const g = rings - 1 - r;
+        if (g === 0) {
+          const hasCenter = memberParts.some(p => Math.hypot(p.x - (lg.x || 0), p.y - (lg.y || 0)) < hexP / 2);
+          ringCode.push(`[${hasCenter ? uPinVar : uSolidVar}]`);
+        } else {
+          ringCode.push(`[${uPinVar}] * ${6 * g}`);
+        }
+      }
+      push(`${latVar}.universes = [`, ringCode.map(rc => `    ${rc},`).join('\n'), `]`);
+
+      const rBound = (rings - 0.2) * hexP;
+      const cylBound = surface('Cz', [lg.x || 0, lg.y || 0, rBound], 'zcyl', 'hex_bound',
+        () => `openmc.ZCylinder(x0=${num(lg.x || 0)}, y0=${num(lg.y || 0)}, r=${num(rBound)})`,
+        {kind:'cyl', ax:'z', a:lg.x || 0, b:lg.y || 0, r:rBound});
+      const latRegion = `-${cylBound}` + (is3D ? ` & +${plane('z', z_min)} & -${plane('z', z_max)}` : '');
+      latBoxes.push(latRegion);
+      push(`${latCellVar} = openmc.Cell(name=${pyStr(lg.name)}, fill=${latVar}, region=${latRegion} & world)`);
+      push('');
+      return;
+    }
 
     push(`${latVar} = openmc.RectLattice(name=${pyStr(lg.name)})`);
     push(`${latVar}.pitch = [${[lat.dx, dy, ...(is3D ? [lat.dz] : [])].map(num).join(', ')}]`);
@@ -1609,10 +1693,29 @@ function buildScript(probs, mark) {
     }
     if (t.kind === 'mesh') {
       const m = name('mesh', t.name);
-      const I = k => F(t, k, int(t[k]), {int:true});
-      push(`${m} = openmc.RegularMesh(name=${pyStr(t.name)})`, `${m}.dimension = [${I('nx')}, ${I('ny')}, ${I('nz')}]`,
-        `${m}.lower_left = [${F(t, 'lx', num(t.lx))}, ${F(t, 'ly', num(t.ly))}, ${F(t, 'lz', num(t.lz))}]`,
-        `${m}.upper_right = [${F(t, 'ux', num(t.ux))}, ${F(t, 'uy', num(t.uy))}, ${F(t, 'uz', num(t.uz))}]`);
+      if (t.meshGeom === 'cylindrical') {
+        const nr = Math.max(1, parseInt(t.nr) || 10);
+        const nphi = Math.max(1, parseInt(t.nphi) || 1);
+        const nz = Math.max(1, parseInt(t.nz) || 10);
+        const rmin = num(t.rmin ?? 0);
+        const rmax = num(t.rmax ?? t.ux ?? 10);
+        const phimin = num(t.phimin ?? 0);
+        const phimax = num(t.phimax ?? 6.283185307179586);
+        const zmin = num(t.zmin ?? t.lz ?? -10);
+        const zmax = num(t.zmax ?? t.uz ?? 10);
+        const ox = num(t.ox ?? 0), oy = num(t.oy ?? 0), oz = num(t.oz ?? 0);
+        push(`${m} = openmc.CylindricalMesh(`,
+          `    r_grid=np.linspace(${rmin}, ${rmax}, ${nr + 1}),`,
+          `    phi_grid=np.linspace(${phimin}, ${phimax}, ${nphi + 1}),`,
+          `    z_grid=np.linspace(${zmin}, ${zmax}, ${nz + 1}),`,
+          `    origin=(${ox}, ${oy}, ${oz})`,
+          `)`);
+      } else {
+        const I = k => F(t, k, int(t[k]), {int:true});
+        push(`${m} = openmc.RegularMesh(name=${pyStr(t.name)})`, `${m}.dimension = [${I('nx')}, ${I('ny')}, ${I('nz')}]`,
+          `${m}.lower_left = [${F(t, 'lx', num(t.lx))}, ${F(t, 'ly', num(t.ly))}, ${F(t, 'lz', num(t.lz))}]`,
+          `${m}.upper_right = [${F(t, 'ux', num(t.ux))}, ${F(t, 'uy', num(t.uy))}, ${F(t, 'uz', num(t.uz))}]`);
+      }
       filters.push(`openmc.MeshFilter(${m})`);
     } else if (t.kind === 'surface') {
       const surfVars = (t.surfaces || []).map(sid => shapeVar[sid] || cv[sid] || null).filter(Boolean);
@@ -1752,8 +1855,19 @@ function mcnpTally(t) {
     } else if (score !== 'flux') {
       out.push(`c ${score}: mesh tallies export flux only`);
     } else {
-      out.push(`FMESH${n}:${pTag} GEOM=XYZ ORIGIN=${[t.lx, t.ly, t.lz].map(mcnpNum).join(' ')}`,
-        `     IMESH=${mcnpNum(t.ux)} IINTS=${t.nx} JMESH=${mcnpNum(t.uy)} JINTS=${t.ny} KMESH=${mcnpNum(t.uz)} KINTS=${t.nz}`);
+      if (t.meshGeom === 'cylindrical') {
+        const ox = t.ox || 0, oy = t.oy || 0, oz = t.oz || 0;
+        const rmax = t.rmax ?? t.ux ?? 10;
+        const nr = t.nr || 10;
+        const nphi = t.nphi || 1;
+        const zmax = t.zmax ?? t.uz ?? 10;
+        const nz = t.nz || 10;
+        out.push(`FMESH${n}:${pTag} GEOM=CYL ORIGIN=${[ox, oy, oz].map(mcnpNum).join(' ')} AXS=0 0 1 VEC=1 0 0`,
+          `     IMESH=${mcnpNum(rmax)} IINTS=${nr} JMESH=1.0 JINTS=${nphi} KMESH=${mcnpNum(zmax)} KINTS=${nz}`);
+      } else {
+        out.push(`FMESH${n}:${pTag} GEOM=XYZ ORIGIN=${[t.lx, t.ly, t.lz].map(mcnpNum).join(' ')}`,
+          `     IMESH=${mcnpNum(t.ux)} IINTS=${t.nx} JMESH=${mcnpNum(t.uy)} JINTS=${t.ny} KMESH=${mcnpNum(t.uz)} KINTS=${t.nz}`);
+      }
       if (isDetector) {
         out.push(`     FM=${scale} ${ids.mat(det.respMatId)} ${det.mt}`);
       }
@@ -1820,7 +1934,7 @@ function selectFromView(kind, id, e) {
 }
 
 function addPart(shape) {
-  const label = {sphere:'Sphere', cylinder:'Cylinder', box:'Box', wedge:'Wedge', hex_prism:'Hex prism', cone:'Cone'}[shape];
+  const label = {sphere:'Sphere', cylinder:'Cylinder', box:'Box', wedge:'Wedge', hex_prism:'Hex prism', cone:'Cone', ellipsoid:'Ellipsoid'}[shape];
   const p = newPart(newId('p'), uniqueName(S.parts, label), shape);
   S.parts.unshift(p);
   log('info', `Added ${p.name} at the top of Geometry, so it wins where it overlaps other parts.`);
@@ -2210,7 +2324,7 @@ const RIBBON = {
     {label:'Tools', btns:toolButtons()},
     {label:'Snap to grid', custom:snapControls},
     {label:'Group', btns:[['group', 'Group', groupSelected, () => selItems().length > 0], ['ungroup', 'Ungroup', ungroupSelected, () => sel.kind === 'group' || selItems().some(x => x.o.group)], ['array', 'Array…', e => openArrayMenu(e.currentTarget), canEditSelection], pivotButton()]},
-    {label:'Parts', btns:[['sphere', 'Sphere', () => addPart('sphere')], ['cylinder', 'Cylinder', () => addPart('cylinder')], ['box', 'Box', () => addPart('box')], ['wedge', 'Wedge', () => addPart('wedge')], ['hex_prism', 'Hex prism', () => addPart('hex_prism')], ['cone', 'Cone', () => addPart('cone')]]},
+    {label:'Parts', btns:[['sphere', 'Sphere', () => addPart('sphere')], ['cylinder', 'Cylinder', () => addPart('cylinder')], ['box', 'Box', () => addPart('box')], ['wedge', 'Wedge', () => addPart('wedge')], ['hex_prism', 'Hex prism', () => addPart('hex_prism')], ['cone', 'Cone', () => addPart('cone')], ['ellipsoid', 'Ellipsoid', () => addPart('ellipsoid')]]},
     {label:'Materials', btns:[['material', 'Material ▾', e => openMatMenu(e.currentTarget)]]},
     {label:'Boundary', btns:[['world', 'World', () => select('world')]]}
   ],
@@ -2317,9 +2431,10 @@ function renderMatList(query) {
 const collapsed = {};
 function shapeMeta(p) {
   const l = shortLen;
-  if (isRotated(p)) return `${p.shape === 'box' || p.shape === 'wedge' ? `${l(p.sx)}×${l(p.sy)}×${l(p.sz)}` : `r ${l(p.r)} · ${l(p.h)}`} ↻`;
+  if (isRotated(p)) return `${p.shape === 'box' || p.shape === 'wedge' ? `${l(p.sx)}×${l(p.sy)}×${l(p.sz)}` : (p.shape === 'ellipsoid' ? `a ${l(p.a || p.r || 1)} · b ${l(p.b || p.r || 1)} · c ${l(p.c || p.r || 1)}` : `r ${l(p.r)} · ${l(p.h)}`)} ↻`;
   if (p.shape === 'hex_prism') return `p ${l(p.r * 2)} · ${l(p.h)}${isRotated(p) ? ' ↻' : ''}`;
   if (p.shape === 'cone') return `r ${l(p.r)}→${l(p.r2 ?? p.r)} · ${l(p.h)}${isRotated(p) ? ' ↻' : ''}`;
+  if (p.shape === 'ellipsoid') return `a ${l(p.a || p.r || 1)} · b ${l(p.b || p.r || 1)} · c ${l(p.c || p.r || 1)}`;
   if (p.shape === 'sphere') return `r ${l(p.r)}`;
   if (p.shape === 'cylinder') return `r ${l(p.r)} · ${l(p.h)}`;
   return `${l(p.sx)}×${l(p.sy)}×${l(p.sz)}`;
@@ -2433,8 +2548,10 @@ function specFor(kind, o) {
       const g = groupById(sel.id);
       secs.push({title:'Group', fields:[F('text', 'name', 'Name'),
         ...(g && g.lattice ? [
-          note(`Lattice Array: ${g.lattice.nx}×${g.lattice.ny}×${g.lattice.nz}, pitch (${showLen(g.lattice.dx)}, ${showLen(g.lattice.dy)}, ${showLen(g.lattice.dz)}).`),
-          F('chk', 'asLattice', 'Export as RectLattice', {obj:g.lattice, hint:'Export this grid array using native openmc.RectLattice in model.py instead of discrete CSG cells.'}),
+          note(g.lattice.type === 'hex'
+            ? `Hex Lattice Array: ${g.lattice.rings} rings (${1 + 3 * g.lattice.rings * (g.lattice.rings - 1)} pins), pitch ${showLen(g.lattice.pitch || g.lattice.dx)} (${g.lattice.orientation || 'y'}-oriented).`
+            : `Lattice Array: ${g.lattice.nx}×${g.lattice.ny}×${g.lattice.nz}, pitch (${showLen(g.lattice.dx)}, ${showLen(g.lattice.dy)}, ${showLen(g.lattice.dz)}).`),
+          F('chk', 'asLattice', g.lattice.type === 'hex' ? 'Export as HexLattice' : 'Export as RectLattice', {obj:g.lattice, hint:'Export this array using native openmc lattice in model.py instead of discrete CSG cells.'}),
           F('material', 'fill', 'Moderator material', {obj:g.lattice, allowAuto:true, emptyLabel:'Auto (enclosing)', hint:'The background / moderator material surrounding array elements in the unit cell (defaults to enclosing geometry material).'})
         ] : []),
         note(`${what}: ${items.map(x => esc(x.o.name)).join(', ')}. The parts stay together in the Explorer as one priority block. Click a part in the Explorer to edit it on its own.`),
@@ -2455,16 +2572,19 @@ function specFor(kind, o) {
     return secs;
   }
   if (kind === 'part') {
-    const i = S.parts.indexOf(o), cyl = () => o.shape === 'cylinder', sph = () => o.shape === 'sphere', box = () => o.shape === 'box', wed = () => o.shape === 'wedge', hex = () => o.shape === 'hex_prism', con = () => o.shape === 'cone';
+    const i = S.parts.indexOf(o), cyl = () => o.shape === 'cylinder', sph = () => o.shape === 'sphere', box = () => o.shape === 'box', wed = () => o.shape === 'wedge', hex = () => o.shape === 'hex_prism', con = () => o.shape === 'cone', ell = () => o.shape === 'ellipsoid';
     return [
       {title:'Part', fields:[F('text', 'name', 'Name'), F('material', 'material', 'Material'),
         note(`Priority ${i + 1} of ${S.parts.length}. Parts higher in the Explorer win where shapes overlap. Drag it in the Explorer, or press Alt+↑/↓. MCNP cell ${i + 1}.`)]},
       {title:'Shape', fields:[
-        F('select', 'shape', 'Shape', {options:() => [['sphere', 'Sphere (SPH)'], ['cylinder', 'Cylinder (RCC)'], ['box', 'Box (RPP)'], ['wedge', 'Right wedge (WED)'], ['hex_prism', 'Hexagonal prism (RHP)'], ['cone', 'Truncated cone (TRC)']]}),
+        F('select', 'shape', 'Shape', {options:() => [['sphere', 'Sphere (SPH)'], ['cylinder', 'Cylinder (RCC)'], ['box', 'Box (RPP)'], ['wedge', 'Right wedge (WED)'], ['hex_prism', 'Hexagonal prism (RHP)'], ['cone', 'Truncated cone (TRC)'], ['ellipsoid', 'Ellipsoid (ELL/SQ)']]}),
         F('vec', null, 'Center', {keys:['x', 'y', 'z'], unit:'cm'}),
         F('num', 'r', o.shape === 'hex_prism' ? 'Half-pitch' : (con() ? 'Bottom radius' : 'Radius'), {unit:'cm', show:() => sph() || cyl() || hex() || con(), hint: o.shape === 'hex_prism' ? 'Half-distance between opposite flats (in-radius). Pitch = 2×r.' : ''}),
         F('num', 'r2', 'Top radius', {unit:'cm', show:con}),
         F('num', 'h', 'Height', {unit:'cm', show:() => cyl() || hex() || con()}),
+        F('num', 'a', 'Semi-axis A (X)', {unit:'cm', show:ell}),
+        F('num', 'b', 'Semi-axis B (Y)', {unit:'cm', show:ell}),
+        F('num', 'c', 'Semi-axis C (Z)', {unit:'cm', show:ell}),
         F('select', 'axis', 'Axis', {options:() => [['x', 'x'], ['y', 'y'], ['z', 'z']], show:cyl}),
         F('vec', null, 'Size', {keys:['sx', 'sy', 'sz'], unit:'cm', show:() => box() || wed()}),
         F('vec', null, 'Rotation', {keys:['rx', 'ry', 'rz'], unit:'°', show:() => !sph(),
@@ -2516,14 +2636,19 @@ function specFor(kind, o) {
     const isDet = () => o.detector && o.detector !== 'none';
     return [
       {title:'Tally', fields:[F('text', 'name', 'Name'),
-        F('select', 'kind', 'Filter', {options:() => [['cell', 'Cells (like F4)'], ['mesh', 'Regular mesh (like FMESH)'], ['surface', 'Surfaces (like F1 current)']]}),
+        F('select', 'kind', 'Filter', {options:() => [['cell', 'Cells (like F4)'], ['mesh', 'Mesh (like FMESH)'], ['surface', 'Surfaces (like F1 current)']]}),
+        F('select', 'meshGeom', 'Mesh geometry', {options:() => [['regular', 'Cartesian (XYZ)'], ['cylindrical', 'Cylindrical (R, Theta, Z)']], show:mesh}),
         F('select', 'particle', 'Particle', {options:() => [['all', 'All particles'], ['neutron', 'Neutrons only'], ['photon', 'Photons only']], show:() => S.settings.photon, hint:'Filter tally to neutrons or photons.'}),
         F('multi', 'cells', 'Cells', {options:cellOpts, show:() => !mesh() && !surf()}),
         F('multi', 'surfaces', 'Surfaces', {options:partOpts, show:surf, hint:'Surfaces bounding selected parts.'}),
         F('select', 'materialFilter', 'Material filter', {options:matOpts, show:() => !mesh(), hint:'Optionally filter reactions/flux to a specific material across cells.'}),
-        F('vec', null, 'Bins', {keys:['nx', 'ny', 'nz'], int:true, show:mesh}),
-        F('vec', null, 'Lower corner', {keys:['lx', 'ly', 'lz'], unit:'cm', show:mesh}),
-        F('vec', null, 'Upper corner', {keys:['ux', 'uy', 'uz'], unit:'cm', show:mesh}),
+        F('vec', null, 'Bins (XYZ)', {keys:['nx', 'ny', 'nz'], int:true, show:() => mesh() && o.meshGeom !== 'cylindrical'}),
+        F('vec', null, 'Lower corner', {keys:['lx', 'ly', 'lz'], unit:'cm', show:() => mesh() && o.meshGeom !== 'cylindrical'}),
+        F('vec', null, 'Upper corner', {keys:['ux', 'uy', 'uz'], unit:'cm', show:() => mesh() && o.meshGeom !== 'cylindrical'}),
+        F('vec', null, 'Bins (r, phi, z)', {keys:['nr', 'nphi', 'nz'], int:true, show:() => mesh() && o.meshGeom === 'cylindrical'}),
+        F('vec', null, 'Radius [min, max]', {keys:['rmin', 'rmax'], unit:'cm', show:() => mesh() && o.meshGeom === 'cylindrical'}),
+        F('vec', null, 'Z axial [min, max]', {keys:['zmin', 'zmax'], unit:'cm', show:() => mesh() && o.meshGeom === 'cylindrical'}),
+        F('vec', null, 'Origin (x, y, z)', {keys:['ox', 'oy', 'oz'], unit:'cm', show:() => mesh() && o.meshGeom === 'cylindrical'}),
         F('multi', 'scores', 'Scores', {options:() => SCORES.map(s => [s, s])}),
         F('text', 'ebins', 'Energy edges', {placeholder:'none', hint:'MeV, rising, including the lowest edge: 0, 5e-7, 0.1, 20 gives thermal, epithermal and fast bins.'})
       ]},
@@ -3563,7 +3688,31 @@ function ramp(stops, t) {
 const energyColor = E => { const [r, g, b] = ramp(ENERGY, (Math.log10(Math.max(E, 1e-3)) + 3) / 10.3); return `rgb(${r},${g},${b})`; };
 // The mesh tally layer at the current slice: value lookup in plane coordinates and the log color range.
 function meshLayer(t) {
-  const [nx, ny, nz] = t.dims, lo = t.lower, hi = t.upper, v = t.values[t.scores[0]];
+  const v = t.values[t.scores[0]];
+  if (t.mesh_type === 'cylindrical') {
+    const [nr, nphi, nz] = t.dims;
+    const zmin = t.z_grid[0], zmax = t.z_grid[t.z_grid.length - 1];
+    const ox = (t.origin && t.origin[0]) || 0, oy = (t.origin && t.origin[1]) || 0, oz = (t.origin && t.origin[2]) || 0;
+    if (view.plane !== 'xy') return null; // Cylindrical mesh slice visualized in XY axial plane
+    const zSlice = view.slice - oz;
+    if (zSlice < zmin || zSlice > zmax) return null;
+    let kIdx = 0;
+    for (let k = 0; k < nz; k++) {
+      if (zSlice >= t.z_grid[k] && zSlice <= t.z_grid[k + 1]) { kIdx = k; break; }
+    }
+    let mn = Infinity, mx = 0;
+    for (let r = 0; r < nr; r++) {
+      for (let p = 0; p < nphi; p++) {
+        const val = v[r + nr * (p + nphi * kIdx)];
+        if (val > 0) { mn = Math.min(mn, val); mx = Math.max(mx, val); }
+      }
+    }
+    if (!(mx > 0)) return null;
+    const lmn = Math.log10(mn);
+    return {isCyl:true, kIdx, nr, nphi, nz, mn, mx, lmn, span:Math.max(Math.log10(mx) - lmn, 1e-9), ox, oy, oz};
+  }
+
+  const [nx, ny, nz] = t.dims, lo = t.lower, hi = t.upper;
   const ax = {xy:[0, 1, 2], xz:[0, 2, 1], yz:[1, 2, 0]}[view.plane], n = [nx, ny, nz];
   const kIdx = Math.floor((view.slice - lo[ax[2]]) / (hi[ax[2]] - lo[ax[2]]) * n[ax[2]]);
   if (kIdx < 0 || kIdx >= n[ax[2]]) return null;
@@ -3590,14 +3739,34 @@ function drawMeshOverlay(ctx, cx, cy, scale, W, H) {
   if (!t) return;
   const M = meshLayer(t);
   if (!M) return;
-  const {ax, n, at, lmn, span} = M, lo = t.lower, hi = t.upper;
-  const du = (hi[ax[0]] - lo[ax[0]]) / n[ax[0]] * scale, dv = (hi[ax[1]] - lo[ax[1]]) / n[ax[1]] * scale;
   ctx.globalAlpha = 0.8;
-  for (let a = 0; a < n[ax[0]]; a++) for (let b = 0; b < n[ax[1]]; b++) {
-    const x = at(a, b); if (!(x > 0)) continue;
-    const [r, g, bl] = ramp(VIRIDIS, (Math.log10(x) - lmn) / span);
-    ctx.fillStyle = `rgb(${r},${g},${bl})`;
-    ctx.fillRect(cx + (lo[ax[0]] * scale) + a * du, cy - (lo[ax[1]] * scale) - (b + 1) * dv, Math.ceil(du) + .5, Math.ceil(dv) + .5);
+  if (M.isCyl) {
+    const {kIdx, nr, nphi, lmn, span, ox, oy} = M, v = t.values[t.scores[0]];
+    const pcx = cx + ox * scale, pcy = cy - oy * scale;
+    for (let r = 0; r < nr; r++) {
+      const r0 = t.r_grid[r] * scale, r1 = t.r_grid[r + 1] * scale;
+      for (let p = 0; p < nphi; p++) {
+        const val = v[r + nr * (p + nphi * kIdx)];
+        if (!(val > 0)) continue;
+        const phi0 = t.phi_grid[p], phi1 = t.phi_grid[p + 1];
+        const [red, grn, bl] = ramp(VIRIDIS, (Math.log10(val) - lmn) / span);
+        ctx.fillStyle = `rgb(${red},${grn},${bl})`;
+        ctx.beginPath();
+        ctx.arc(pcx, pcy, r1, -phi1, -phi0);
+        ctx.arc(pcx, pcy, r0, -phi0, -phi1, true);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  } else {
+    const {ax, n, at, lmn, span} = M, lo = t.lower, hi = t.upper;
+    const du = (hi[ax[0]] - lo[ax[0]]) / n[ax[0]] * scale, dv = (hi[ax[1]] - lo[ax[1]]) / n[ax[1]] * scale;
+    for (let a = 0; a < n[ax[0]]; a++) for (let b = 0; b < n[ax[1]]; b++) {
+      const x = at(a, b); if (!(x > 0)) continue;
+      const [r, g, bl] = ramp(VIRIDIS, (Math.log10(x) - lmn) / span);
+      ctx.fillStyle = `rgb(${r},${g},${bl})`;
+      ctx.fillRect(cx + (lo[ax[0]] * scale) + a * du, cy - (lo[ax[1]] * scale) - (b + 1) * dv, Math.ceil(du) + .5, Math.ceil(dv) + .5);
+    }
   }
   ctx.globalAlpha = 1;
   meshColorbar(ctx, W, t, M);
@@ -3749,15 +3918,25 @@ function openArrayMenu(btn) {
   const defaultStep = imperial() ? 8 : 20;
   menu.innerHTML = `
     <div class="atitle">Repeat in an array</div>
-    <div class="agrid">
+    <div style="display:flex;gap:12px;margin-bottom:8px;font-size:11.5px">
+      <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="radio" name="arr-pat" value="rect" id="arr-pat-rect" checked> Cartesian</label>
+      <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="radio" name="arr-pat" value="hex" id="arr-pat-hex"> Hexagonal</label>
+    </div>
+    <div class="agrid" id="arr-grid-rect">
       <span></span><span style="font-weight:600">Count</span><span style="font-weight:600">Pitch (${u})</span>
       <span class="ax">X</span><input type="number" id="arr-nx" min="1" max="100" step="1" value="1"><input type="number" id="arr-dx" step="any" value="${defaultStep}">
       <span class="ax">Y</span><input type="number" id="arr-ny" min="1" max="100" step="1" value="1"><input type="number" id="arr-dy" step="any" value="${defaultStep}">
       <span class="ax">Z</span><input type="number" id="arr-nz" min="1" max="100" step="1" value="1"><input type="number" id="arr-dz" step="any" value="${defaultStep}">
     </div>
+    <div class="agrid" id="arr-grid-hex" style="display:none">
+      <span></span><span style="font-weight:600">Value</span><span style="font-weight:600">Setting</span>
+      <span class="ax">Rings</span><input type="number" id="arr-hex-rings" min="1" max="25" step="1" value="3"><span style="font-size:11px;color:#8f9ba8">Concentric</span>
+      <span class="ax">Pitch</span><input type="number" id="arr-hex-pitch" step="any" value="${defaultStep}"><span style="font-size:11px;color:#8f9ba8">Flat-to-flat</span>
+      <span class="ax">Orient</span><select id="arr-hex-orient" style="font-size:11px"><option value="y">y (flat tops)</option><option value="x">x (flat sides)</option></select><span></span>
+    </div>
     <div class="abottom" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
       <label class="chk" style="font-size:11.5px" title="Keep the array elements organized in groups"><input type="checkbox" id="arr-grp" checked> Group items</label>
-      <label class="chk" style="font-size:11.5px" title="Export as native openmc.RectLattice in model.py"><input type="checkbox" id="arr-lat"> RectLattice</label>
+      <label class="chk" style="font-size:11.5px" title="Export as native openmc lattice in model.py"><input type="checkbox" id="arr-lat"> <span id="arr-lat-text">RectLattice</span></label>
       <button type="button" class="tbtn" id="arr-ok" style="font-weight:600;margin-left:auto">Create</button>
     </div>
   `;
@@ -3766,18 +3945,36 @@ function openArrayMenu(btn) {
   const nxIn = $('#arr-nx');
   nxIn.focus(); nxIn.select();
 
+  const syncPat = () => {
+    const isHex = $('#arr-pat-hex') && $('#arr-pat-hex').checked;
+    $('#arr-grid-rect').style.display = isHex ? 'none' : 'grid';
+    $('#arr-grid-hex').style.display = isHex ? 'grid' : 'none';
+    $('#arr-lat-text').textContent = isHex ? 'HexLattice' : 'RectLattice';
+  };
+  $('#arr-pat-rect').onchange = syncPat;
+  $('#arr-pat-hex').onchange = syncPat;
+
   const apply = () => {
-    const nx = Math.max(1, parseInt($('#arr-nx').value) || 1);
-    const ny = Math.max(1, parseInt($('#arr-ny').value) || 1);
-    const nz = Math.max(1, parseInt($('#arr-nz').value) || 1);
-    let dx = parseFloat($('#arr-dx').value) || 0;
-    let dy = parseFloat($('#arr-dy').value) || 0;
-    let dz = parseFloat($('#arr-dz').value) || 0;
-    if (imperial()) { dx = fromShown(dx, 'len'); dy = fromShown(dy, 'len'); dz = fromShown(dz, 'len'); }
+    const isHex = $('#arr-pat-hex') && $('#arr-pat-hex').checked;
     const doGroup = $('#arr-grp').checked;
     const doLattice = $('#arr-lat') ? $('#arr-lat').checked : false;
     menu.hidden = true;
-    createArray(nx, ny, nz, dx, dy, dz, doGroup, doLattice);
+    if (isHex) {
+      const rings = Math.max(1, parseInt($('#arr-hex-rings').value) || 3);
+      let pitch = parseFloat($('#arr-hex-pitch').value) || defaultStep;
+      if (imperial()) pitch = fromShown(pitch, 'len');
+      const orient = $('#arr-hex-orient').value || 'y';
+      createHexArray(rings, pitch, orient, doGroup, doLattice);
+    } else {
+      const nx = Math.max(1, parseInt($('#arr-nx').value) || 1);
+      const ny = Math.max(1, parseInt($('#arr-ny').value) || 1);
+      const nz = Math.max(1, parseInt($('#arr-nz').value) || 1);
+      let dx = parseFloat($('#arr-dx').value) || 0;
+      let dy = parseFloat($('#arr-dy').value) || 0;
+      let dz = parseFloat($('#arr-dz').value) || 0;
+      if (imperial()) { dx = fromShown(dx, 'len'); dy = fromShown(dy, 'len'); dz = fromShown(dz, 'len'); }
+      createArray(nx, ny, nz, dx, dy, dz, doGroup, doLattice);
+    }
   };
 
   $('#arr-ok').onclick = apply;
@@ -3884,6 +4081,115 @@ function createArray(nx, ny, nz, dx, dy, dz, doGroup, doLattice) {
   else setSelection(newParts.map(p => ({kind:'part', id:p.id})));
   renderProps(); renderTree(); schedule();
   log('ok', `Created ${newParts.length} parts in a ${nx}×${ny}×${nz} array.`);
+}
+
+function createHexArray(rings, pitch, orientation, doGroup, doLattice) {
+  if (rings < 1) return;
+  const totalPins = 1 + 3 * rings * (rings - 1);
+  if (totalPins > 2000) { log('warn', 'Hex array size capped at 2,000 items.'); return; }
+  HISTORY.boundary = true;
+  const isGroupSel = sel.kind === 'group';
+  const targetG = isGroupSel ? groupById(sel.id) : null;
+  const items = selItems().filter(x => x.kind === 'part');
+  if (!items.length) { log('warn', 'Select at least one part or group to repeat in an array.'); return; }
+
+  let parentG = null;
+  const baseName = targetG ? targetG.name : (items.length === 1 ? items[0].o.name : 'Hex Array');
+  const cx0 = targetG ? targetG.x : items[0].o.x;
+  const cy0 = targetG ? targetG.y : items[0].o.y;
+  const cz0 = targetG ? targetG.z : items[0].o.z;
+
+  if (doGroup) {
+    parentG = {
+      id: newId('g'),
+      name: uniqueName(S.groups, 'Hex Array ' + baseName),
+      parent: targetG ? targetG.parent : null,
+      x: cx0, y: cy0, z: cz0
+    };
+    if (doLattice) {
+      parentG.lattice = { type: 'hex', rings, pitch, orientation, asLattice: true, fill: 'auto' };
+    }
+    S.groups.push(parentG);
+    if (targetG) targetG.parent = parentG.id;
+    else items.forEach(x => { x.o.group = parentG.id; });
+  }
+
+  const newParts = [];
+  const sqrt075 = 0.8660254037844386;
+  const N = rings;
+  const sites = [];
+  for (let x = -N + 1; x < N; x++) {
+    for (let a = -N + 1; a < N; a++) {
+      const z = -a - x;
+      const g = Math.max(Math.abs(x), Math.abs(a), Math.abs(z));
+      if (g < N) {
+        let ox, oy;
+        if (orientation === 'x') {
+          ox = (x + 0.5 * a) * pitch;
+          oy = sqrt075 * pitch * a;
+        } else {
+          ox = sqrt075 * pitch * x;
+          oy = (0.5 * x + a) * pitch;
+        }
+        sites.push({x, a, g, ox, oy});
+      }
+    }
+  }
+
+  if (targetG) {
+    const descIds = [targetG.id, ...groupDescendantIds(targetG.id)];
+    sites.forEach(({x, a, g, ox, oy}) => {
+      if (x === 0 && a === 0) return;
+      const idMap = {};
+      descIds.forEach(oldId => {
+        const orig = groupById(oldId);
+        const isBase = oldId === targetG.id;
+        const cloneName = `${orig.name} [r${g},${x},${a}]`;
+        const copyG = {
+          id: newId('g'),
+          name: uniqueName(S.groups, cloneName),
+          parent: isBase ? (parentG ? parentG.id : null) : (idMap[orig.parent] || (parentG ? parentG.id : null)),
+          x: tidy(orig.x + ox),
+          y: tidy(orig.y + oy),
+          z: tidy(orig.z)
+        };
+        idMap[oldId] = copyG.id;
+        if (doGroup) S.groups.push(copyG);
+      });
+      items.forEach(({o}) => {
+        const cp = clone(o);
+        cp.id = newId('p');
+        cp.name = uniqueName(S.parts, `${o.name} [r${g},${x},${a}]`);
+        cp.x = tidy(cp.x + ox); cp.y = tidy(cp.y + oy); cp.z = tidy(cp.z);
+        if (cp.x0 !== undefined) { cp.x0 = tidy(cp.x0 + ox); cp.x1 = tidy(cp.x1 + ox); }
+        if (cp.y0 !== undefined) { cp.y0 = tidy(cp.y0 + oy); cp.y1 = tidy(cp.y1 + oy); }
+        if (doGroup) cp.group = idMap[o.group] || (parentG ? parentG.id : null);
+        newParts.push(cp);
+      });
+    });
+  } else {
+    sites.forEach(({x, a, g, ox, oy}) => {
+      if (x === 0 && a === 0) return;
+      items.forEach(({o}) => {
+        const cp = clone(o);
+        cp.id = newId('p');
+        cp.name = uniqueName(S.parts, `${o.name} [r${g},${x},${a}]`);
+        cp.x = tidy(cp.x + ox); cp.y = tidy(cp.y + oy); cp.z = tidy(cp.z);
+        if (cp.x0 !== undefined) { cp.x0 = tidy(cp.x0 + ox); cp.x1 = tidy(cp.x1 + ox); }
+        if (cp.y0 !== undefined) { cp.y0 = tidy(cp.y0 + oy); cp.y1 = tidy(cp.y1 + oy); }
+        if (parentG) cp.group = parentG.id;
+        newParts.push(cp);
+      });
+    });
+  }
+
+  const lastIdx = Math.max(...items.map(x => S.parts.indexOf(x.o)));
+  S.parts.splice(lastIdx + 1, 0, ...newParts);
+  compactGroups(S);
+  if (parentG) select('group', parentG.id);
+  else setSelection(newParts.map(p => ({kind:'part', id:p.id})));
+  renderProps(); renderTree(); schedule();
+  log('ok', `Created ${newParts.length} parts in a ${rings}-ring hexagonal array.`);
 }
 
 function axisRotation(i, deg) { return i === 0 ? rotXYZ(deg, 0, 0) : i === 1 ? rotXYZ(0, deg, 0) : rotXYZ(0, 0, deg); }
@@ -4391,69 +4697,87 @@ bool intersectPart(vec3 c, vec3 m0, vec3 m1, vec3 m2, vec3 d, float ty, vec3 ro,
     n1 = m0 * ln1.x + m1 * ln1.y + m2 * ln1.z;
     return true;
   }
-  // cone: truncated cone / frustum along local z (ty >= 4.5)
-  float r1 = d.x, r2 = d.y, halfH = d.z;
-  float rmid = (r1 + r2) * 0.5;
-  float k = (r2 - r1) / (2.0 * halfH);
-  float R0 = rmid + k * lo.z;
-  float Rd = k * ld.z;
-  float A = (ld.x * ld.x + ld.y * ld.y) - Rd * Rd;
-  float B = (lo.x * ld.x + lo.y * ld.y) - R0 * Rd;
-  float C = (lo.x * lo.x + lo.y * lo.y) - R0 * R0;
-  float disc = B * B - A * C;
+  if (ty < 5.5) { // cone: truncated cone / frustum along local z (ty in [4.5, 5.5))
+    float r1 = d.x, r2 = d.y, halfH = d.z;
+    float rmid = (r1 + r2) * 0.5;
+    float k = (r2 - r1) / (2.0 * halfH);
+    float R0 = rmid + k * lo.z;
+    float Rd = k * ld.z;
+    float A = (ld.x * ld.x + ld.y * ld.y) - Rd * Rd;
+    float B = (lo.x * ld.x + lo.y * ld.y) - R0 * Rd;
+    float C = (lo.x * lo.x + lo.y * lo.y) - R0 * R0;
+    float disc = B * B - A * C;
 
-  float tMin = BIG, tMax = -BIG;
-  vec3 lnMin = vec3(0.0), lnMax = vec3(0.0);
+    float tMin = BIG, tMax = -BIG;
+    vec3 lnMin = vec3(0.0), lnMax = vec3(0.0);
 
-  if (abs(ld.z) > 1e-12) {
-    float t_bot = (-halfH - lo.z) / ld.z;
-    vec2 p_bot = lo.xy + ld.xy * t_bot;
-    if (dot(p_bot, p_bot) <= r1 * r1 + 1e-5) {
-      vec3 n = vec3(0.0, 0.0, -1.0);
-      if (t_bot < tMin) { tMin = t_bot; lnMin = n; }
-      if (t_bot > tMax) { tMax = t_bot; lnMax = n; }
+    if (abs(ld.z) > 1e-12) {
+      float t_bot = (-halfH - lo.z) / ld.z;
+      vec2 p_bot = lo.xy + ld.xy * t_bot;
+      if (dot(p_bot, p_bot) <= r1 * r1 + 1e-5) {
+        vec3 n = vec3(0.0, 0.0, -1.0);
+        if (t_bot < tMin) { tMin = t_bot; lnMin = n; }
+        if (t_bot > tMax) { tMax = t_bot; lnMax = n; }
+      }
+      float t_top = (halfH - lo.z) / ld.z;
+      vec2 p_top = lo.xy + ld.xy * t_top;
+      if (dot(p_top, p_top) <= r2 * r2 + 1e-5) {
+        vec3 n = vec3(0.0, 0.0, 1.0);
+        if (t_top < tMin) { tMin = t_top; lnMin = n; }
+        if (t_top > tMax) { tMax = t_top; lnMax = n; }
+      }
     }
-    float t_top = (halfH - lo.z) / ld.z;
-    vec2 p_top = lo.xy + ld.xy * t_top;
-    if (dot(p_top, p_top) <= r2 * r2 + 1e-5) {
-      vec3 n = vec3(0.0, 0.0, 1.0);
-      if (t_top < tMin) { tMin = t_top; lnMin = n; }
-      if (t_top > tMax) { tMax = t_top; lnMax = n; }
-    }
-  }
 
-  if (disc >= 0.0) {
-    float s = sqrt(max(0.0, disc));
-    float tRoots[2];
-    int numRoots = 0;
-    if (abs(A) > 1e-12) {
-      tRoots[0] = (-B - s) / A;
-      tRoots[1] = (-B + s) / A;
-      numRoots = 2;
-    } else if (abs(B) > 1e-12) {
-      tRoots[0] = -C / (2.0 * B);
-      numRoots = 1;
-    }
-    for (int i = 0; i < 2; i++) {
-      if (i >= numRoots) break;
-      float tr = tRoots[i];
-      float pz = lo.z + ld.z * tr;
-      if (abs(pz) <= halfH + 1e-5) {
-        float R_at_z = rmid + k * pz;
-        if (R_at_z > 0.0) {
-          vec2 pxy = lo.xy + ld.xy * tr;
-          vec3 n = normalize(vec3(pxy, -k * R_at_z));
-          if (tr < tMin) { tMin = tr; lnMin = n; }
-          if (tr > tMax) { tMax = tr; lnMax = n; }
+    if (disc >= 0.0) {
+      float s = sqrt(max(0.0, disc));
+      float tRoots[2];
+      int numRoots = 0;
+      if (abs(A) > 1e-12) {
+        tRoots[0] = (-B - s) / A;
+        tRoots[1] = (-B + s) / A;
+        numRoots = 2;
+      } else if (abs(B) > 1e-12) {
+        tRoots[0] = -C / (2.0 * B);
+        numRoots = 1;
+      }
+      for (int i = 0; i < 2; i++) {
+        if (i >= numRoots) break;
+        float tr = tRoots[i];
+        float pz = lo.z + ld.z * tr;
+        if (abs(pz) <= halfH + 1e-5) {
+          float R_at_z = rmid + k * pz;
+          if (R_at_z > 0.0) {
+            vec2 pxy = lo.xy + ld.xy * tr;
+            vec3 n = normalize(vec3(pxy, -k * R_at_z));
+            if (tr < tMin) { tMin = tr; lnMin = n; }
+            if (tr > tMax) { tMax = tr; lnMax = n; }
+          }
         }
       }
     }
+
+    if (tMin >= tMax) return false;
+    t0 = tMin; t1 = tMax;
+    n0 = m0 * lnMin.x + m1 * lnMin.y + m2 * lnMin.z;
+    n1 = m0 * lnMax.x + m1 * lnMax.y + m2 * lnMax.z;
+    return true;
   }
 
-  if (tMin >= tMax) return false;
-  t0 = tMin; t1 = tMax;
-  n0 = m0 * lnMin.x + m1 * lnMin.y + m2 * lnMin.z;
-  n1 = m0 * lnMax.x + m1 * lnMax.y + m2 * lnMax.z;
+  // ellipsoid: semi-axes in d.xyz (ty >= 5.5)
+  vec3 so = lo / d;
+  vec3 sd = ld / d;
+  float A = dot(sd, sd);
+  float B = dot(so, sd);
+  float C = dot(so, so) - 1.0;
+  float disc = B * B - A * C;
+  if (disc < 0.0) return false;
+  float s = sqrt(max(0.0, disc));
+  t0 = (-B - s) / A;
+  t1 = (-B + s) / A;
+  vec3 ln0 = normalize((lo + ld * t0) / (d * d));
+  vec3 ln1 = normalize((lo + ld * t1) / (d * d));
+  n0 = m0 * ln0.x + m1 * ln0.y + m2 * ln0.z;
+  n1 = m0 * ln1.x + m1 * ln1.y + m2 * ln1.z;
   return true;
 }
 
@@ -4672,8 +4996,8 @@ function v3init() {
 function partUniform(p) { // center, frame columns, dimensions, type
   const f = p.shape === 'sphere' ? {M:IDENT3} : partFrame(p), M = f.M;
   const cols = [0, 1, 2].map(k => [M[0][k], M[1][k], M[2][k]]);
-  const dims = p.shape === 'sphere' ? [p.r, 0, 0] : (p.shape === 'box' || p.shape === 'wedge') ? [p.sx / 2, p.sy / 2, p.sz / 2] : p.shape === 'cone' ? [p.r, p.r2 ?? p.r, p.h / 2] : [p.r, p.h / 2, 0];
-  const type = p.shape === 'sphere' ? 0 : p.shape === 'box' ? 1 : p.shape === 'cylinder' ? 2 : p.shape === 'wedge' ? 3 : p.shape === 'hex_prism' ? 4 : 5;
+  const dims = p.shape === 'sphere' ? [p.r, 0, 0] : (p.shape === 'box' || p.shape === 'wedge') ? [p.sx / 2, p.sy / 2, p.sz / 2] : p.shape === 'cone' ? [p.r, p.r2 ?? p.r, p.h / 2] : p.shape === 'ellipsoid' ? [p.a || p.r || 1, p.b || p.r || 1, p.c || p.r || 1] : [p.r, p.h / 2, 0];
+  const type = p.shape === 'sphere' ? 0 : p.shape === 'box' ? 1 : p.shape === 'cylinder' ? 2 : p.shape === 'wedge' ? 3 : p.shape === 'hex_prism' ? 4 : p.shape === 'cone' ? 5 : 6;
   return {c:[p.x, p.y, p.z], cols, dims, type};
 }
 
@@ -5101,7 +5425,20 @@ function pick3(px, py) {
         if (Math.abs(pz) <= halfH + 1e-5 && (rmid + k * pz) > 0) { tMin = Math.min(tMin, tr); tMax = Math.max(tMax, tr); }
       });
     }
-    return tMin < tMax ? [tMin, tMax, pIdx] : null;
+    if (q.type === 5) {
+      return tMin < tMax ? [tMin, tMax, pIdx] : null;
+    }
+    // ellipsoid (q.type === 6)
+    const so = [lo[0] / d[0], lo[1] / d[1], lo[2] / d[2]];
+    const sd = [ld[0] / d[0], ld[1] / d[1], ld[2] / d[2]];
+    const eA = sd[0] * sd[0] + sd[1] * sd[1] + sd[2] * sd[2];
+    const eB = so[0] * sd[0] + so[1] * sd[1] + so[2] * sd[2];
+    const eC = so[0] * so[0] + so[1] * so[1] + so[2] * so[2] - 1.0;
+    const eDisc = eB * eB - eA * eC;
+    if (eDisc < 0) return null;
+    const es = Math.sqrt(Math.max(0, eDisc));
+    const et0 = (-eB - es) / eA, et1 = (-eB + es) / eA;
+    return et0 < et1 ? [et0, et1, pIdx] : null;
   }).filter(Boolean);
 
   let tc = tA;
@@ -5191,6 +5528,10 @@ function drawViewport() {
       if (Math.abs(lz) > p.h / 2) return false;
       const r2 = p.r2 ?? p.r, rmid = (p.r + r2) / 2, k = (r2 - p.r) / p.h, R = rmid + k * lz;
       return R > 0 && lx * lx + ly * ly < R * R;
+    }
+    if (p.shape === 'ellipsoid') {
+      const a = p.a || p.r || 1, b = p.b || p.r || 1, c = p.c || p.r || 1;
+      return (lx * lx) / (a * a) + (ly * ly) / (b * b) + (lz * lz) / (c * c) <= 1.0;
     }
     return Math.abs(lx) < p.sx / 2 && Math.abs(ly) < p.sy / 2 && Math.abs(lz) < p.sz / 2;
   };

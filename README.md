@@ -112,7 +112,8 @@ hexagonal rings. With **RectLattice** / **HexLattice** ticked (later: the array 
   - `FILL=u` when every site holds the same part; a FILL list when some sites are empty.
   - The cell that holds the lattice gets `FILL=L (x y z)` to place element [0,0,0].
   - openmc-mcnp-project rewrites the cards MCNPy produces (MCNPy's own were wrong), and its geometry check follows the lattice down to each element.
-  - Hexagonal arrays are still written cell by cell in model.mcnp (MCNP `LAT=2` isn't done yet).
+  - A hexagonal array becomes MCNP `LAT=2`: a hexagonal prism element with its 8 faces in the manual's
+    order, and a FILL list over the rings (sites outside the rings are the surrounding material).
 - A cell tally can't include a part that's inside a lattice yet (that part has no cell of its own);
   Problems says so. Use a mesh tally, or untick the lattice option on the array group.
 

@@ -985,7 +985,7 @@ function problems() {
   (S.groups || []).filter(g => g.lattice && g.lattice.asLattice).forEach(g => {
     const pl = latticePlan(g);
     if (!pl.ok) add('warn', `${g.name} is written as separate cells, not a lattice, because ${pl.reason}. The geometry is the same.`, 'group', g.id);
-    else add('info', pl.type === 'hex' ? `${g.name} is a HexLattice in model.py. model.mcnp writes it cell by cell (MCNP LAT=2 export isn't done yet).`
+    else add('info', pl.type === 'hex' ? `${g.name} is a HexLattice in model.py and a LAT=2 lattice in model.mcnp.`
       : `${g.name} is a RectLattice in model.py and a LAT=1 lattice in model.mcnp.`, 'group', g.id);
   });
 
@@ -1747,9 +1747,9 @@ function buildScript(probs, mark, opts = {}) {
   return {text: L.join('\n') + '\n', owners: OWN, map: MAP, surfaces: SURF, materials: mats, cells};
 }
 function generate(probs) { return buildScript(probs, false).text; }
-// What the MCNP export translates: the same model, with hexagonal lattices written cell by cell (the exporter
-// writes rectangular lattices as LAT=1 cards; LAT=2 isn't done yet).
-const MCNP_OPTS = {flatHex:true};
+// What the MCNP export translates: the same model (the exporter writes RectLattices as LAT=1 and HexLattices as
+// LAT=2). Options stay here so one can force cell-by-cell arrays for MCNP again ({flatHex:true} or {flat:true}).
+const MCNP_OPTS = {};
 function mcnpScript(probs) { return buildScript(probs, false, MCNP_OPTS).text; }
 
 /* ───────── MCNP equivalents (NE403 lab notation) shown beside sources and tallies ───────── */

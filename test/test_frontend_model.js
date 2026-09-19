@@ -126,15 +126,16 @@ if (!py.includes("mat_he3_gas = openmc.Material(name=\"He3 gas\")")) {
 // Generate MCNP cards
 const mcnp1 = sandbox.mcnpTally(S_test.tallies[0]);
 console.log('MCNP Tally 1:\n' + mcnp1);
-if (!/FM\d+ \(-1 1 107\)/.test(mcnp1)) {
-  console.error('FAILED: MCNP Tally 1 missing FM (-1 1 107)');
+// Macroscopic response: C is the detector material's atom density (N), not -1 (the tallied cell's own)
+if (!/FM\d+ \(N 1 107\)/.test(mcnp1)) {
+  console.error('FAILED: MCNP Tally 1 missing FM (N 1 107)');
   process.exit(1);
 }
 
 const mcnp2 = sandbox.mcnpTally(S_test.tallies[1]);
 console.log('MCNP Tally 2:\n' + mcnp2);
-if (!/FM\d+ \(-1 2 103\)/.test(mcnp2)) {
-  console.error('FAILED: MCNP Tally 2 missing FM (-1 2 103)');
+if (!/FM\d+ \(N 2 103\)/.test(mcnp2)) {
+  console.error('FAILED: MCNP Tally 2 missing FM (N 2 103)');
   process.exit(1);
 }
 
@@ -247,8 +248,9 @@ if (!mcnpPhoton.includes(':P')) {
 // Verify MCNP Muir Source
 const mcnpMuir = sandbox.mcnpSource(S_test.sources[0]);
 console.log('MCNP Muir Source:\n' + mcnpMuir);
-if (!mcnpMuir.includes('Muir fusion spectrum')) {
-  console.error('FAILED: MCNP Muir source missing diagnostic card');
+// Gaussian fusion spectrum SP -4 a b, a = sqrt(4*E0*kT/m_rat) MeV: sqrt(4*14.08*0.025/5) = 0.53066
+if (!/^SP\d+ -4 0\.53066\d* 14\.08$/m.test(mcnpMuir) || /SDEF[^\n]* c /.test(mcnpMuir)) {
+  console.error('FAILED: MCNP Muir source should be ERG=Dn with SPn -4 0.53066 14.08 and no comment inside SDEF');
   process.exit(1);
 }
 
@@ -271,15 +273,11 @@ S_test.groups.push({
     nz: 1
   }
 });
-S_test.parts.push({
-  id: 'p_pin',
-  name: 'Fuel Pin',
-  shape: 'cylinder',
-  group: 'g_hex',
-  x: 0, y: 0, z: 0,
-  r: 0.4, h: 20,
-  material: 'm_bf3'
-});
+for (let x = -2; x <= 2; x++) for (let a = -2; a <= 2; a++) {
+  if (Math.max(Math.abs(x), Math.abs(a), Math.abs(x + a)) > 2) continue;
+  S_test.parts.push({ id: `p_pin_${x}_${a}`, name: `Fuel Pin ${x},${a}`, shape: 'cylinder', axis: 'z', group: 'g_hex',
+    x: +((x + 0.5 * a) * 1.4).toFixed(12), y: +(Math.sqrt(3) / 2 * 1.4 * a).toFixed(12), z: 0, r: 0.4, h: 20, rx: 0, ry: 0, rz: 0, material: 'm_bf3' });
+}
 
 // 2. Ellipsoids (Axis-aligned and Rotated)
 S_test.parts.push({
@@ -288,7 +286,7 @@ S_test.parts.push({
   shape: 'ellipsoid',
   x: 5, y: 5, z: 5,
   a: 10, b: 15, c: 20,
-  rotX: 0, rotY: 0, rotZ: 0,
+  rx: 0, ry: 0, rz: 0,
   material: 'm_bf3'
 });
 S_test.parts.push({
@@ -297,7 +295,7 @@ S_test.parts.push({
   shape: 'ellipsoid',
   x: 0, y: 0, z: 0,
   a: 8, b: 12, c: 16,
-  rotX: 30, rotY: 45, rotZ: 0,
+  rx: 30, ry: 45, rz: 0,
   material: 'm_bf3'
 });
 
@@ -333,7 +331,7 @@ if (!py3.includes('openmc.HexLattice(name="Hex Core")')) {
   console.error('FAILED: Missing openmc.HexLattice in Python export');
   process.exit(1);
 }
-if (!py3.includes('.pitch = [1.4]')) {
+if (!py3.includes('.pitch = [1.4, 20.0]')) {
   console.error('FAILED: Missing HexLattice pitch in Python export');
   process.exit(1);
 }
@@ -379,7 +377,8 @@ if (!py3.includes('z_grid=np.linspace(-25.0, 25.0, 16)')) {
 // Verify CylindricalMesh MCNP Tally emission
 const mcnpCyl = sandbox.mcnpTally(S_test.tallies[S_test.tallies.length - 1]);
 console.log('MCNP Cylindrical Mesh Tally:\n' + mcnpCyl);
-if (!mcnpCyl.includes('GEOM=CYL') || !mcnpCyl.includes('IMESH=20') || !mcnpCyl.includes('IINTS=10') || !mcnpCyl.includes('KMESH=25') || !mcnpCyl.includes('KINTS=15')) {
+// GEOM=CYL: I = radius, J = height from ORIGIN (at the bottom), K = angle in revolutions
+if (!mcnpCyl.includes('GEOM=CYL ORIGIN=0 0 -25') || !mcnpCyl.includes('IMESH=20 IINTS=10') || !mcnpCyl.includes('JMESH=50 JINTS=15') || !mcnpCyl.includes('KMESH=1 KINTS=8')) {
   console.error('FAILED: MCNP Cylindrical mesh tally missing expected GEOM=CYL cards');
   process.exit(1);
 }

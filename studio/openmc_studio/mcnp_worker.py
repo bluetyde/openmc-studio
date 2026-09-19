@@ -90,11 +90,20 @@ def geometry_key(model_xml):
     return h.hexdigest()
 
 
+ASCII_SUBS = {"×": "x", "°": " deg", "µ": "u", "μ": "u", "–": "-", "—": "-", "−": "-", "²": "2", "³": "3"}
+
+
+def ascii_label(text):
+    """MCNP input is ASCII: common symbols become their plain spelling, anything else '?'; '=' would read as a card."""
+    text = "".join(ASCII_SUBS.get(ch, ch) for ch in str(text))
+    return text.encode("ascii", "replace").decode("ascii").replace("=", "-")
+
+
 def collect_group_cards(groups_dict, prefix=""):
     cards = []
     for name, data in groups_dict.items():
         path = f"{prefix}/{name}" if prefix else str(name)
-        label = path.encode("ascii", "replace").decode("ascii").replace("=", "-")
+        label = ascii_label(path)
         if isinstance(data, dict):
             pivot = data.get("pivot")
             cells = data.get("cells", [])
@@ -202,7 +211,7 @@ def main():
 
                 report["stage"] = "remediate"
                 emit_progress(job.get("id"), 7, 8, "remediate", "Remediating deck (sources, tallies, settings)...", t0)
-                report.update(remediate(translated, model, runnable))
+                report.update(remediate(translated, model, runnable, detector_responses=ns.get("detector_responses")))
                 add_group_comments(runnable, ns.get("groups"))
 
                 report["stage"] = "validate"

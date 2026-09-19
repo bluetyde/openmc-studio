@@ -85,14 +85,54 @@ because OpenMC and MCNP need them; with imperial on, both code tabs say so. Typi
   - Properties ▸ **Rotate by** applies a typed turn (degrees about x, then y, then z).
   - Sources in a group move with it and a beam direction turns too. A box source can only turn in
     90° steps and a cylinder source only about z; other turns are refused with a message.
+- **Groups inside groups**: drag a group onto another group's folder. Moving or rotating the outer
+  group moves everything inside it.
 - **In the outputs** groups change nothing in the geometry. model.py lists them as
-  `groups = {"Shield": [cell_source_cavity, ...]}` and model.mcnp as comment cards,
-  `c Group: Shield = cells 2 3 4`. The project file keeps each group and its pivot.
-- **Not yet**: groups inside groups. A part or source belongs to at most one group for now.
+  `groups = {"Shield": {"pivot": (...), "cells": [cell_source_cavity, ...], "sources": [...], "groups": {...}}}`
+  and model.mcnp as comment cards, `c Group: Core/Shield | pivot: 0 0 0 = cells 2 3 4`. The project
+  file keeps each group and its pivot.
 
 Faces that should touch are written as one shared surface even after rotations leave tiny rounding
 differences (surfaces closer than 1e-7 cm are merged), so rotated assemblies don't create nearly
 coincident surfaces.
+
+## Arrays and lattices
+
+**Array…** (Home or Model ribbon) repeats the selection on a grid (nx × ny × nz with a spacing) or in
+hexagonal rings. With **RectLattice** / **HexLattice** ticked (later: the array group's Properties ▸
+**Export as RectLattice**), model.py writes the array as an `openmc.RectLattice` or
+`openmc.HexLattice` (one unit universe, repeated), which keeps model.py short for big arrays.
+
+- A lattice needs every member to be the **same single part** (shape, size, rotation, material) on
+  the array's grid. Deleted sites are fine (they're filled with the surrounding material). If you
+  move, resize or change one member, model.py writes the array cell by cell instead and the Problems
+  panel says why; the geometry is the same either way.
+- **model.mcnp always writes arrays cell by cell**: MCNPy's translation of OpenMC lattices doesn't
+  produce a correct LAT/FILL deck yet, and the cell-by-cell deck passes the geometry check.
+
+## Detector responses
+
+A tally can report a detector's reaction rate instead of plain flux (Properties ▸ Detector response):
+**He-3** (n,p), MT 103; **B-10** (n,α), MT 107; or a custom material and reaction. The detector gas
+doesn't need to be in the geometry: model.py multiplies the flux by the gas's cross section with an
+`openmc.EnergyFunctionFilter` (cross sections at 294 K).
+
+- **Macroscopic** (default): N·σ(E), summed over the target nuclide (or every nuclide with that
+  reaction), in 1/cm. **Microscopic**: σ(E) of one nuclide, in barns.
+- model.mcnp writes the matching `FM (C m R)` card, with C the detector gas's atom density
+  (macroscopic) or 1 / the nuclide's atom fraction (microscopic). MCNP sums reaction R over every
+  nuclide in material m, so the export notes when the gas has other nuclides.
+
+## Other options
+
+- **Parts**: sphere, cylinder, box, wedge (right triangular prism), hexagonal prism, cone
+  (truncated) and ellipsoid.
+- **Sources**: energy as lines, Watt, Maxwell, uniform, tabulated (paste MCNP SI/SP cards) or a
+  Muir fusion spectrum (MCNP `SP -4`).
+- **Tallies**: cells, Cartesian or cylindrical mesh, and surface current (the current leaving the
+  chosen parts; OpenMC only, not exported to MCNP yet).
+- **Settings**: photon transport, material temperatures, eigenvalue runs with a k and Shannon entropy
+  convergence chart, and vacuum, reflective, white or periodic (box world only) boundaries.
 
 ## 3D view
 
@@ -107,8 +147,9 @@ neutron tracks and the world boundary.
 - After a run, the **Flux map** is painted on the slice plane and **Tracks** are drawn
   bright where nothing is in front of them and faint behind geometry. Turn on Cutaway
   to see the flux map across the whole cut.
-- Up to 10,000+ parts are drawn interactively in 3D using a WebGL 2 BVH ray tracer.
-  The slice view and the exports always use every part.
+- The 3D view needs WebGL 2. Part data sits in a texture and a bounding-volume hierarchy picks the
+  parts each ray can hit, so there is no fixed part limit; the 134-part graphite pile draws smoothly,
+  and much larger models haven't been timed yet. The slice view and the exports always use every part.
 
 ## Editing in the code tabs
 

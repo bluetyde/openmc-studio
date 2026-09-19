@@ -1,20 +1,72 @@
 # TODO
 
-What's next for OpenMC Studio, roughly in priority order. Latest pushed commit: `ad60cf6` (2026-09-18).
+What's next for OpenMC Studio, roughly in priority order. Latest pushed commit: `49f85da` (2026-09-18).
 
 ---
 
-## Active Backlog
+## Active Backlog (Modular Architecture)
 
-### Core Capabilities for Future Sprints
+### 1. Core Workbench & Measurement Suite
+- **3D Caliper & Dimension Measurement Tool**:
+  - Interactive distance measurement in the 3D WebGL viewport and 2D slice views.
+  - Click two points to measure distance in cm, inspect minimum clearance/gap, check wall thickness, and display coordinate readouts.
+- **STL / OBJ Geometry Exporter**:
+  - Tessellate and export 3D geometry to `.stl` for 3D printing physical reactor models (senior design, lab demos) or `.obj` for rendering in Blender/CAD.
+- **Advanced Graphing Suite**:
+  - **Lethargy Flux Spectrum**: Plot flux per unit lethargy $\phi(u) = E \cdot \phi(E)$ vs. $\log_{10} E$, presenting the thermal Maxwellian peak, $1/E$ slowing-down resonance region, and fission spectrum on equal footing.
+  - **1D Spatial Line Cuts**: Extract 1D radial or axial flux profiles from 2D/3D mesh tallies with shaded $\pm 1\sigma$ Monte Carlo uncertainty bands.
+  - **Reaction Rate & Absorption Breakdown**: Interactive pie and stacked bar charts detailing neutron fate (% absorbed in fuel vs moderator vs poison vs leakage).
+- **Stochastic Geometry Volumes (`openmc.calculate_volumes`)**:
+  - Stochastic ray-tracing volume calculation populating volume $\pm 1\sigma$ directly onto parts/materials for volumetric normalization ($\text{reactions/cm}^3/\text{s}$).
 
-#### Lattices & Geometries
-- **Torus & Revolution Primitives**:
-  - Support `openmc.ZTorus` / `openmc.XTorus` / `openmc.YTorus` for tokamak fusion reactor geometries, circular pipe bends, and magnetic containment vessels.
-- **Spherical Mesh Tallies**:
-  - Support `openmc.SphericalMesh` ($r, \theta, \phi$) for spherical shielding containers, cosmic radiation dosimetry, and isotropically expanding weapon/source simulations.
-- **Depletion & Burnup Configuration**:
-  - OpenMC depletion integration (`openmc.deplete`) with burnup material volume tracking, decay chains, and timesteps.
+### 2. Package: Reactor Physics & Core Safety
+- **Automated Reactivity Coefficient Sweeps**:
+  - **Moderator Density / Void Coefficient ($\alpha_v$)**: Parameter sweep of moderator density ($0 \to 100\%$ void) with automated plot of $k_{\text{eff}}$ and derivative $\alpha_v = \partial \rho / \partial v$ in $\text{pcm} / \% \text{void}$.
+  - **Doppler Fuel Temperature Coefficient ($\alpha_T$)**: Temperature sweep ($300\text{ K} \to 1800\text{ K}$) using OpenMC Doppler broadening to determine Doppler defect and $\alpha_T = \partial \rho / \partial T$ in $\text{pcm}/\text{K}$.
+  - **Pitch-to-Diameter ($p/d$) Ratio Sweep**: Lattice pitch sweep mapping the transition between under-moderated and over-moderated core regimes ($k_\infty$ maximum).
+  - **Critical Mass / Dimension Search**: Binary search routine for critical radius, enrichment, or soluble boron concentration to achieve $k_{\text{eff}} = 1.00000$.
+- **Point Kinetics Parameters via Iterated Fission Probability (IFP)**:
+  - Calculation and dashboard display of effective delayed neutron fraction $\beta_{\text{eff}}$, delayed group precursors $(\beta_i, \lambda_i)$, and prompt neutron lifetime $\ell_p$ / generation time $\Lambda$.
+- **Thermal Scattering Tables $S(\alpha, \beta)$**:
+  - Material inspector selector and automatic composition suggestion for `c_H_in_H2O`, `c_H_in_polyethylene`, `c_Graphite`, `c_D_in_D2O`, `c_Be` with MCNP `MT` cards.
+- **Core Depletion & Fuel Burnup (`openmc.deplete`)**:
+  - Power history (MW), depletion timesteps (EFPD / MWd/kgHM), and interactive evolution curves for $k_{\text{eff}}$, U-235 consumption, Pu-239 breeding, and fission product equilibrium (Xe-135, Sm-149).
+
+### 3. Package: Radiation Protection & Detection Lab
+- **Pulse Height Multichannel Analyzer (MCA) Spectrum (`openmc.PulseHeightFilter`)**:
+  - Pulse height tally simulating true energy deposition spectra in scintillators and semiconductor detectors (NaI(Tl), HPGe, LaBr3, plastics).
+  - Interactive MCA spectrum viewer with linear/log counts vs keV/MeV, photopeak identification, single/double escape peaks, and Compton edge marker.
+- **Fluence-to-Dose Conversion (ICRP / ANSI)**:
+  - Energy-dependent dose response filters (`openmc.data.dose_coefficients`):
+    - **ICRP-74 / ICRP-116**: Effective dose for AP, PA, ISO, and ROT irradiation geometries.
+    - **ANSI/ANS-6.1.1-1977**: Standard neutron and gamma flux-to-dose conversion factors.
+  - Live readout in physical radiological dose units ($\mu\text{Sv/h}$, $\text{mSv/h}$, $\text{mrem/h}$, $\text{rem/h}$) scaled to source strength ($\text{particles/s}$) and MCNP `DF`/`DE` cards.
+- **PNNL Materials Compendium & Cross-Section Explorer**:
+  - 1-click standard presets from the PNNL Compendium for structural alloys, shielding concretes, borated polymers, fuels, and control poisons.
+  - Interactive microscopic cross-section plot ($\sigma_t, \sigma_\gamma, \sigma_f, \sigma_s$) directly from OpenMC's HDF5 library.
+- **Weight Windows & Importance Maps (`openmc.WeightWindows`)**:
+  - Spatial weight window mesh configuration for deep shielding penetration, with 2D/3D importance heatmaps and MCNP `WWG`/`WWP` cards.
+
+### 4. Package: Fusion Neutronics
+- **Torus & Tokamak Geometry**:
+  - Torus primitive (`openmc.ZTorus`, `openmc.XTorus`, `openmc.YTorus` and MCNP `TX`/`TY`/`TZ`) with major radius $R$, minor radius $r$, and analytical 3D raymarching.
+  - Parametric elongated D-shaped cross-sections for tokamak first walls, vacuum vessels, and magnetic field coils.
+  - Annular / ring plasma sources (`openmc.stats.CylindricalIndependent`).
+- **Tritium Breeding Ratio (TBR) Tally**:
+  - Automated tally configuration for $(n,\alpha)t$ reaction rates in Li-6 (MT 105) and Li-7 (MT 205) across breeding blanket regions.
+- **Spherical Mesh Tallies (`openmc.SphericalMesh`)**:
+  - Spherical grid binning ($r, \theta, \phi$) with arbitrary center origin for spherical tokamak chambers and point-source dosimetry.
+
+### 5. Package: CAD & Geometry Interoperability
+- **GEOUNED CAD-to-OpenMC Translation**:
+  - Integration with **GEOUNED** (open-source tool developed by UNED utilizing FreeCAD and OpenCASCADE):
+    - **CAD to CSG**: Convert standard engineering CAD models (STEP / IGES) into native OpenMC constructive solid geometry (CSG) surfaces and cells with analytical representations.
+    - **CSG to CAD**: Round-trip export of OpenMC Studio CSG models back into STEP format for modification in commercial CAD software (SolidWorks, Inventor, FreeCAD).
+    - Automatic solid decomposition and void region generation for complex nuclear components.
+- **DAGMC Direct Accelerated Geometry**:
+  - Direct import and visualization of faceted DAGMC `.h5m` surface mesh models.
+- **OpenMC Python & XML Importer**:
+  - Drag-and-drop parser for existing `model.py` scripts and XML suites (`geometry.xml`, `materials.xml`, `settings.xml`, `tallies.xml`) into OpenMC Studio's scene graph.
 
 ---
 

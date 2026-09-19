@@ -140,10 +140,11 @@ def add_group_comments(deck_path, groups):
     cards = collect_group_cards(groups)
     if not cards:
         return
+    from deck_format import format_deck
     with open(deck_path) as f:
         lines = f.read().split("\n")
     with open(deck_path, "w") as f:
-        f.write("\n".join(lines[:1] + cards + lines[1:]))
+        f.write(format_deck("\n".join(lines[:1] + cards + lines[1:])))
 
 
 def main():

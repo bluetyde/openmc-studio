@@ -107,8 +107,14 @@ hexagonal rings. With **RectLattice** / **HexLattice** ticked (later: the array 
   the array's grid. Deleted sites are fine (they're filled with the surrounding material). If you
   move, resize or change one member, model.py writes the array cell by cell instead and the Problems
   panel says why; the geometry is the same either way.
-- **model.mcnp always writes arrays cell by cell**: MCNPy's translation of OpenMC lattices doesn't
-  produce a correct LAT/FILL deck yet, and the cell-by-cell deck passes the geometry check.
+- **model.mcnp** writes a rectangular lattice as MCNP `LAT=1` with `FILL`, like a hand-written deck:
+  - The element [0,0,0] is a box around the origin.
+  - `FILL=u` when every site holds the same part; a FILL list when some sites are empty.
+  - The cell that holds the lattice gets `FILL=L (x y z)` to place element [0,0,0].
+  - openmc-mcnp-project rewrites the cards MCNPy produces (MCNPy's own were wrong), and its geometry check follows the lattice down to each element.
+  - Hexagonal arrays are still written cell by cell in model.mcnp (MCNP `LAT=2` isn't done yet).
+- A cell tally can't include a part that's inside a lattice yet (that part has no cell of its own);
+  Problems says so. Use a mesh tally, or untick the lattice option on the array group.
 
 ## Detector responses
 

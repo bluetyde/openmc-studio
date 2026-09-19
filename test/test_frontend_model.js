@@ -386,6 +386,38 @@ if (!mcnpCyl.includes('GEOM=CYL ORIGIN=0 0 -25') || !mcnpCyl.includes('IMESH=20 
   process.exit(1);
 }
 
+// Verify Thermal Scattering S(alpha, beta) support
+console.log('\nTesting Thermal Neutron Scattering S(alpha, beta) integration...');
+if (!sandbox.THERMAL_SCATTERING_TABLES || sandbox.THERMAL_SCATTERING_TABLES.length < 30) {
+  console.error('FAILED: THERMAL_SCATTERING_TABLES missing or incomplete:', sandbox.THERMAL_SCATTERING_TABLES?.length);
+  process.exit(1);
+}
+const testSabMatches = [
+  ['Water, liquid', 'H:2, O:1', 'c_H_in_H2O'],
+  ['Heavy Water', 'H2:2, O:1', 'c_D_in_D2O'],
+  ['Graphite', 'C:1', 'c_Graphite'],
+  ['Polyethylene', 'H:2, C:1', 'c_H_in_CH2'],
+  ['Beryllium', 'Be:1', 'c_Be'],
+  ['Uranium Dioxide', 'U:1, O:2', 'c_U_in_UO2'],
+  ['Silicon Dioxide', 'Si:1, O:2', 'c_SiO2_alpha']
+];
+testSabMatches.forEach(([name, comps, expected]) => {
+  const got = sandbox.sabFor(name, comps);
+  if (got !== expected) {
+    console.error(`FAILED: sabFor("${name}", "${comps}") expected "${expected}", got "${got}"`);
+    process.exit(1);
+  }
+});
+
+// Test material with thermal scattering in mcnpMaterial
+const matGraphite = { id: 'm_grph', name: 'Graphite', comps: 'C: 1.0', density: 1.7, frac: 'ao', sab: 'c_Graphite' };
+const mcnpMat = sandbox.mcnpMaterial(matGraphite);
+console.log('MCNP Material equivalent:\n' + mcnpMat);
+if (!mcnpMat.includes('MT') || !mcnpMat.includes('grph.40t')) {
+  console.error('FAILED: mcnpMaterial missing MT card with grph.40t');
+  process.exit(1);
+}
+
 console.log('\nAll frontend model generation & MCNP translation tests PASSED!');
 
 

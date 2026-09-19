@@ -11,6 +11,7 @@ and the MCNP lattice work; fixes listed under Completed).
     orientations and with two axial levels.
   - Still open: prove it once in real MCNP. Plot the pile deck and a hex deck with lattice index labels
     (manual p. 290), or compare short runs against the cell-by-cell decks.
+  - **RPP Macrobody Element**: Represent the `LAT=1` base element cell using a single `RPP` macrobody card instead of 6 individual `PX/PY/PZ` planes (improves deck readability and matches human-written deck conventions; requires adding `RPP` support to `geometry_check.py`).
   - Cell tallies on parts inside a lattice: done in model.py (CellInstanceFilter). **MCNP export still to
     do**: write each bin as `(unit < latcell[i j k] < filled cell)` (manual p. 452-455) from OpenMC's
     distribcell paths. openmc-mcnp-project refuses CellInstanceFilter tallies until then.
@@ -97,6 +98,18 @@ and the MCNP lattice work; fixes listed under Completed).
   - Direct import and visualization of faceted DAGMC `.h5m` surface mesh models.
 - **OpenMC Python & XML Importer**:
   - Drag-and-drop parser for existing `model.py` scripts and XML suites (`geometry.xml`, `materials.xml`, `settings.xml`, `tallies.xml`) into OpenMC Studio's scene graph.
+
+### 6. MCNP 6.3 Performance & Geometry Optimizations (Research Analysis)
+- **Negative Universes (`u=-n`) for Lattice Tracking Acceleration**:
+  - Manual ref: §5.5.5.1 (PDF p. 288–289). Precede the `u=` entry with a minus sign (e.g. `u=-2`) for any finite cell fully enclosed by the unit cell boundary (fuel pellet, clad, inner gas gap). Tells MCNP tracking to skip distance-to-boundary calculations against higher-level lattice boundaries, yielding an estimated 10–25% speedup in particle tracking.
+- **Macrobodies (`RPP`, `RCC`, `HEX`) vs. Primitive Half-Space Planes**:
+  - Manual ref: §3.4.1 #5 (PDF p. 243) & §5.3.4 (PDF p. 271–278). Replace sets of 6 planar surfaces (`PX`, `PY`, `PZ`) with native `RPP` macrobodies, and cylindrical pins with `RCC`. Reduces surface card counts by up to 75%, simplifies boolean intersections, and accelerates MCNP internal ray-bounding evaluations.
+- **Pruning the Complement Operator (`#`)**:
+  - Manual ref: §3.4.1 #6 (PDF p. 243) & §2.2.1 (PDF p. 56). Avoid nested `#` complement tokens which trigger de Morgan surface expansions during particle tracking.
+- **Direct Analytic Source Sampling (`SP -2`, `SP -3`)**:
+  - Manual ref: §5.8.1–5.8.3 (PDF p. 379, 396–400). Replace large discrete histogram tables (`SI/SP`) with closed-form analytic sampling (Maxwell `SP -2`, Watt fission `SP -3`, Gaussian fusion `SP -4`) for $O(1)$ random number evaluation.
+- **I/O & Worker Disk Overhead Reduction (`PRDMP 0 0 0 0`)**:
+  - Manual ref: §3.4.3 #2 (PDF p. 244). Add `PRDMP 0 0 0 0` and suppress unneeded print tables in automated worker runs to eliminate scratch `RUNTPE` disk writes.
 
 ---
 

@@ -54,8 +54,13 @@ and the MCNP lattice work; fixes listed under Completed).
   - **Reaction Rate & Absorption Breakdown**: Interactive pie and stacked bar charts detailing neutron fate (% absorbed in fuel vs moderator vs poison vs leakage).
 - **Stochastic Geometry Volumes (`openmc.calculate_volumes`)**:
   - Stochastic ray-tracing volume calculation populating volume $\pm 1\sigma$ directly onto parts/materials for volumetric normalization ($\text{reactions/cm}^3/\text{s}$).
-- **Multiple Independent Sources (`SDEF` Multi-Source)**:
-  - Expand source export beyond the single-source restriction (`len(sources) > 1`) to support multiple distributed sources (e.g. reactor core + external PuBe startup source + background).
+- **Multiple Independent Sources (`SDEF` Multi-Source)**: done in the MCNP export.
+  - One SDEF: `ERG=Dn` with `SI n S` picks the source, and `SP n` gives the strengths. Everything else is
+    `=FERG=`, with one DS entry per source (manual p. 379-408). The validator reads every source back and
+    compares it with OpenMC.
+  - Still open: a box source together with a sphere or cylinder source. MCNP's one SDEF card has one volume
+    shape, so the export refuses the mix; Problems could warn. Points mix with any one shape.
+  - In model.mcnp, clicking source cards only links to a source when there's one source.
 - **Tally Segmenting Cards (`FS`)**:
   - Geometric segmentation of cell and surface tallies using secondary dividing surfaces (manual §10.2.4, Examples 33 & 34).
   - The exporter already writes FS for surface currents (to cut a surface down to one part's face); a
@@ -225,7 +230,8 @@ and the MCNP lattice work; fixes listed under Completed).
 
 ## Known Export Limits
 
-- One `SDEF` source only in the MCNP export (multi-source and dependent distributions `DS`/`SI`/`SP` are not yet exported; manual §10.3.1).
+- Several sources export as one SDEF, but box sources can't be mixed with sphere or cylinder sources (points
+  mix with any one of them).
 - Absorption can't be exported for actinide materials (MontePy can't parse `FM ... -2:-6`).
 - Mesh tallies export flux only (`FMESH`, reaction rate mesh tallies not exported).
 - The geometry check follows universes and LAT=1 / LAT=2 lattices, but not TRCL or rotated fills.

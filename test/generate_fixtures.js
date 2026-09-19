@@ -110,6 +110,16 @@ write('current_box', {materials: [water],
   tallies: [{id: 't_block', name: 't_block', kind: 'surface', surfaces: ['block'], cells: [], scores: ['current'], ebins: '0, 0.1, 20'}],
   settings: settings({worldR: 40})});
 
+// 5c. Two sources of different strength, shape, energy and particle (MCNP: one SDEF, ERG picks the source)
+write('two_sources', {materials: [water],
+  parts: [part('tank', 'box', 0, 0, 0, {sx: 40, sy: 40, sz: 40}, 'm_water')],
+  sources: [pointSource(-8, 0, 0),
+    {...pointSource(8, 2, 0), id: 's2', name: 'Shell source', space: 'sphere', rin: 1, r: 3, strength: 3, energy: 'watt'},
+    {...pointSource(0, -9, 4), id: 's3', name: 'Gamma line', particle: 'photon', strength: 0.5, lines: '0.662:1',
+     angle: 'mono', u: 0, v: 1, w: 0}],
+  groups: [], tallies: [cellTally('t_tank', ['tank'])],
+  settings: settings({worldR: 40})});
+
 // 6. Cell tallies on parts inside lattices (CellInstanceFilter), rectangular and hexagonal, with a plain part (a
 //    probe outside the lattice box) in the same tally. The flat twin tallies the same parts as ordinary cells; the
 //    Python test compares the two. (A tally on the part around a lattice turns the lattice off; see latticeHost.)

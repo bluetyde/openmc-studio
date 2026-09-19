@@ -3475,7 +3475,9 @@ function renderPy(P) {
 const NUM_RE = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
 function mcnpContext(P, built) {
   // Everything needed to read the deck back, captured when the script is sent.
-  const src = S.sources[0] || null;
+  // SI/SP numbers below follow the single-source SDEF. With several sources the exporter writes one SDEF with ERG
+  // picking the source and DS cards, so the numbers mean something else: link nothing then.
+  const src = S.sources.length === 1 ? S.sources[0] : null;
   const dists = [];
   if (src && S.settings.runMode !== 'eigenvalue') {
     const addDist = (si, sp) => dists.push({si, sp});
@@ -3494,8 +3496,31 @@ function mcnpContext(P, built) {
   S.tallies.forEach(t => t.scores.forEach(() => tallyScores.push(t)));
   return {surfaces: built.surfaces, materials: built.materials, cells: built.cells, source: src, dists, tallyScores, groups: (S.groups || []).map(g => ({id:g.id, name:g.name, path:groupPath(g.id)}))};
 }
+// Which Studio tally each deck tally number belongs to. The exporter numbers tallies in order, but a surface-current
+// tally uses one number per (surface, part) bin, so numbers can't be computed from the tally list. Read them from
+// the deck instead: every F tally has an FC card that starts with the tally's name, followed by " (score)" or
+// " [...]". FMESH tallies have no FC card, but only mesh tallies make them, so they are matched in order.
+function mcnpTallyNumbers(deck, tallies = S.tallies) {
+  const byNum = {}, meshes = [];
+  tallies.forEach(t => { if (t.kind !== 'cell' && t.kind !== 'surface') t.scores.forEach(() => meshes.push(t)); });
+  const byName = [...tallies].sort((a, b) => (b.name || '').length - (a.name || '').length);
+  let mi = 0;
+  deck.split('\n').forEach(line => {
+    let m;
+    if ((m = line.match(/^FMESH(\d+)/i))) { if (meshes[mi]) byNum[+m[1]] = meshes[mi]; mi++; }
+    else if ((m = line.match(/^FC(\d+)\s+(.*)$/i))) {
+      const label = m[2].replace(/\s*(\[[^\]]*\]|\([^)]*\))\s*$/, '').trim();
+      const t = byName.find(x => (x.name || '') === label) || byName.find(x => label && (x.name || '').startsWith(label));
+      if (t) byNum[+m[1]] = t;  // a long name is cut short on the FC card
+    }
+  });
+  return byNum;
+}
+
 function annotateMcnp(deck, ctx, editable) {
   const owners = [], refs = [];
+  // the tallies as they were when this deck was requested (ctx.tallyScores lists each once per score)
+  ctx.tallyByNum = mcnpTallyNumbers(deck, [...new Set(ctx.tallyScores || S.tallies)]);
   let block = 0, card = null, cardOwner = null, kw = null, kwIndex = 0, valueIndex = 0;
   const cellOwner = n => ctx.cells[n - 1] || {kind:'world'}; // MCNP-only cells (lattice element, outside) -> world
   const matOwner = n => ctx.materials[n - 1] ? {kind:'material', id:ctx.materials[n - 1].id} : null;
@@ -3570,9 +3595,9 @@ function annotateMcnp(deck, ctx, editable) {
         const list = m[1] === 'I' ? d.si : d.sp;
         return list ? list[n] || null : null;
       }
-      if ((m = H.match(/^E(\d+)$/))) { const t = ctx.tallyScores[(+m[1] - 4) / 10]; return t ? {t:'ebin', obj:t, index:n + 1} : null; }
+      if ((m = H.match(/^E(\d+)$/))) { const t = ctx.tallyByNum[+m[1]]; return t ? {t:'ebin', obj:t, index:n + 1} : null; }
       if ((m = H.match(/^FMESH(\d+)/))) {
-        const t = ctx.tallyScores[(+m[1] - 4) / 10]; if (!t) return null;
+        const t = ctx.tallyByNum[+m[1]]; if (!t) return null;
         if (t.meshGeom === 'cylindrical') {
           // ORIGIN.z, radial/axial/angular endpoints and axes can be derived or
           // repeated grid values. Keep them read-only rather than editing a wrong field.
@@ -3628,7 +3653,7 @@ function cardOwnerFor(head, ctx, matOwner) {
   if ((m = head.match(/^MT?(\d+)$/))) return matOwner(+m[1]);
   if (/^(SDEF|SI\d+|SP\d+)$/.test(head)) return ctx.source ? {kind:'source', id:ctx.source.id} : null;
   if (/^(NPS|KCODE|KSRC|MODE)$/.test(head)) return {kind:'settings'};
-  if ((m = head.match(/^(?:F|FC|FM|E|SD|FMESH)(\d+)$/))) { const t = ctx.tallyScores[(+m[1] - 4) / 10]; return t ? {kind:'tally', id:t.id} : null; }
+  if ((m = head.match(/^(?:F|FC|FM|E|SD|FMESH|C|FS)(\d+)$/))) { const t = (ctx.tallyByNum || {})[+m[1]]; return t ? {kind:'tally', id:t.id} : null; }
   return null;
 }
 

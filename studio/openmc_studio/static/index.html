@@ -1905,11 +1905,14 @@ function mcnpMaterial(m) {
   const comps = parseComps(m.comps).out;
   const isAo = m.frac === 'ao';
   const prefix = `M${matNum || 1}`;
+  out.push(`c --- Material ${matNum || 1}: ${m.name || 'Unnamed'} (density = ${m.density || 1.0} g/cm3) ---`);
+  out.push(`c Format: M<id> <zaid> <fraction> (${isAo ? 'atom fractions' : 'weight fractions (-)'})`);
   const parts = comps.map(c => `${c.sym} ${isAo ? num(c.amt) : '-' + num(c.amt)}`);
   out.push(`${prefix} ${parts.join(' ')}`);
   if (m.sab && m.sab !== 'none') {
     const table = THERMAL_SCATTERING_TABLES.find(t => t.id === m.sab);
     const sabid = table && table.mcnp ? table.mcnp : (m.sab.startsWith('c_') ? m.sab.slice(2).toLowerCase() + '.40t' : m.sab);
+    out.push(`c MT${matNum || 1}: Thermal neutron scattering S(alpha, beta) for Material ${matNum || 1}`);
     out.push(`MT${matNum || 1} ${sabid}`);
   }
   return out.join('\n');
@@ -3503,9 +3506,26 @@ function annotateMcnp(deck, ctx, editable) {
     if (!trimmed) { block++; card = null; owners.push(null); return '<span class="ln"> </span>'; }
     if (li === 0 || /^(\$|c(\s|$))/i.test(trimmed)) {
       const gm = trimmed.match(/^c\s+Group:\s*([^|=]+?)(?:\s*\||\s*=|\s*$)/i);
-      const path = gm ? gm[1].trim() : null;
-      const g = path && (ctx.groups || []).find(x => x.path === path || x.name === path);
-      const own = g ? {kind:'group', id:g.id} : null;
+      const cm = trimmed.match(/^c\s+---\s+Cell\s+(\d+):/i);
+      const sm = trimmed.match(/^c\s+---\s+Surface\s+(\d+):/i);
+      const mm = trimmed.match(/^c\s+---\s+Material\s+(\d+):/i);
+      const tm = trimmed.match(/^c\s+---\s+Tally\s+(\d+):/i);
+      let own = null;
+      if (gm) {
+        const path = gm[1].trim();
+        const g = path && (ctx.groups || []).find(x => x.path === path || x.name === path);
+        own = g ? {kind:'group', id:g.id} : null;
+      } else if (cm) {
+        const cid = parseInt(cm[1], 10);
+        own = cid === 999 ? {kind:'world'} : cellOwner(cid);
+      } else if (sm) {
+        const sid = parseInt(sm[1], 10);
+        own = ctx.surfaces[sid - 1] ? ctx.surfaces[sid - 1].owner : null;
+      } else if (mm) {
+        own = matOwner(parseInt(mm[1], 10));
+      } else if (tm) {
+        own = cardOwnerFor('F' + tm[1], ctx, matOwner);
+      }
       owners.push(own);
       return `<span class="ln${ownerMatchesSel(own) ? ' sel' : ''}" data-line="${li}"><span class="t-mcom">${esc(line)}</span></span>`;
     }

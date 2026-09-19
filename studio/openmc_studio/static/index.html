@@ -64,12 +64,21 @@ button,input,select{font:inherit;color:inherit}
 #arrayMenu .agrid input{padding:3px 6px;font-size:11.5px}
 #arrayMenu .abottom{display:flex;justify-content:space-between;align-items:center;margin-top:4px}
 .msearch{position:sticky;top:0;z-index:1;margin:0 -4px 4px;padding:6px;background:var(--panel2);border-bottom:1px solid var(--line)}
+.mchips{display:flex;gap:4px;overflow-x:auto;padding:2px 6px 6px;margin:0 -4px 4px;border-bottom:1px solid var(--line);background:var(--panel2);scrollbar-width:none}
+.mchips::-webkit-scrollbar{display:none}
+.mchip{display:inline-flex;align-items:center;padding:2px 7px;font-size:10.5px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--muted);cursor:pointer;white-space:nowrap;flex:none}
+.mchip:hover{color:var(--text);border-color:var(--muted)}
+.mchip.active{background:var(--accent,#3f86d6);color:#fff;border-color:transparent;font-weight:500}
 .menu button.mcat{font-weight:500;color:var(--text)}
 .menu button.mcat small{font-family:var(--mono)}
 .mcat .caret{width:10px;flex:none;color:var(--faint);transition:transform .12s}
 .mcat[aria-expanded="false"] .caret{transform:rotate(-90deg)}
-.menu button.mitem{padding-left:22px}
-.menu button.mitem span.mname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.menu button.mitem{padding-left:14px;gap:6px}
+.menu button.mitem span.mname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.mitem .mref{font-size:10px;color:var(--faint);margin-left:4px;font-family:var(--mono);flex:none}
+.mitem .msab{font-size:9.5px;padding:1px 4px;border-radius:3px;background:var(--line);color:var(--muted);margin-left:4px;flex:none}
+.thead .tlib{background:none;border:0;color:var(--muted);cursor:pointer;padding:2px;display:flex;align-items:center;margin-right:2px}
+.thead .tlib:hover{color:var(--text)}
 .mnote{padding:6px 8px 4px;color:var(--faint);font-size:11.5px}
 
 /* Main three-column body */
@@ -399,26 +408,75 @@ const ic = (n, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 18 18" f
    Densities and weight fractions from PNNL-15870 Rev. 1, "Compendium of Material
    Composition Data for Radiation Transport Modeling" (entry numbers in `ref`).
    S(a,b) names are the OpenMC thermal-scattering tables that fit each material. */
-const PRESETS = [
-  {key:'water', ref:'PNNL #354', name:'Water, liquid', color:'#3f86d6', density:0.998207, frac:'wo', comps:'H:0.111894, O:0.888106', sab:'c_H_in_H2O'},
-  {key:'heavywater', ref:'PNNL #353', name:'Water, heavy', color:'#5aa5c9', density:1.10534, frac:'wo', comps:'H2:0.201133, O:0.798867', sab:'c_D_in_D2O'},
-  {key:'poly', ref:'PNNL #248', name:'Polyethylene', color:'#d8cfa6', density:0.93, frac:'wo', comps:'H:0.143716, C:0.856284', sab:'c_H_in_CH2'},
-  {key:'bpoly', ref:'PNNL #247', name:'Polyethylene, borated (10% B)', color:'#b9c48a', density:1.0, frac:'wo', comps:'H:0.125355, B:0.1, C:0.774645', sab:'c_H_in_CH2'},
-  {key:'paraffin', ref:'PNNL #358', name:'Paraffin wax', color:'#e6dcb8', density:0.93, frac:'wo', comps:'H:0.148605, C:0.851395', sab:'c_H_in_CH2'},
-  {key:'graphite', ref:'PNNL #63', name:'Graphite, reactor grade', color:'#767c85', density:1.7, frac:'wo', comps:'B:0.000001, C:0.999999', sab:'c_Graphite'},
-  {key:'beryllium', ref:'PNNL #24', name:'Beryllium', color:'#9fb7a8', density:1.848, frac:'wo', comps:'Be:1', sab:'c_Be'},
-  {key:'concrete', ref:'PNNL #97', name:'Concrete, ordinary (NIST)', color:'#a19c8b', density:2.3, frac:'wo', comps:'H:0.0221, C:0.002484, O:0.57493, Na:0.015208, Mg:0.001266, Al:0.019953, Si:0.304627, K:0.010045, Ca:0.042951, Fe:0.006435', sab:''},
-  {key:'lead', ref:'PNNL #171', name:'Lead', color:'#8b94a8', density:11.35, frac:'wo', comps:'Pb:1', sab:''},
-  {key:'iron', ref:'PNNL #158', name:'Iron', color:'#b3714e', density:7.874, frac:'wo', comps:'Fe:1', sab:''},
-  {key:'ss304', ref:'PNNL #298', name:'Steel, stainless 304', color:'#9aa4ad', density:8.0, frac:'wo', comps:'C:0.0004, Si:0.005, P:0.00023, S:0.00015, Cr:0.19, Mn:0.01, Fe:0.70173, Ni:0.0925', sab:''},
-  {key:'tungsten', ref:'PNNL #331', name:'Tungsten', color:'#6e7a90', density:19.3, frac:'wo', comps:'W:1', sab:''},
-  {key:'aluminum', ref:'PNNL #6', name:'Aluminum', color:'#c3cbd3', density:2.6989, frac:'wo', comps:'Al:1', sab:''},
-  {key:'cadmium', ref:'PNNL #51', name:'Cadmium', color:'#c7a86b', density:8.65, frac:'wo', comps:'Cd:1', sab:''},
-  {key:'b4c', ref:'PNNL #40', name:'Boron carbide', color:'#5f6e4b', density:2.52, frac:'wo', comps:'B:0.78261, C:0.21739', sab:''},
-  {key:'uo2', ref:'PNNL #334', name:'Uranium dioxide (3 at% U-235)', color:'#d8b33c', density:10.96, frac:'wo', comps:'O:0.118533, U234:0.000235, U235:0.026444, U236:0.000122, U238:0.854666', sab:''},
-  {key:'air', ref:'PNNL #4', name:'Air, dry (sea level)', color:'#7fa3b8', density:0.001205, frac:'wo', comps:'C:0.000124, N:0.755268, O:0.231781, Ar:0.012827', sab:''},
-  {key:'helium', ref:'PNNL #151', name:'Helium, natural', color:'#a7d8cf', density:0.000166, frac:'wo', comps:'He:1', sab:''},
-  {key:'he3', ref:'Ideal gas, 4 atm, 20 °C', name:'He-3 detector gas (4 atm)', color:'#8fe0c4', density:0.000502, frac:'ao', comps:'He3:1', sab:''}
+var PNNL_PRESET_GROUPS = [
+  'All',
+  'Shielding Concretes',
+  'Borated Polymers',
+  'Structural Alloys',
+  'Control Absorbers',
+  'Moderators & Coolants',
+  'Nuclear Fuels',
+  'Gases & Detectors'
+];
+
+var PRESETS = [
+  // ── Shielding Concretes ──────────────────────────────────────────
+  {key:'concrete', ref:'PNNL #97', group:'Shielding Concretes', name:'Concrete, ordinary (NIST)', color:'#a19c8b', density:2.3, frac:'wo', comps:'H:0.0221, C:0.002484, O:0.57493, Na:0.015208, Mg:0.001266, Al:0.019953, Si:0.304627, K:0.010045, Ca:0.042951, Fe:0.006435', sab:''},
+  {key:'barytes_concrete', ref:'PNNL #77', group:'Shielding Concretes', name:'Concrete, barytes-limonite (high-density)', color:'#877f6c', density:3.36, frac:'wo', comps:'H:0.01024, O:0.378476, Na:0.000904, Mg:0.002309, Al:0.00502, Si:0.013553, S:0.076097, Ca:0.05391, Mn:0.001405, Fe:0.137135, Ba:0.320952', sab:''},
+  {key:'magnetite_concrete', ref:'PNNL #90', group:'Shielding Concretes', name:'Concrete, magnetite', color:'#5e594d', density:3.53, frac:'wo', comps:'H:0.003113, O:0.330504, Mg:0.009338, Al:0.023486, Si:0.02575, S:0.001415, Ca:0.071024, Ti:0.054329, V:0.003113, Cr:0.001698, Mn:0.001981, Fe:0.47425', sab:''},
+  {key:'magnetite_steel_concrete', ref:'PNNL #91', group:'Shielding Concretes', name:'Concrete, magnetite and steel', color:'#4a463e', density:4.64, frac:'wo', comps:'H:0.002374, O:0.137678, Mg:0.003669, Al:0.010358, Si:0.015753, Ca:0.055675, Ti:0.015969, V:0.000647, Fe:0.757877', sab:''},
+  {key:'boron_baryte_concrete', ref:'PNNL #78', group:'Shielding Concretes', name:'Concrete, boron frits-baryte', color:'#8b8577', density:3.1, frac:'wo', comps:'H:0.005626, B:0.010449, O:0.339596, F:0.002311, Na:0.012157, Mg:0.002311, Al:0.00643, Si:0.033256, S:0.091932, K:0.001005, Ca:0.062896, Mn:0.000201, Fe:0.022003, Zn:0.006631, Ba:0.403195', sab:''},
+  {key:'colemanite_baryte_concrete', ref:'PNNL #79', group:'Shielding Concretes', name:'Concrete, colemanite-baryte', color:'#918b7d', density:3.2, frac:'wo', comps:'H:0.008564, B:0.009874, O:0.351537, Na:0.001108, Mg:0.002217, Al:0.006146, Si:0.017733, S:0.097028, Ca:0.085239, Mn:0.000101, Fe:0.010378, Ba:0.410076', sab:''},
+
+  // ── Borated Polyethylene & Shielding Polymers ───────────────────
+  {key:'poly', ref:'PNNL #248', group:'Borated Polymers', name:'Polyethylene, non-borated', color:'#d8cfa6', density:0.93, frac:'wo', comps:'H:0.143716, C:0.856284', sab:'c_H_in_CH2'},
+  {key:'bpoly5', ref:'Derived (5 wt% B in PE; cf. PNNL #247)', group:'Borated Polymers', name:'Polyethylene, borated (5% B)', color:'#c5ce9c', density:0.95, frac:'wo', comps:'H:0.1345, B:0.05, C:0.8155', sab:'c_H_in_CH2'},
+  {key:'bpoly', ref:'PNNL #247', group:'Borated Polymers', name:'Polyethylene, borated (10% B)', color:'#b9c48a', density:1.0, frac:'wo', comps:'H:0.125355, B:0.1, C:0.774645', sab:'c_H_in_CH2'},
+  {key:'bpoly30', ref:'Derived (30 wt% B in PE; cf. PNNL #247)', group:'Borated Polymers', name:'Polyethylene, borated (30% B)', color:'#a1ad6d', density:1.19, frac:'wo', comps:'H:0.0975, B:0.3, C:0.6025', sab:'c_H_in_CH2'},
+  {key:'lith_poly', ref:'Commercial shielding (7.5 wt% Li in PE)', group:'Borated Polymers', name:'Polyethylene, lithiated (7.5% Li)', color:'#b0c7a4', density:1.06, frac:'wo', comps:'H:0.1329, Li:0.075, C:0.7921', sab:'c_H_in_CH2'},
+  {key:'paraffin', ref:'PNNL #358', group:'Borated Polymers', name:'Paraffin wax', color:'#e6dcb8', density:0.93, frac:'wo', comps:'H:0.148605, C:0.851395', sab:'c_H_in_CH2'},
+
+  // ── Reactor Structural Alloys ───────────────────────────────────
+  {key:'zircaloy2', ref:'PNNL #368', group:'Structural Alloys', name:'Zircaloy-2 (cladding)', color:'#7d8c99', density:6.56, frac:'wo', comps:'O:0.001197, Cr:0.000997, Fe:0.000997, Ni:0.000499, Zr:0.982348, Sn:0.013962', sab:''},
+  {key:'zircaloy4', ref:'PNNL #369', group:'Structural Alloys', name:'Zircaloy-4 (cladding)', color:'#8796a3', density:6.56, frac:'wo', comps:'O:0.001196, Cr:0.000997, Fe:0.001994, Zr:0.981858, Sn:0.013955', sab:''},
+  {key:'ss304', ref:'PNNL #298', group:'Structural Alloys', name:'Steel, stainless 304', color:'#9aa4ad', density:8.0, frac:'wo', comps:'C:0.0004, Si:0.005, P:0.00023, S:0.00015, Cr:0.19, Mn:0.01, Fe:0.70173, Ni:0.0925', sab:''},
+  {key:'ss316', ref:'PNNL #300', group:'Structural Alloys', name:'Steel, stainless 316', color:'#909ca6', density:8.0, frac:'wo', comps:'C:0.00041, Si:0.00507, P:0.00023, S:0.00015, Cr:0.17, Mn:0.01014, Fe:0.669, Ni:0.12, Mo:0.025', sab:''},
+  {key:'ss316l', ref:'PNNL #301', group:'Structural Alloys', name:'Steel, stainless 316L', color:'#88949e', density:8.0, frac:'wo', comps:'C:0.0003, Si:0.01, P:0.00045, S:0.0003, Cr:0.17, Mn:0.02, Fe:0.65395, Ni:0.12, Mo:0.025', sab:''},
+  {key:'inconel600', ref:'PNNL #154', group:'Structural Alloys', name:'Inconel-600', color:'#a69b8d', density:8.47, frac:'wo', comps:'C:0.00098, Si:0.00325, S:0.0001, Cr:0.155, Mn:0.0065, Fe:0.08, Ni:0.75093, Cu:0.00325', sab:''},
+  {key:'inconel718', ref:'PNNL #156', group:'Structural Alloys', name:'Inconel-718', color:'#9c9182', density:8.19, frac:'wo', comps:'B:0.00005, C:0.00073, Al:0.005, Si:0.00318, P:0.00014, S:0.00014, Ti:0.009, Cr:0.19, Mn:0.00318, Fe:0.17, Ni:0.525, Co:0.0091, Cu:0.00273, Nb:0.05125, Mo:0.0305', sab:''},
+  {key:'aluminum', ref:'PNNL #6', group:'Structural Alloys', name:'Aluminum, pure', color:'#c3cbd3', density:2.6989, frac:'wo', comps:'Al:1', sab:''},
+  {key:'al6061', ref:'PNNL #13', group:'Structural Alloys', name:'Aluminum, alloy 6061-O', color:'#b6c2cc', density:2.7, frac:'wo', comps:'Mg:0.01, Al:0.972, Si:0.006, Ti:0.00088, Cr:0.00195, Mn:0.00088, Fe:0.00409, Cu:0.00275, Zn:0.00146', sab:''},
+  {key:'lead', ref:'PNNL #171', group:'Structural Alloys', name:'Lead', color:'#8b94a8', density:11.35, frac:'wo', comps:'Pb:1', sab:''},
+  {key:'iron', ref:'PNNL #158', group:'Structural Alloys', name:'Iron', color:'#b3714e', density:7.874, frac:'wo', comps:'Fe:1', sab:''},
+  {key:'tungsten', ref:'PNNL #331', group:'Structural Alloys', name:'Tungsten', color:'#6e7a90', density:19.3, frac:'wo', comps:'W:1', sab:''},
+
+  // ── Control Rod Absorbers & Poisons ─────────────────────────────
+  {key:'b4c', ref:'PNNL #40', group:'Control Absorbers', name:'Boron carbide (B4C)', color:'#5f6e4b', density:2.52, frac:'wo', comps:'B:0.78261, C:0.21739', sab:''},
+  {key:'cadmium', ref:'PNNL #51', group:'Control Absorbers', name:'Cadmium', color:'#c7a86b', density:8.65, frac:'wo', comps:'Cd:1', sab:''},
+  {key:'hafnium', ref:'Elemental Hafnium (CRC / ASTM B776)', group:'Control Absorbers', name:'Hafnium', color:'#6d7c80', density:13.31, frac:'wo', comps:'Hf:1', sab:''},
+  {key:'aic', ref:'PWR Control Alloy (Ag-In-Cd 80/15/5; ASTM B734)', group:'Control Absorbers', name:'Silver-Indium-Cadmium (Ag-In-Cd 80/15/5)', color:'#c4b995', density:10.17, frac:'wo', comps:'Ag:0.80, In:0.15, Cd:0.05', sab:''},
+  {key:'gadolinia', ref:'Burnable poison (stoichiometric Gd2O3)', group:'Control Absorbers', name:'Gadolinium oxide (Gd2O3 burnable poison)', color:'#6a8579', density:7.41, frac:'wo', comps:'O:0.1324, Gd:0.8676', sab:''},
+  {key:'pyrex', ref:'PNNL #143', group:'Control Absorbers', name:'Borosilicate glass (Pyrex)', color:'#97b8af', density:2.23, frac:'wo', comps:'B:0.040064, O:0.539562, Na:0.028191, Al:0.011644, Si:0.37722, K:0.003321', sab:''},
+  {key:'bss1', ref:'PNNL #293', group:'Control Absorbers', name:'Steel, borated stainless (1% B)', color:'#7f878f', density:7.87, frac:'wo', comps:'B:0.01, C:0.000396, Si:0.00495, P:0.000228, S:0.000149, Cr:0.1881, Mn:0.0099, Fe:0.694713, Ni:0.091575', sab:''},
+
+  // ── Moderators, Reflectors & Coolants ───────────────────────────
+  {key:'water', ref:'PNNL #354', group:'Moderators & Coolants', name:'Water, liquid (H2O)', color:'#3f86d6', density:0.998207, frac:'wo', comps:'H:0.111894, O:0.888106', sab:'c_H_in_H2O'},
+  {key:'heavywater', ref:'PNNL #353', group:'Moderators & Coolants', name:'Water, heavy (D2O)', color:'#5aa5c9', density:1.10534, frac:'wo', comps:'H2:0.201133, O:0.798867', sab:'c_D_in_D2O'},
+  {key:'graphite', ref:'PNNL #63', group:'Moderators & Coolants', name:'Graphite, reactor grade', color:'#767c85', density:1.7, frac:'wo', comps:'B:0.000001, C:0.999999', sab:'c_Graphite'},
+  {key:'beryllium', ref:'PNNL #24', group:'Moderators & Coolants', name:'Beryllium metal', color:'#9fb7a8', density:1.848, frac:'wo', comps:'Be:1', sab:'c_Be'},
+  {key:'beo', ref:'PNNL #26', group:'Moderators & Coolants', name:'Beryllium oxide (BeO)', color:'#8ea696', density:3.01, frac:'wo', comps:'Be:0.36032, O:0.63968', sab:'c_Be_in_BeO'},
+
+  // ── Nuclear Fuels ───────────────────────────────────────────────
+  {key:'uo2', ref:'PNNL #334', group:'Nuclear Fuels', name:'Uranium dioxide LEU (3 at% U-235)', color:'#d8b33c', density:10.96, frac:'wo', comps:'O:0.118533, U234:0.000235, U235:0.026444, U236:0.000122, U238:0.854666', sab:''},
+  {key:'uo2_4p5', ref:'Derived LEU (4.5 at% U-235; cf. PNNL #334)', group:'Nuclear Fuels', name:'Uranium dioxide LEU (4.5 at% U-235)', color:'#e0a82b', density:10.96, frac:'wo', comps:'O:0.118525, U234:0.000361, U235:0.039655, U236:0.000183, U238:0.841276', sab:''},
+  {key:'uo2_haleu', ref:'Derived HALEU (19.75 at% U-235; cf. PNNL #334)', group:'Nuclear Fuels', name:'Uranium dioxide HALEU (19.75 at% U-235)', color:'#e69519', density:10.96, frac:'wo', comps:'O:0.118439, U234:0.001602, U235:0.173874, U236:0.000802, U238:0.705283', sab:''},
+  {key:'mox', ref:'PNNL #348', group:'Nuclear Fuels', name:'Mixed oxide fuel (MOX)', color:'#cc7722', density:11.0, frac:'wo', comps:'O:0.118462, U234:0.000010, U235:0.002101, U238:0.838236, Pu238:0.001030, Pu239:0.022532, Pu240:0.010751, Pu241:0.003913, Pu242:0.002966', sab:''},
+
+  // ── Gases & Detectors ───────────────────────────────────────────
+  {key:'air', ref:'PNNL #4', group:'Gases & Detectors', name:'Air, dry (sea level)', color:'#7fa3b8', density:0.001205, frac:'wo', comps:'C:0.000124, N:0.755268, O:0.231781, Ar:0.012827', sab:''},
+  {key:'helium', ref:'PNNL #151', group:'Gases & Detectors', name:'Helium, natural', color:'#a7d8cf', density:0.000166, frac:'wo', comps:'He:1', sab:''},
+  {key:'he3', ref:'Ideal gas, 4 atm, 20 °C', group:'Gases & Detectors', name:'He-3 detector gas (4 atm)', color:'#8fe0c4', density:0.000502, frac:'ao', comps:'He3:1', sab:''},
+  {key:'bf3', ref:'Enriched 96% B-10, 1 atm', group:'Gases & Detectors', name:'BF3 detector gas (96% B-10)', color:'#7bc5b0', density:0.00268, frac:'ao', comps:'B10:0.96, B11:0.04, F19:3', sab:''}
 ];
 const CUSTOM_MAT = {name:'New material', color:'#b48ead', density:1, frac:'ao', comps:'H:2, O:1', sab:'', ref:''};
 
@@ -2053,6 +2111,24 @@ function materialForKey(key) {
   const have = key !== 'custom' && S.materials.find(m => m.lib === key && isUntouchedCopy(m));
   return have ? {m:have, added:false} : {m:createMaterial(key), added:true};
 }
+function applyPresetToMat(m, key) {
+  const preset = PRESETS.find(x => x.key === key) || LIBRARY.items.find(x => x.key === key);
+  if (!preset || !m) return;
+  HISTORY.boundary = true;
+  m.name = uniqueName(S.materials.filter(x => x.id !== m.id), preset.name);
+  m.density = preset.density;
+  m.frac = preset.frac;
+  m.comps = preset.comps;
+  m.color = preset.color;
+  m.sab = preset.sab || '';
+  m.ref = preset.ref || '';
+  m.lib = key;
+  m.pristine = matSig(m);
+  log('info', `Loaded preset ${esc(m.name)} (${esc(m.ref || 'PNNL')}).`);
+  renderProps();
+  renderTree();
+  schedule();
+}
 function pruneMaterials() {
   const used = usedMaterialIds();
   const gone = S.materials.filter(m => !used.has(m.id) && isUntouchedCopy(m) && !(sel.kind === 'material' && sel.id === m.id));
@@ -2463,13 +2539,16 @@ function renderRibbon() {
     body.appendChild(grp);
   });
 }
-const MATMENU = {open:new Set()}; // expanded categories while not searching
+const MATMENU = {open:new Set(), filterGroup:'All', assign:null, applyPreset:null, allowAuto:false};
 function openMatMenu(btn, assign, opts = {}) {
   const menu = $('#matMenu');
   if (!menu.hidden) { const same = MATMENU.btn === btn || (MATMENU.btn && btn.id && MATMENU.btn.id === btn.id); menu.hidden = true; if (same) return; }
   MATMENU.assign = assign || null;
+  MATMENU.applyPreset = opts.applyPreset || null;
   MATMENU.allowAuto = !!opts.allowAuto;
-  menu.innerHTML = '<div class="msearch"><input type="text" id="matSearch" placeholder="Search materials" aria-label="Search materials" spellcheck="false" autocomplete="off"></div><div id="matList"></div>';
+  MATMENU.filterGroup = opts.defaultGroup || 'All';
+  const chips = PNNL_PRESET_GROUPS.map(g => `<button type="button" class="mchip${g === MATMENU.filterGroup ? ' active' : ''}" data-chip="${esc(g)}">${esc(g)}</button>`).join('');
+  menu.innerHTML = '<div class="msearch"><input type="text" id="matSearch" placeholder="Search PNNL materials (name, formula, #num)" aria-label="Search materials" spellcheck="false" autocomplete="off"></div><div class="mchips" id="matChips">' + chips + '</div><div id="matList"></div>';
   const r = btn.getBoundingClientRect();
   menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 348)) + 'px';
   menu.style.top = (r.bottom + 4) + 'px';
@@ -2484,19 +2563,30 @@ function openMatMenu(btn, assign, opts = {}) {
     else if (e.key === 'Enter' && first && q.value.trim()) { e.preventDefault(); first.click(); }
     else if (e.key === 'ArrowDown') { const b = $('#matList button'); if (b) { e.preventDefault(); b.focus(); } }
   });
+  const chipContainer = $('#matChips');
+  if (chipContainer) {
+    chipContainer.addEventListener('click', e => {
+      const b = e.target.closest('[data-chip]');
+      if (!b) return;
+      MATMENU.filterGroup = b.dataset.chip;
+      chipContainer.querySelectorAll('.mchip').forEach(c => c.classList.toggle('active', c === b));
+      renderMatList($('#matSearch') ? $('#matSearch').value : '');
+    });
+  }
   q.focus();
 }
 function renderMatList(query) {
   const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
   const dens = d => { const v = toShown(d, 'dens'); return `${v < 0.01 ? v.toExponential(2) : +(+v).toPrecision(4)} ${DIMS.dens().unit}`; };
-  const item = p => `<button type="button" role="menuitem" class="mitem" data-key="${esc(p.key)}" title="${esc(p.ref)}${p.category ? ' · ' + esc(p.category) : ''}"><span class="swatch" style="background:${esc(p.color)}"></span><span class="mname">${esc(p.name)}</span><small>${dens(p.density)}</small></button>`;
+  const item = p => `<button type="button" role="menuitem" class="mitem" data-key="${esc(p.key)}" title="${esc(p.ref)}${p.group ? ' · ' + esc(p.group) : (p.category ? ' · ' + esc(p.category) : '')}"><span class="swatch" style="background:${esc(p.color)}"></span><span class="mname">${esc(p.name)}</span><span class="mref">${esc(p.ref)}</span>${p.sab ? `<span class="msab">${esc(p.sab)}</span>` : ''}<small>${dens(p.density)}</small></button>`;
   const custom = '<button type="button" role="menuitem" data-key="custom"><span class="swatch" style="background:#b48ead"></span>Custom material</button>';
   const lib = LIBRARY.items, cats = MAT_CATEGORIES.map(c => c[0]);
-  const note = LIBRARY.state === 'ok' ? `${lib.length} materials from materials.jsonl (PNNL-15870 Rev. 1)${LIBRARY.skipped.length ? `, ${LIBRARY.skipped.length} unreadable line${LIBRARY.skipped.length === 1 ? '' : 's'} skipped` : ''}.`
-    : LIBRARY.state === 'loading' ? 'Loading the material library…'
-    : 'No material library (materials.jsonl) here, so only the common materials are listed.';
+  const note = LIBRARY.state === 'ok' ? `${lib.length} materials from materials.jsonl (PNNL-15870 Rev. 1)${LIBRARY.skipped.length ? `, ${LIBRARY.skipped.length} unreadable lines skipped` : ''}.`
+    : LIBRARY.state === 'loading' ? 'Loading the full material library…'
+    : 'Using built-in PNNL Materials Compendium presets.';
   let h = '';
-  if (MATMENU.assign) { // Properties: what's already in the project comes first, then everything that can be added
+
+  if (MATMENU.assign && !MATMENU.applyPreset) {
     const dens2 = m => fin(m.density) ? dens(m.density) : '';
     const mine = S.materials.filter(m => !words.length || words.every(w => m.name.toLowerCase().includes(w)));
     const voidHit = !words.length || words.every(w => 'void empty'.includes(w));
@@ -2507,22 +2597,51 @@ function renderMatList(query) {
       mine.map(m => `<button type="button" role="menuitem" class="mitem" data-mat="${esc(m.id)}"><span class="swatch" style="background:${esc(m.color)}"></span><span class="mname">${esc(m.name)}</span><small>${dens2(m)}</small></button>`).join('');
     if (!autoHit && !voidHit && !mine.length) h = '';
   }
-  if (!words.length) {
-    h += '<h4>Common</h4>' + PRESETS.map(item).join('');
-    cats.forEach(c => {
-      const list = lib.filter(p => p.category === c);
-      if (!list.length) return;
-      const open = MATMENU.open.has(c);
-      h += `<button type="button" class="mcat" data-cat="${esc(c)}" aria-expanded="${open}"><svg class="caret" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>${esc(c)}<small>${list.length}</small></button>` +
-        (open ? list.map(item).join('') : '');
+
+  const activeGroup = MATMENU.filterGroup || 'All';
+  const hit = p => {
+    if (activeGroup !== 'All' && p.group && p.group !== activeGroup) return false;
+    if (!words.length) return true;
+    const hay = `${p.name} ${p.comps || ''} ${p.ref || ''} ${p.group || ''} ${p.category || ''}`.toLowerCase();
+    return words.every(w => hay.includes(w));
+  };
+
+  const filteredPresets = PRESETS.filter(hit);
+
+  if (activeGroup !== 'All') {
+    h += `<h4>${esc(activeGroup)}</h4>` + (filteredPresets.length ? filteredPresets.map(item).join('') : `<p class="mnote">No preset in ${esc(activeGroup)} matches “${esc(query.trim())}”.</p>`);
+  } else if (!words.length) {
+    const groups = PNNL_PRESET_GROUPS.filter(g => g !== 'All');
+    groups.forEach(g => {
+      const inGrp = PRESETS.filter(p => p.group === g);
+      if (inGrp.length) {
+        h += `<h4>${esc(g)}</h4>` + inGrp.map(item).join('');
+      }
     });
-    h += '<h4>Other</h4>' + custom;
+    if (lib.length) {
+      h += '<h4>Extended PNNL Compendium</h4>';
+      cats.forEach(c => {
+        const list = lib.filter(p => p.category === c);
+        if (!list.length) return;
+        const open = MATMENU.open.has(c);
+        h += `<button type="button" class="mcat" data-cat="${esc(c)}" aria-expanded="${open}"><svg class="caret" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>${esc(c)}<small>${list.length}</small></button>` +
+          (open ? list.map(item).join('') : '');
+      });
+    }
   } else {
-    const hit = p => { const hay = `${p.name} ${p.category || ''} ${p.ref}`.toLowerCase(); return words.every(w => hay.includes(w)); };
-    const common = PRESETS.filter(hit);
-    if (common.length) h += '<h4>Common</h4>' + common.map(item).join('');
-    cats.forEach(c => { const list = lib.filter(p => p.category === c && hit(p)); if (list.length) h += `<h4>${esc(c)}</h4>` + list.map(item).join(''); });
+    if (filteredPresets.length) {
+      h += '<h4>Presets</h4>' + filteredPresets.map(item).join('');
+    }
+    if (lib.length) {
+      cats.forEach(c => {
+        const list = lib.filter(p => p.category === c && hit(p));
+        if (list.length) h += `<h4>${esc(c)}</h4>` + list.map(item).join('');
+      });
+    }
     if (!h) h += `<p class="mnote">No material matches “${esc(query.trim())}”.</p>`;
+  }
+
+  if (!MATMENU.applyPreset) {
     h += '<h4>Other</h4>' + custom;
   }
   $('#matList').innerHTML = h + `<p class="mnote">${note}</p>`;
@@ -2568,10 +2687,11 @@ function renderTree() {
       {cls:' tgrp', pre:gcaret(g.id), hidden:isHidden,
        attrs:(idx.length ? ` data-idx="${idx[0]}" data-end="${idx[idx.length - 1] + 1}"` : '') + ` style="padding-left:${pad}px"`});
   };
-  const group = (key, title, count, addTitle, body) => {
+  const group = (key, title, count, addTitle, body, extraHeader) => {
     const open = !collapsed[key];
     return `<div class="tgroup"><div class="thead"><button type="button" class="ttoggle" data-group="${key}" aria-expanded="${open}">` +
       `<svg class="caret" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>${title} <span class="count">${count}</span></button>` +
+      (extraHeader || '') +
       (addTitle ? `<button type="button" class="tadd" data-add="${key}" title="${addTitle}" aria-label="${addTitle}">+</button>` : '') +
       `</div><div ${open ? '' : 'hidden'}>${body}</div></div>`;
   };
@@ -2579,9 +2699,11 @@ function renderTree() {
   const matName = id => id === 'void' ? 'void' : ((matById(id) || {}).name || 'missing');
   const usedMats = new Set(S.parts.map(p => p.material).concat(S.settings.worldFill));
   let h = '';
-  h += group('materials', 'Materials', S.materials.length, 'Add material',
+  const matLibBtn = `<button type="button" class="tlib" id="treeMatLibBtn" title="PNNL Materials Library" aria-label="Browse PNNL Materials Library"><svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v11A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-11zM2.5 2a.5.5 0 0 0-.5.5v11a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-11a.5.5 0 0 0-.5-.5h-3zm6.5.5A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5v-11zm1.5-.5a.5.5 0 0 0-.5.5v11a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-11a.5.5 0 0 0-.5-.5h-3z"/></svg></button>`;
+  h += group('materials', 'Materials', S.materials.length, 'Add custom material',
     S.materials.map(m => item('material', m.id, `<span class="swatch" style="background:${esc(m.color)}"></span>`, m.name,
-      usedMats.has(m.id) ? shortDens(m.density) : 'unused')).join('') || empty('Pick a material for a part in Properties'));
+      usedMats.has(m.id) ? shortDens(m.density) : 'unused')).join('') || empty('Pick a material for a part in Properties'),
+    matLibBtn);
   const shown = new Set();
   const partRows = S.parts.map((p, i) => {
     let row = '';
@@ -2623,8 +2745,12 @@ function specFor(kind, o) {
   if (kind === 'material') {
     const users = S.parts.filter(p => p.material === o.id).map(p => p.name).concat(st.worldFill === o.id ? ['World'] : []);
     return [
-      {title:'Material', fields:[F('text', 'name', 'Name'), F('color', 'color', 'View color'),
-        note(users.length ? `Used by ${users.map(esc).join(', ')}.` : 'Not used by any part yet.')]},
+      {title:'Material', fields:[
+        F('text', 'name', 'Name'),
+        F('color', 'color', 'View color'),
+        {type:'buttons', btns:[['Load from PNNL Presets ▾', e => openMatMenu(e.currentTarget, null, {applyPreset: k => applyPresetToMat(o, k)})]]},
+        note(users.length ? `Used by ${users.map(esc).join(', ')}.` : 'Not used by any part yet.')
+      ]},
       {title:'Composition', fields:[
         F('num', 'density', 'Density', {unit:'g/cm³'}),
         F('select', 'frac', 'Fractions', {options:() => [['wo', 'Weight (MCNP negative)'], ['ao', 'Atom (MCNP positive)']]}),
@@ -5997,11 +6123,18 @@ $('#matMenu').addEventListener('click', e => {
   const c = e.target.closest('[data-cat]');
   if (c) { const k = c.dataset.cat; MATMENU.open.has(k) ? MATMENU.open.delete(k) : MATMENU.open.add(k); renderMatList(''); const again = $(`#matList [data-cat="${CSS.escape(k)}"]`); if (again) again.focus(); return; }
   const assign = MATMENU.assign;
+  const applyPreset = MATMENU.applyPreset;
   const pm = e.target.closest('[data-mat]');
   if (pm && assign) { $('#matMenu').hidden = true; MATMENU.assign = null; assign(pm.dataset.mat); return; }
   const b = e.target.closest('[data-key]');
   if (!b) return;
   $('#matMenu').hidden = true;
+  if (applyPreset) {
+    MATMENU.applyPreset = null;
+    MATMENU.assign = null;
+    applyPreset(b.dataset.key);
+    return;
+  }
   if (!assign) return addMaterial(b.dataset.key);
   MATMENU.assign = null;
   HISTORY.boundary = true;
@@ -6025,6 +6158,8 @@ document.addEventListener('mousedown', e => {
 let drag = null, justDragged = false;
 $('#tree').addEventListener('click', e => {
   if (justDragged) { justDragged = false; return; }
+  const libBtn = e.target.closest('#treeMatLibBtn');
+  if (libBtn) { openMatMenu(libBtn); return; }
   const t = e.target.closest('[data-group]');
   if (t) { collapsed[t.dataset.group] = !collapsed[t.dataset.group]; renderTree(); return; }
   const a = e.target.closest('[data-add]');

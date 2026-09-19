@@ -437,6 +437,143 @@ for (const [n, id] of Object.entries(wantNum)) {
   }
 }
 
+// Verify PNNL Materials Compendium Presets Library
+console.log('\nTesting PNNL Materials Compendium Preset Library...');
+
+if (!sandbox.PNNL_PRESET_GROUPS || !Array.isArray(sandbox.PNNL_PRESET_GROUPS)) {
+  console.error('FAILED: PNNL_PRESET_GROUPS array is missing');
+  process.exit(1);
+}
+const expectedGroups = [
+  'All',
+  'Shielding Concretes',
+  'Borated Polymers',
+  'Structural Alloys',
+  'Control Absorbers',
+  'Moderators & Coolants',
+  'Nuclear Fuels',
+  'Gases & Detectors'
+];
+expectedGroups.forEach(g => {
+  if (!sandbox.PNNL_PRESET_GROUPS.includes(g)) {
+    console.error(`FAILED: Missing PNNL preset group "${g}"`);
+    process.exit(1);
+  }
+});
+
+if (!sandbox.PRESETS || sandbox.PRESETS.length < 35) {
+  console.error('FAILED: PRESETS array missing or contains too few entries:', sandbox.PRESETS?.length);
+  process.exit(1);
+}
+console.log(`Found ${sandbox.PRESETS.length} presets in catalog.`);
+
+// Verify every preset has valid properties, valid density, and clean composition parsing
+const requiredKeys = [
+  'concrete', 'barytes_concrete', 'magnetite_concrete', 'magnetite_steel_concrete', 'boron_baryte_concrete', 'colemanite_baryte_concrete',
+  'poly', 'bpoly5', 'bpoly', 'bpoly30', 'lith_poly', 'paraffin',
+  'zircaloy2', 'zircaloy4', 'ss304', 'ss316', 'ss316l', 'inconel600', 'inconel718', 'aluminum', 'al6061', 'lead', 'iron', 'tungsten',
+  'b4c', 'cadmium', 'hafnium', 'aic', 'gadolinia', 'pyrex', 'bss1',
+  'water', 'heavywater', 'graphite', 'beryllium', 'beo',
+  'uo2', 'uo2_4p5', 'uo2_haleu', 'mox',
+  'air', 'helium', 'he3', 'bf3'
+];
+const presentKeys = new Set(sandbox.PRESETS.map(p => p.key));
+requiredKeys.forEach(k => {
+  if (!presentKeys.has(k)) {
+    console.error(`FAILED: Preset key "${k}" is missing from PRESETS`);
+    process.exit(1);
+  }
+});
+
+sandbox.PRESETS.forEach(p => {
+  if (!p.key || !p.name || !p.comps || !p.color || !p.group) {
+    console.error(`FAILED: Preset "${p.name || p.key}" is missing required metadata`);
+    process.exit(1);
+  }
+  if (!Number.isFinite(p.density) || p.density <= 0) {
+    console.error(`FAILED: Preset "${p.key}" has non-positive or invalid density: ${p.density}`);
+    process.exit(1);
+  }
+  if (p.frac !== 'ao' && p.frac !== 'wo') {
+    console.error(`FAILED: Preset "${p.key}" has invalid fraction type: ${p.frac}`);
+    process.exit(1);
+  }
+  const parsed = sandbox.parseComps(p.comps);
+  if (parsed.errs && parsed.errs.length > 0) {
+    console.error(`FAILED: Preset "${p.key}" composition parsing error: ${parsed.errs.join(', ')}`);
+    process.exit(1);
+  }
+  if (!parsed.out || parsed.out.length === 0) {
+    console.error(`FAILED: Preset "${p.key}" has empty parsed composition`);
+    process.exit(1);
+  }
+  parsed.out.forEach(c => {
+    if (!c.sym || typeof c.amt !== 'number' || c.amt <= 0) {
+      console.error(`FAILED: Preset "${p.key}" invalid component: ${JSON.stringify(c)}`);
+      process.exit(1);
+    }
+  });
+  if (p.sab) {
+    const validSab = sandbox.THERMAL_SCATTERING_TABLES.some(t => t.id === p.sab);
+    if (!validSab) {
+      console.error(`FAILED: Preset "${p.key}" specifies unknown S(a,b) table: "${p.sab}"`);
+      process.exit(1);
+    }
+  }
+});
+
+// Test in-place applyPresetToMat
+console.log('Testing in-place applyPresetToMat...');
+const mockMat = { id: 'm_test', name: 'Custom 1', density: 1.0, frac: 'ao', comps: 'H: 1', color: '#ff0000', pristine: 'old' };
+const testProj = {
+  settings: { ...sandbox.DEFAULT_SETTINGS, runMode: 'fixed source', seed: 42, worldR: 50, worldShape: 'box', worldFill: mockMat.id, maxTracks: 0, track: '' },
+  parts: [],
+  groups: [],
+  sources: [{ id: 's1', name: 'Point', shape: 'point', ptype: 'neutron', strength: 1.0, eType: 'watt', x: 0, y: 0, z: 0 }],
+  materials: [mockMat],
+  tallies: []
+};
+sandbox.normalizeProject(testProj);
+vm.runInContext("S = " + JSON.stringify(testProj) + ";", sandbox);
+const liveMat = vm.runInContext("S.materials[0]", sandbox);
+sandbox.HISTORY = { boundary: false };
+sandbox.sel = { kind: 'material', id: 'm_test' };
+sandbox.renderProps = () => {};
+sandbox.renderTree = () => {};
+sandbox.schedule = () => {};
+sandbox.log = () => {};
+
+// 1. Apply Barytes Concrete
+sandbox.applyPresetToMat(liveMat, 'barytes_concrete');
+if (liveMat.name !== 'Concrete, barytes-limonite (high-density)' || liveMat.density !== 3.36 || liveMat.frac !== 'wo' || liveMat.ref !== 'PNNL #77' || !liveMat.comps.includes('Ba:')) {
+  console.error('FAILED: applyPresetToMat failed for barytes_concrete:', liveMat);
+  process.exit(1);
+}
+
+// 2. Apply Borated Polyethylene 5%
+sandbox.applyPresetToMat(liveMat, 'bpoly5');
+if (liveMat.name !== 'Polyethylene, borated (5% B)' || liveMat.density !== 0.95 || liveMat.sab !== 'c_H_in_CH2' || liveMat.ref !== 'Derived (5 wt% B in PE; cf. PNNL #247)') {
+  console.error('FAILED: applyPresetToMat failed for bpoly5:', liveMat);
+  process.exit(1);
+}
+
+// 3. Apply Inconel 718
+sandbox.applyPresetToMat(liveMat, 'inconel718');
+if (liveMat.name !== 'Inconel-718' || liveMat.density !== 8.19 || liveMat.ref !== 'PNNL #156' || !liveMat.comps.includes('Ni:') || !liveMat.comps.includes('Nb:')) {
+  console.error('FAILED: applyPresetToMat failed for inconel718:', liveMat);
+  process.exit(1);
+}
+
+// 4. Verify OpenMC Python script generation with applied PNNL material
+const pyOutput = sandbox.generate([]);
+if (!pyOutput.includes('openmc.Material(name="Inconel-718")') || !pyOutput.includes('.set_density("g/cm3", 8.19)')) {
+  console.error('FAILED: Python export missing Inconel-718 definitions:\n', pyOutput);
+  process.exit(1);
+}
+
+console.log('PNNL Materials Compendium Preset Library tests PASSED!');
+
 console.log('\nAll frontend model generation & MCNP translation tests PASSED!');
+
 
 

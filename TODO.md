@@ -11,8 +11,9 @@ and the MCNP lattice work; fixes listed under Completed).
     orientations and with two axial levels.
   - Still open: prove it once in real MCNP. Plot the pile deck and a hex deck with lattice index labels
     (manual p. 290), or compare short runs against the cell-by-cell decks.
-  - Cell tallies on parts inside a lattice: OpenMC needs a per-instance cell filter, MCNP
-    `(c < L[i j k] < cell)` (p. 452-455). Problems refuses them for now.
+  - Cell tallies on parts inside a lattice: done in model.py (CellInstanceFilter). **MCNP export still to
+    do**: write each bin as `(unit < latcell[i j k] < filled cell)` (manual p. 452-455) from OpenMC's
+    distribcell paths. openmc-mcnp-project refuses CellInstanceFilter tallies until then.
 - **Surface current tallies in MCNP**: OpenMC counts the current leaving the chosen parts; MCNP F1 counts
   crossings anywhere on a surface. Needs FS segmenting or per-part surfaces; the export refuses it now.
 - **He-3 reaction**: confirm with the course which reaction is meant. The pre-lab names (n,alpha) and

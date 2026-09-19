@@ -3629,15 +3629,21 @@ function mcnpContext(P, built) {
 function mcnpTallyNumbers(deck, tallies = S.tallies) {
   const byNum = {}, meshes = [];
   tallies.forEach(t => { if (t.kind !== 'cell' && t.kind !== 'surface') t.scores.forEach(() => meshes.push(t)); });
-  const byName = [...tallies].sort((a, b) => (b.name || '').length - (a.name || '').length);
+  const byName = [...new Set(tallies)];
+  // FC labels can be truncated or ASCII-sanitized. Never choose the first of
+  // several possible owners: E-card edits would then mutate an unrelated tally.
+  const labelKey = s => (s || '').normalize('NFKD').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
   let mi = 0;
   deck.split('\n').forEach(line => {
     let m;
     if ((m = line.match(/^FMESH(\d+)/i))) { if (meshes[mi]) byNum[+m[1]] = meshes[mi]; mi++; }
     else if ((m = line.match(/^FC(\d+)\s+(.*)$/i))) {
       const label = m[2].replace(/\s*(\[[^\]]*\]|\([^)]*\))\s*$/, '').trim();
-      const t = byName.find(x => (x.name || '') === label) || byName.find(x => label && (x.name || '').startsWith(label));
-      if (t) byNum[+m[1]] = t;  // a long name is cut short on the FC card
+      const key = labelKey(label);
+      const possible = key ? byName.filter(x => labelKey(x.name).startsWith(key)) : [];
+      if (possible.length === 1 && label && (possible[0].name || '').startsWith(label)) {
+        byNum[+m[1]] = possible[0];
+      } // Ambiguous/sanitized labels stay unlinked and read-only; edit in Properties.
     }
   });
   return byNum;

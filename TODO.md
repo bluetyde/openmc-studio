@@ -50,6 +50,10 @@ and the MCNP lattice work; fixes listed under Completed).
   - **Reaction Rate & Absorption Breakdown**: Interactive pie and stacked bar charts detailing neutron fate (% absorbed in fuel vs moderator vs poison vs leakage).
 - **Stochastic Geometry Volumes (`openmc.calculate_volumes`)**:
   - Stochastic ray-tracing volume calculation populating volume $\pm 1\sigma$ directly onto parts/materials for volumetric normalization ($\text{reactions/cm}^3/\text{s}$).
+- **Multiple Independent Sources (`SDEF` Multi-Source)**:
+  - Expand source export beyond the single-source restriction (`len(sources) > 1`) to support multiple distributed sources (e.g. reactor core + external PuBe startup source + background).
+- **Tally Segmenting Cards (`FS`)**:
+  - Geometric segmentation of cell and surface tallies using secondary dividing surfaces (manual §10.2.4, Examples 33 & 34).
 
 ### 2. Package: Reactor Physics & Core Safety
 - **Automated Reactivity Coefficient Sweeps**:
@@ -59,14 +63,19 @@ and the MCNP lattice work; fixes listed under Completed).
   - **Critical Mass / Dimension Search**: Binary search routine for critical radius, enrichment, or soluble boron concentration to achieve $k_{\text{eff}} = 1.00000$.
 - **Point Kinetics Parameters via Iterated Fission Probability (IFP)**:
   - Calculation and dashboard display of effective delayed neutron fraction $\beta_{\text{eff}}$, delayed group precursors $(\beta_i, \lambda_i)$, and prompt neutron lifetime $\ell_p$ / generation time $\Lambda$.
-- **Core Depletion & Fuel Burnup (`openmc.deplete`)**:
+- **Core Depletion & Fuel Burnup (`openmc.deplete` & MCNP `BURN`)**:
   - Power history (MW), depletion timesteps (EFPD / MWd/kgHM), and interactive evolution curves for $k_{\text{eff}}$, U-235 consumption, Pu-239 breeding, and fission product equilibrium (Xe-135, Sm-149).
+  - MCNP companion `BURN` card export: time steps, power levels, volume tracking (`MATVOL`), and CINDER90 inventory tracking (manual §10.3.3, Example 57).
+
 
 
 ### 3. Package: Radiation Protection & Detection Lab
 - **Pulse Height Multichannel Analyzer (MCA) Spectrum (`openmc.PulseHeightFilter`)**:
   - Pulse height tally simulating true energy deposition spectra in scintillators and semiconductor detectors (NaI(Tl), HPGe, LaBr3, plastics).
   - Interactive MCA spectrum viewer with linear/log counts vs keV/MeV, photopeak identification, single/double escape peaks, and Compton edge marker.
+- **Neutron Capture Multiplicity & Coincidence Counting (`FT CAP`)**:
+  - Pulse multiplicity distributions, factorial moments, and coincidence time-gating (`gate predelay width`) on neutron capture absorbers ($^3\text{He}$, $^{10}\text{B}$) for safeguards counters (manual §10.2.5.5–§10.2.5.7, Examples 39 & 40; PRINT Table 118).
+
 - **Fluence-to-Dose Conversion (ICRP / ANSI)**:
   - Energy-dependent dose response filters (`openmc.data.dose_coefficients`):
     - **ICRP-74 / ICRP-116**: Effective dose for AP, PA, ISO, and ROT irradiation geometries.
@@ -210,9 +219,14 @@ and the MCNP lattice work; fixes listed under Completed).
 
 ## Known Export Limits
 
-- One `SDEF` source only in the MCNP export.
+- One `SDEF` source only in the MCNP export (multi-source and dependent distributions `DS`/`SI`/`SP` are not yet exported; manual §10.3.1).
 - Absorption can't be exported for actinide materials (MontePy can't parse `FM ... -2:-6`).
-- Mesh tallies export flux only (`FMESH`).
+- Mesh tallies export flux only (`FMESH`, reaction rate mesh tallies not exported).
 - The geometry check follows universes and LAT=1 / LAT=2 lattices, but not TRCL or rotated fills.
 - Surface current tallies aren't exported.
+- Special tally treatment cards (`FT` cards) are not exported: capture multiplicity (`FT CAP`), residual nuclei (`FT RES`), ROC curve discrimination (`FT ROC`), surface normal redefinition (`FT FRV`), cell-partitioned detector tallies (`FT ICD`), or charge-separated current (`FT ELC`) (manual §10.2.5).
+- Embedded unstructured meshes (`EMBED` card for Abaqus/HDF5 finite-element meshes inside CSG cells; manual §10.1.4) are not supported.
+- User-compiled Fortran subroutines (`TALLYX`, `SOURCE`, `SRCDX`; manual §10.2.8 & §10.3.4) cannot be generated or executed from CSG/Python models.
+- High-energy nuclear spallation physics models (CEM, LAQGSM, INCL > 150 MeV; manual §10.5) are outside OpenMC's transport scope.
 - MCNP decks are validated with MontePy parser but require an MCNP installation to execute transport.
+

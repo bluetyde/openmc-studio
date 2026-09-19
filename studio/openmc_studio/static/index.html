@@ -175,6 +175,18 @@ pre.code .ln::before{counter-increment:ln;content:counter(ln);display:inline-blo
 #mcnpCode::after{content:"";position:absolute;left:calc(56px + 128ch);top:10px;bottom:10px;border-left:1px dashed var(--warn);opacity:.65;pointer-events:none}
 #mcnpCode .ln::before{box-sizing:content-box}
 #mcnpCode .ln[data-overlong]{background:rgba(240,117,117,.12)}
+.mtools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:5px 12px;border-bottom:1px solid var(--line);font-size:12px}
+.mtools input{width:160px;min-width:50px}.mtools input[type=number]{width:72px}
+.mtools [hidden]{display:none}.mtools .mposition{margin-left:auto;font-family:var(--mono)}
+#mcnpDiagnostics{max-height:110px;overflow:auto;margin:0;padding:0 12px;list-style:none;font-size:12px}
+#mcnpDiagnostics button{background:none;border:0;color:var(--warn);cursor:pointer;text-align:left;padding:3px 0}
+#mcnpCode .ln.mchanged{box-shadow:inset 3px 0 #78b892}
+#mcnpCode .ln.mcard{background:rgba(124,196,255,.07)}
+#mcnpCode .ln.mtarget{outline:1px solid var(--accent);outline-offset:-1px}
+#mcnpCode .ln[data-continuation]::before{color:var(--accent)}
+.mref{color:#7cc4ff;text-decoration:underline;text-decoration-style:dashed;cursor:pointer}
+.mfind{background:#66521d;color:inherit}
+::highlight(mcnp-search){background:#cfaa40;color:#111316}
 .mcolumnhint{padding:4px 12px;color:var(--muted);font:11px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
 .t-com,.t-doc{color:#6f8a74}.t-str{color:#e3b378}.t-kw{color:#d38fd8}.t-mod{color:#7cc4ff}.t-num{color:#b5d78a}
 
@@ -338,7 +350,19 @@ input[type=checkbox]{accent-color:var(--accent)}
           <button class="tbtn" type="button" id="saveMcnp">Save .mcnp</button>
         </div>
         <div class="mcolumnhint" title="MCNP 6.3 section 3.2.2: maximum 128 columns, after tabs expand to eight-column stops. Highlighted lines exceed the limit.">Dashed guide: 128-column limit · highlighted lines are too long</div>
-        <div class="codewrap"><pre class="code" id="mcnpCode"></pre></div>
+        <div class="mtools">
+          <button class="tbtn" type="button" id="mFindBtn" title="Find (Ctrl+F)">Find</button>
+          <input id="mFind" type="search" aria-label="Find in MCNP" placeholder="Find text or ID" hidden>
+          <button class="tbtn" type="button" id="mFindPrev" aria-label="Previous match" hidden>↑</button>
+          <button class="tbtn" type="button" id="mFindNext" aria-label="Next match" hidden>↓</button>
+          <span id="mFindCount" role="status"></span>
+          <label>Line <input id="mGoLine" type="number" min="1" step="1" aria-label="Go to MCNP line" title="Go to line (Ctrl+G); press Enter"></label>
+          <label><input id="mChanges" type="checkbox" checked style="width:auto"> Changes</label>
+          <span id="mChangeCount" title="Compared with the previous generated deck"></span>
+          <span class="mposition" id="mPosition">Ln 1, Col 1</span>
+        </div>
+        <ul id="mcnpDiagnostics" aria-label="MCNP warnings"></ul>
+        <div class="codewrap"><pre class="code" id="mcnpCode" tabindex="0" aria-label="MCNP input; Ctrl+F to find, Ctrl+G to go to a line"></pre></div>
       </div>
 
       </div>
@@ -3666,7 +3690,7 @@ function annotateMcnp(deck, ctx, editable) {
   const owners = [], refs = [];
   // the tallies as they were when this deck was requested (ctx.tallyScores lists each once per score)
   ctx.tallyByNum = mcnpTallyNumbers(deck, [...new Set(ctx.tallyScores || S.tallies)]);
-  let block = 0, card = null, cardOwner = null, kw = null, kwIndex = 0, valueIndex = 0;
+  let block = 0, card = null, cardOwner = null, kw = null, kwIndex = 0, valueIndex = 0, amp = false;
   const cellOwner = n => ctx.cells[n - 1] || {kind:'world'}; // MCNP-only cells (lattice element, outside) -> world
   const matOwner = n => ctx.materials[n - 1] ? {kind:'material', id:ctx.materials[n - 1].id} : null;
   const fieldRef = (obj, key, extra) => obj ? {t:'field', obj, key, ...extra} : null;
@@ -3675,7 +3699,7 @@ function annotateMcnp(deck, ctx, editable) {
     line = mcnpDisplayLine(line.replace(/\r$/, ''));
     const lengthHint = line.length > 128 ? ` data-overlong="true" title="${line.length} columns; MCNP allows 128. Use continuation lines."` : '';
     const trimmed = line.trim();
-    if (!trimmed) { block++; card = null; owners.push(null); return '<span class="ln"> </span>'; }
+    if (!trimmed) { block++; card = null; amp = false; owners.push(null); return '<span class="ln"> </span>'; }
     if (li === 0 || /^(\$|c(\s|$))/i.test(trimmed)) {
       const gm = trimmed.match(/^c\s+Group:\s*([^|=]+?)(?:\s*\||\s*=|\s*$)/i);
       const cm = trimmed.match(/^c\s+---\s+Cell\s+(\d+):/i);
@@ -3701,8 +3725,10 @@ function annotateMcnp(deck, ctx, editable) {
       owners.push(own);
       return `<span class="ln${ownerMatchesSel(own) ? ' sel' : ''}" data-line="${li}"${lengthHint}><span class="t-mcom">${esc(line)}</span></span>`;
     }
-    const cont = /^\s/.test(line);
-    const parts = line.split(/(\s+)/);
+    const cont = /^ {5}/.test(line) || amp;
+    const dollar = line.indexOf('$'), code = dollar < 0 ? line : line.slice(0, dollar);
+    amp = /&\s*$/.test(code);
+    const parts = code.split(/(\s+)/);
     let out = '';
     if (!cont) { card = null; kw = null; valueIndex = 0; }
     const refFor = (tok, n) => {
@@ -3762,6 +3788,7 @@ function annotateMcnp(deck, ctx, editable) {
 
     for (const piece of parts) {
       if (!piece || /^\s+$/.test(piece)) { out += esc(piece); continue; }
+      if (piece === '&') { out += '&amp;'; continue; }
       // split KEY=VALUE so the value can be a number span
       let pre = '', tok = piece;
       const eq = piece.indexOf('=');
@@ -3790,6 +3817,7 @@ function annotateMcnp(deck, ctx, editable) {
         } else out += `<span class="t-num">${esc(tok)}</span>`;
       } else if (tok) out += esc(tok);
     }
+    if (dollar >= 0) out += `<span class="t-mcom">${esc(line.slice(dollar))}</span>`;
     owners.push(cardOwner);
     return `<span class="ln${ownerMatchesSel(cardOwner) ? ' sel' : ''}" data-line="${li}"${lengthHint}>${out || ' '}</span>`;
   }).join('');
@@ -3803,6 +3831,230 @@ function cardOwnerFor(head, ctx, matOwner) {
   if ((m = head.match(/^(?:F|FC|FM|E|SD|FMESH|C|FS)(\d+)$/))) { const t = (ctx.tallyByNum || {})[+m[1]]; return t ? {kind:'tally', id:t.id} : null; }
   return null;
 }
+
+// Navigation metadata is separate from editable model fields. Only unambiguous
+// generated-card references get links; an ID in arbitrary text is not a reference.
+function indexMcnp(deck) {
+  const lines = deck.replace(/\r/g, '').replace(/\n$/, '').split('\n').map(mcnpDisplayLine);
+  const definitions = new Map(), cards = [], byLine = [], links = lines.map(() => []);
+  let block = 0, card = null, amp = false;
+  lines.forEach((text, line) => {
+    if (!line) return;
+    if (!text.trim()) { block++; card = null; amp = false; return; }
+    if (/^ {0,4}[cC](?:\s|$)/.test(text) || /^\s*\$/.test(text)) return;
+    const code = text.split('$')[0];
+    const continuation = card && (/^ {5}/.test(code) || amp);
+    if (!continuation) {
+      const head = code.trim().split(/\s+/)[0];
+      const kind = block === 0 ? 'cell' : block === 1 ? 'surface' : /^M\d+$/i.test(head) ? 'material' : 'data';
+      const id = kind === 'data' ? head.toUpperCase() : String(parseInt(head.replace(/^[*+mM]/, ''), 10));
+      card = {line, kind, id, tokens:[], lines:[]}; cards.push(card);
+      const key = `${kind}:${id}`;
+      // Duplicate definitions are invalid: avoid navigating to an arbitrary one.
+      definitions.set(key, definitions.has(key) ? null : line);
+    }
+    byLine[line] = card; card.lines.push(line);
+    for (const m of code.matchAll(/\S+/g)) card.tokens.push({text:m[0], line, start:m.index, end:m.index + m[0].length});
+    amp = /&\s*$/.test(code);
+  });
+  const add = (token, kind, number, start = token.start, end = token.end) => {
+    const target = definitions.get(`${kind}:${Math.abs(Number(number))}`);
+    if (target !== undefined && target !== null) links[token.line].push({start, end, target, kind, id:Math.abs(Number(number))});
+  };
+  cards.forEach(c => {
+    const t = c.tokens;
+    if (c.kind === 'cell') {
+      if (t[1] && /^\d+$/.test(t[1].text) && +t[1].text) add(t[1], 'material', t[1].text);
+      // Region grammar ends at cell parameters. Match signed surfaces and #cell complements.
+      for (let i = t[1] && +t[1].text ? 3 : 2; i < t.length; i++) {
+        const token = t[i];
+        if (/[a-z=]/i.test(token.text)) break;
+        for (const m of token.text.matchAll(/(#?)([-+]?\d+)(?:\.\d+)?/g)) {
+          add(token, m[1] ? 'cell' : 'surface', m[2], token.start + m.index, token.start + m.index + m[0].length);
+        }
+      }
+    } else if (c.kind === 'data') {
+      // Plain F1/F2 surface and F4/F6/F7/F8 cell tallies only. Chains and
+      // multiplier expressions have different meanings and stay unlinked.
+      const head = t[0].text.toUpperCase(), match = head.match(/^F\d*([124678])(?::[A-Z,]+)?$/);
+      if (match && !t.some(x => /[<\[\]]/.test(x.text))) {
+        t.slice(1).forEach(x => { if (/^[-+]?\d+$/.test(x.text)) add(x, /[12]/.test(match[1]) ? 'surface' : 'cell', x.text); });
+      }
+    }
+  });
+  return {lines, definitions, cards, byLine, links};
+}
+
+// Match equal lines in order in O(n log n), so inserted lines do not mark the
+// rest of a large deck as changed. Reordered lines appear as removal/addition.
+function mcnpChanges(before, after) {
+  if (before == null) return {changed:new Set(), removed:0, baseline:false};
+  const old = before.replace(/\r/g, '').replace(/\n$/, '').split('\n');
+  const now = after.replace(/\r/g, '').replace(/\n$/, '').split('\n');
+  const positions = new Map(), used = new Map(), pairs = [];
+  old.forEach((s, i) => { if (!positions.has(s)) positions.set(s, []); positions.get(s).push(i); });
+  now.forEach((s, i) => { const n = used.get(s) || 0, list = positions.get(s); used.set(s, n + 1); if (list && n < list.length) pairs.push({old:list[n], line:i}); });
+  const tails = [], prev = [];
+  pairs.forEach((p, i) => {
+    let lo = 0, hi = tails.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (pairs[tails[mid]].old < p.old) lo = mid + 1; else hi = mid; }
+    prev[i] = lo ? tails[lo - 1] : -1; tails[lo] = i;
+  });
+  const kept = new Set();
+  for (let i = tails.length ? tails[tails.length - 1] : -1; i >= 0; i = prev[i]) kept.add(pairs[i].line);
+  return {changed:new Set(now.map((_, i) => i).filter(i => !kept.has(i))), removed:old.length - kept.size, baseline:true};
+}
+function mcnpDiagnostics(index, report, locate = true) {
+  const out = [], seen = new Set();
+  const add = (text, line = null) => {
+    if (line !== null && (!Number.isInteger(line) || line < 0 || line >= index.lines.length)) line = null;
+    const key = `${line}:${text}`; if (!seen.has(key)) { seen.add(key); out.push({text, line}); }
+  };
+  index.lines.forEach((s, i) => { if (s.length > 128) add(`${s.length} columns; maximum 128. Regenerate the deck to wrap this line.`, i); });
+  const messages = [...(report.notes || []), ...(report.error ? [report.error] : []),
+    ...(report.validation || '').split('\n').filter(s => /\b(?:FAIL(?:ED)?|ERROR|WARN(?:ING)?)\b/i.test(s))];
+  messages.forEach(text => {
+    text = String(text).trim(); if (!text) return;
+    if (!locate) { add(text); return; } // Failed export locations belong to the failed deck, not the retained one.
+    const line = text.match(/\bline\s+(\d+)\b/i);
+    if (line) { add(text, +line[1] - 1); return; }
+    const def = text.match(/\b(cell|surface|material)\s+#?(\d+)\b/i);
+    add(text, def ? index.definitions.get(`${def[1].toLowerCase()}:${+def[2]}`) ?? null : null);
+  });
+  return out;
+}
+const MCNP_EDITOR = {index:null, previous:null, deck:null, line:0, column:1, matches:[], match:-1};
+function mcnpPosition(line, column = 1) {
+  if (MCNP_EDITOR.index) column = Math.max(1, Math.min(column, MCNP_EDITOR.index.lines[line].length + 1));
+  MCNP_EDITOR.line = line; MCNP_EDITOR.column = column;
+  $('#mPosition').textContent = `Ln ${line + 1}, Col ${column}`;
+  const card = MCNP_EDITOR.index && MCNP_EDITOR.index.byLine[line];
+  $('#mcnpCode').querySelectorAll('.ln').forEach(el => {
+    const n = +el.dataset.line;
+    el.classList.toggle('mcard', !!card && MCNP_EDITOR.index.byLine[n] === card);
+    el.classList.toggle('mtarget', n === line);
+  });
+}
+function mcnpJump(line, column = 1, selectPart = false) {
+  const index = MCNP_EDITOR.index;
+  if (!index || !Number.isInteger(line) || line < 0 || line >= index.lines.length) return false;
+  if (selectPart && CODEVIEW.mcnp) selectOwner(CODEVIEW.mcnp.owners[line]);
+  const el = $('#mcnpCode').querySelector(`[data-line="${line}"]`);
+  if (!el) return false;
+  if (selectPart) {
+    // Move the browser caret too; its delayed selectionchange must not restore
+    // the source link's line after navigation.
+    const range = document.createRange(); range.selectNodeContents(el); range.collapse(true);
+    const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    $('#mcnpCode').focus({preventScroll:true});
+  }
+  mcnpPosition(line, Math.min(column, index.lines[line].length + 1));
+  el.scrollIntoView({block:'center', inline:'nearest'});
+  const box = $('#mcnpCode').parentElement;
+  const charWidth = parseFloat(getComputedStyle($('#mcnpCode')).fontSize) * .61;
+  const x = 56 + (column - 1) * charWidth;
+  if (x < box.scrollLeft || x > box.scrollLeft + box.clientWidth - 40) box.scrollLeft = Math.max(0, x - box.clientWidth / 2);
+  return true;
+}
+function mcnpFindMatches(lines, query) {
+  const hits = []; query = query.toLowerCase(); if (!query) return hits;
+  lines.forEach((s, line) => { const lower = s.toLowerCase(); for (let i = lower.indexOf(query); i >= 0; i = lower.indexOf(query, i + query.length)) hits.push({line, column:i + 1}); });
+  return hits;
+}
+function mcnpSearch(step = 0) {
+  const e = MCNP_EDITOR, query = $('#mFind').value;
+  e.matches = mcnpFindMatches(e.index ? e.index.lines : [], query);
+  e.match = e.matches.length ? (step ? (e.match + step + e.matches.length) % e.matches.length : 0) : -1;
+  $('#mFindCount').textContent = query ? (e.matches.length ? `${e.match + 1} / ${e.matches.length}` : 'No matches') : '';
+  $('#mcnpCode').querySelectorAll('.mfind').forEach(el => el.classList.remove('mfind'));
+  if (window.CSS && CSS.highlights) CSS.highlights.delete('mcnp-search');
+  if (e.match >= 0) {
+    const hit = e.matches[e.match]; mcnpJump(hit.line, hit.column);
+    const el = $('#mcnpCode').querySelector(`[data-line="${hit.line}"]`);
+    el.classList.add('mfind');
+    if (window.CSS && CSS.highlights && window.Highlight) {
+      const range = document.createRange(), walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let node, offset = 0, started = false;
+      while ((node = walker.nextNode())) {
+        const end = offset + node.textContent.length;
+        if (!started && hit.column - 1 < end) { range.setStart(node, hit.column - 1 - offset); started = true; }
+        if (started && hit.column - 1 + query.length <= end) { range.setEnd(node, hit.column - 1 + query.length - offset); break; }
+        offset = end;
+      }
+      if (started) CSS.highlights.set('mcnp-search', new Highlight(range));
+    }
+  }
+}
+function openMcnpFind() {
+  ['#mFind','#mFindPrev','#mFindNext'].forEach(id => { $(id).hidden = false; });
+  $('#mFind').focus(); $('#mFind').select();
+}
+function enhanceMcnp(deck, report) {
+  const e = MCNP_EDITOR, pane = $('#mcnpCode');
+  e.index = indexMcnp(deck);
+  const delta = mcnpChanges(e.previous, deck);
+  $('#mChangeCount').textContent = delta.baseline ? `${delta.changed.size} added/changed · ${delta.removed} removed` : 'First export';
+  $('#mGoLine').max = e.index.lines.length;
+  pane.querySelectorAll('.ln').forEach((el, line) => {
+    el.dataset.line = line;
+    el.classList.toggle('mchanged', $('#mChanges').checked && delta.changed.has(line));
+    const card = e.index.byLine[line];
+    if (card && card.line !== line) { el.dataset.continuation = 'true'; el.title = `Continues card on line ${card.line + 1}`; }
+    // Wrap text nodes only: existing model-edit spans retain their handlers/refs.
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), nodes = [];
+    let node, offset = 0;
+    while ((node = walker.nextNode())) { nodes.push({node, offset}); offset += node.textContent.length; }
+    nodes.forEach(({node, offset}) => {
+      if (node.parentElement.closest('.ed')) return;
+      const refs = e.index.links[line].filter(r => r.start >= offset && r.end <= offset + node.textContent.length);
+      if (!refs.length) return;
+      const frag = document.createDocumentFragment(), text = node.textContent; let last = 0;
+      refs.forEach(r => {
+        frag.append(text.slice(last, r.start - offset));
+        const a = document.createElement('span'); a.className = 'mref'; a.tabIndex = 0; a.setAttribute('role', 'link');
+        a.dataset.target = r.target; a.title = `Go to ${r.kind} ${r.id}, line ${r.target + 1}`;
+        a.textContent = text.slice(r.start - offset, r.end - offset); frag.append(a); last = r.end - offset;
+      });
+      frag.append(text.slice(last)); node.replaceWith(frag);
+    });
+  });
+  const warnings = mcnpDiagnostics(e.index, report, !LIVE.failure);
+  $('#mcnpDiagnostics').innerHTML = warnings.map(w => `<li>${w.line === null ? esc(w.text) : `<button type="button" data-jump="${w.line}">Line ${w.line + 1}: ${esc(w.text)}</button>`}</li>`).join('');
+  mcnpPosition(Math.min(e.line, e.index.lines.length - 1), e.column);
+  if ($('#mFind').value) mcnpSearch();
+}
+$('#mFindBtn').addEventListener('click', openMcnpFind);
+$('#mFind').addEventListener('input', () => mcnpSearch());
+$('#mFind').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); mcnpSearch(e.shiftKey ? -1 : 1); }
+  if (e.key === 'Escape') { e.preventDefault(); $('#mFind').value = ''; mcnpSearch(); ['#mFind','#mFindPrev','#mFindNext'].forEach(id => { $(id).hidden = true; }); $('#mcnpCode').focus(); }
+});
+$('#mFindPrev').addEventListener('click', () => mcnpSearch(-1));
+$('#mFindNext').addEventListener('click', () => mcnpSearch(1));
+$('#mGoLine').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return; e.preventDefault();
+  const input = e.target, line = Number(input.value);
+  input.setCustomValidity(mcnpJump(line - 1) ? '' : `Enter a line from 1 to ${MCNP_EDITOR.index ? MCNP_EDITOR.index.lines.length : 1}.`);
+  input.reportValidity();
+});
+$('#mGoLine').addEventListener('input', e => e.target.setCustomValidity(''));
+$('#mChanges').addEventListener('change', () => { if (LIVE.report && LIVE.report.deck) renderMcnp(problems()); });
+$('#mcnpDiagnostics').addEventListener('click', e => { const b = e.target.closest('[data-jump]'); if (b) mcnpJump(+b.dataset.jump); });
+$('#docMcnp').addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && ['f','g'].includes(e.key.toLowerCase())) {
+    e.preventDefault(); e.stopPropagation();
+    if (e.key.toLowerCase() === 'f') openMcnpFind(); else { $('#mGoLine').focus(); $('#mGoLine').select(); }
+  }
+  const link = e.target.closest('.mref');
+  if (link && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); mcnpJump(+link.dataset.target, 1, true); }
+});
+document.addEventListener('selectionchange', () => {
+  const s = window.getSelection(); if (!s || !s.focusNode) return;
+  const el = s.focusNode.nodeType === 1 ? s.focusNode : s.focusNode.parentElement;
+  const line = el && el.closest('#mcnpCode .ln'); if (!line) return;
+  const range = document.createRange(); range.selectNodeContents(line); range.setEnd(s.focusNode, s.focusOffset);
+  mcnpPosition(+line.dataset.line, range.toString().length + 1);
+});
 
 function mcnpVisible() { return !$('#docMcnp').hidden; }
 function setMcnpStatus(state, text) {
@@ -3818,10 +4070,12 @@ function renderMcnp(P) {
     pane.innerHTML = '<span class="ln t-mcom">Start OpenMC Studio from its launcher (Start OpenMC Studio.cmd / .command) to see the</span>' +
       '<span class="ln t-mcom">validated MCNP input here, updated as you edit.</span>';
     CODEVIEW.mcnp = null;
+    MCNP_EDITOR.index = null;
+    $('#mcnpDiagnostics').innerHTML = '';
     return;
   }
   const script = mcnpScript(P), r = LIVE.report;
-  const fresh = !!r && LIVE.sentScript === script;
+  const fresh = !!r && LIVE.sentScript === script && !LIVE.failure && !LIVE.pending;
   if (!r) {
     const p = LIVE.progress;
     const txt = p && p.step ? `Translating with MCNPy… Stage ${p.step} of ${p.total}: ${p.text} (${p.elapsed}s)` : 'Translating with MCNPy… (the first export takes about 15 s while MCNPy starts)';
@@ -3831,29 +4085,35 @@ function renderMcnp(P) {
     const view = annotateMcnp(r.deck, LIVE.ctx, fresh);
     pane.innerHTML = view.html;
     CODEVIEW.mcnp = fresh ? {owners: view.owners, refs: view.refs} : null;
+    enhanceMcnp(r.deck, LIVE.failure || r);
     scrollSelIntoView('mcnp');
   } else {
     pane.innerHTML = `<span class="ln t-err">${esc(r.error || 'No deck was produced.')}</span>`;
     CODEVIEW.mcnp = null;
+    MCNP_EDITOR.index = null;
+    $('#mcnpDiagnostics').innerHTML = '';
   }
   pane.classList.toggle('stale', !fresh);
   if (fresh) {
-    if (r.ok) setMcnpStatus('ok', `✓ Validated · ${r.seconds} s${r.translation_cached ? ' (geometry unchanged)' : ''}`);
+    if (r.ok) setMcnpStatus('ok', `✓ Current · validated · ${r.seconds} s${r.translation_cached ? ' (geometry unchanged)' : ''}`);
     else setMcnpStatus('err', r.error ? '⚠ Not exportable — see the message below' : '⚠ Didn’t validate — see Log');
     if (LIVE.loggedFor !== r) { // log each new result once
       LIVE.loggedFor = r;
       if (!r.ok && r.validation) r.validation.trim().split('\n').filter(l => /\[ERROR\]|FAILED/.test(l)).forEach(l => log('error', `model.mcnp: ${esc(l.trim())}`));
     }
-  }
+  } else if (LIVE.failure) setMcnpStatus('err', r && r.deck ? 'Outdated · update failed; showing the previous deck. See warnings and Refresh to retry.' : 'Update failed · Refresh to retry');
+  else if (LIVE.pending) setMcnpStatus('busy', 'Regenerating · displayed deck is outdated');
+  else setMcnpStatus('warn', 'Outdated · model has changed');
 }
 function geometryPart(script) { const i = script.indexOf('# ── Sources'); return i < 0 ? script : script.slice(0, i); }
 function liveMcnpTick(P) {
   if (!LOCAL.on || !mcnpVisible()) return;
   const script = mcnpScript(P);
+  if (LIVE.failure && script === LIVE.attemptedScript) return;
   if (script === LIVE.sentScript) return;
   const errs = P.filter(p => p.sev === 'error');
-  if (errs.length) { setMcnpStatus('warn', `Fix ${errs.length} problem${errs.length === 1 ? '' : 's'} to update (see Problems)`); return; }
-  setMcnpStatus('busy', 'Waiting for edits to pause…');
+  if (errs.length) { clearTimeout(LIVE.timer); setMcnpStatus('warn', `Outdated · fix ${errs.length} problem${errs.length === 1 ? '' : 's'} to update (see Problems)`); return; }
+  setMcnpStatus('busy', 'Outdated · waiting for edits to pause…');
   clearTimeout(LIVE.timer);
   LIVE.timer = setTimeout(() => sendLive(), 900);
 }
@@ -3876,13 +4136,15 @@ async function sendLive(force) {
   const built = buildScript(P, false, MCNP_OPTS), script = built.text;
   if (!force && script === LIVE.sentScript) return;
   const seq = ++LIVE.seq, ctx = mcnpContext(P, built);
+  LIVE.pending = true; LIVE.failure = null; LIVE.attemptedScript = script;
+  renderMcnp(P);
   const slow = !LIVE.report || !LIVE.sentScript || geometryPart(LIVE.sentScript) !== geometryPart(script);
   LIVE.progress = null;
   setMcnpStatus('busy', slow ? 'Updating… (geometry or materials changed: about 10 s)' : 'Updating… (about 1 s)');
   pollMcnpProgress(p => {
     if (seq !== LIVE.seq) return;
     LIVE.progress = p;
-    setMcnpStatus('busy', `Stage ${p.step}/${p.total}: ${p.text} (${p.elapsed}s)`);
+    setMcnpStatus('busy', `Regenerating · stage ${p.step}/${p.total}: ${p.text} (${p.elapsed}s)`);
     if (!LIVE.report) {
       const pane = $('#mcnpCode');
       pane.innerHTML = `<span class="ln t-mcom">Translating with MCNPy… Stage ${p.step} of ${p.total}: ${esc(p.text)} (${p.elapsed}s)</span>`;
@@ -3891,15 +4153,26 @@ async function sendLive(force) {
   let r;
   try { r = await api('/api/mcnp-live', {method:'POST', body:JSON.stringify({script, name:S.settings.name, seq, client:LIVE.client})}); }
   catch (e) {
+    if (seq !== LIVE.seq) return;
     stopMcnpProgress();
     LIVE.progress = null;
-    if (seq === LIVE.seq) setMcnpStatus('err', `Live MCNP failed: ${e.message}`);
+    LIVE.pending = false; LIVE.failure = {error:e.message};
+    if (!LIVE.report) LIVE.report = {error:e.message};
+    renderMcnp(problems());
     return;
   }
+  if (seq !== LIVE.seq) return;
   stopMcnpProgress();
   LIVE.progress = null;
-  if (r.superseded || seq !== LIVE.seq) return; // a newer edit is on its way
-  LIVE.sentScript = script; LIVE.ctx = ctx; LIVE.report = r;
+  LIVE.pending = false;
+  if (r.superseded) { LIVE.failure = {error:'This export was superseded. Refresh to retry.'}; renderMcnp(problems()); return; }
+  if (r.deck) {
+    MCNP_EDITOR.previous = MCNP_EDITOR.deck; MCNP_EDITOR.deck = r.deck;
+    LIVE.sentScript = script; LIVE.ctx = ctx; LIVE.report = r;
+  } else {
+    LIVE.failure = r;
+    if (!LIVE.report) LIVE.report = r;
+  }
   if (EDITING.pane !== 'mcnp') renderMcnp(problems());
   if (mcnpScript(problems()) !== script) liveMcnpTick(problems()); // edits made while this one ran
 }
@@ -3951,6 +4224,10 @@ function startInlineEdit(span, ref, pane) {
 }
 function codeClick(e, pane) {
   if (e.target.closest('.edin')) return;
+  if (pane === 'mcnp') {
+    const link = e.target.closest('.mref');
+    if (link) { mcnpJump(+link.dataset.target, 1, true); return; }
+  }
   const view = CODEVIEW[pane];
   const ed = e.target.closest('.ed');
   const ln = e.target.closest('.ln');
@@ -3958,6 +4235,10 @@ function codeClick(e, pane) {
   if (ed && view && !ed.classList.contains('stale')) {
     const ref = view.refs[+ed.dataset.ref];
     if (ref) {
+      if (pane === 'mcnp' && ln) {
+        const range = document.createRange(); range.selectNodeContents(ln); range.setEndBefore(ed);
+        mcnpPosition(+ln.dataset.line, range.toString().length + 1);
+      }
       startInlineEdit(ed, ref, pane);
       if (lineOwner && !ownerMatchesSel(lineOwner)) { // show what's being edited in Properties
         scrollSelIntoView[pane] = lineOwner.kind + ':' + (lineOwner.id || '');
@@ -4009,12 +4290,9 @@ async function exportMcnp() {
     : 'The MCNP input did not validate; don’t run it until the errors above are fixed.');
 }
 $('#refreshMcnpBtn')?.addEventListener('click', () => {
-  LIVE.sentScript = null;
-  LIVE.report = null;
+  LIVE.failure = null;
   LIVE.progress = null;
   setMcnpStatus('busy', 'Starting MCNP translation…');
-  const pane = $('#mcnpCode');
-  pane.innerHTML = '<span class="ln t-mcom">Translating with MCNPy…</span>';
   sendLive(true);
 });
 $('#copyMcnp').addEventListener('click', async () => {
@@ -6358,6 +6636,11 @@ $('#vp').addEventListener('click', e => {
   else if (h.cell === -1) select('world');
 });
 document.addEventListener('keydown', e => {
+  if (mcnpVisible() && e.target === $('#tabMcnp') && (e.ctrlKey || e.metaKey) && ['f','g'].includes(e.key.toLowerCase())) {
+    e.preventDefault();
+    if (e.key.toLowerCase() === 'f') openMcnpFind(); else { $('#mGoLine').focus(); $('#mGoLine').select(); }
+    return;
+  }
   if (e.target.closest('input, select, textarea')) return;
   if ((e.key === 'Delete') && canEditSelection()) { e.preventDefault(); removeSelected(); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && canEditSelection()) { e.preventDefault(); duplicateSelected(); }

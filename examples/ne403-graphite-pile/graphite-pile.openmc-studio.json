@@ -29,6 +29,16 @@
    "comps": "He3:1",
    "sab": "",
    "ref": "Ideal gas, 4 atm, 20 \u00b0C"
+  },
+  {
+   "id": "m_bf3",
+   "name": "BF3 detector gas (96% B-10)",
+   "color": "#e0a050",
+   "density": 0.00268,
+   "frac": "ao",
+   "comps": "B10:0.96, B11:0.04, F19:3",
+   "sab": "",
+   "ref": "PNNL-15870, BF3 proportional counter gas"
   }
  ],
  "parts": [
@@ -2688,7 +2698,7 @@
  "sources": [
   {
    "id": "s_pube",
-   "name": "PuBe source (Maxwell approx.)",
+   "name": "PuBe source (ISO 8529-1 tabulated)",
    "particle": "neutron",
    "strength": 1,
    "space": "box",
@@ -2708,13 +2718,16 @@
    "u": 0,
    "v": 0,
    "w": 1,
-   "energy": "maxwell",
-   "lines": "4.2:1",
+   "energy": "tabulated",
+   "preset": "pube",
+   "tab_e": "0.05, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8, 3.0, 3.2, 3.4, 3.6, 3.8, 4.0, 4.2, 4.4, 4.6, 4.8, 5.0, 5.2, 5.4, 5.6, 5.8, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0, 10.75",
+   "tab_p": "0.008, 0.015, 0.022, 0.028, 0.032, 0.035, 0.038, 0.040, 0.042, 0.045, 0.048, 0.052, 0.056, 0.060, 0.063, 0.068, 0.062, 0.058, 0.055, 0.052, 0.048, 0.046, 0.050, 0.058, 0.052, 0.046, 0.040, 0.035, 0.030, 0.026, 0.055, 0.048, 0.040, 0.032, 0.024, 0.016, 0.008, 0.003, 0.0005",
+   "lines": "",
    "wa": 0.988,
    "wb": 2.249,
    "theta": 2.8,
-   "emin": 0.1,
-   "emax": 11
+   "emin": 0.05,
+   "emax": 10.75
   }
  ],
  "tallies": [
@@ -2777,7 +2790,7 @@
   },
   {
    "id": "t_he3_x",
-   "name": "He-3 response across (x), row 3, 40 in deep",
+   "name": "He-3 (n,p) response across (x), row 3, 40 in deep",
    "kind": "mesh",
    "cells": [],
    "scores": [
@@ -2800,7 +2813,7 @@
   },
   {
    "id": "t_he3_y",
-   "name": "He-3 response in depth (y), col 7 row 3",
+   "name": "He-3 (n,p) response in depth (y), col 7 row 3",
    "kind": "mesh",
    "cells": [],
    "scores": [
@@ -2823,7 +2836,7 @@
   },
   {
    "id": "t_he3_z",
-   "name": "He-3 response up (z), col 7, 40 in deep",
+   "name": "He-3 (n,p) response up (z), col 7, 40 in deep",
    "kind": "mesh",
    "cells": [],
    "scores": [
@@ -2842,6 +2855,75 @@
    "detector": "he3",
    "responseMat": "m_he3",
    "responseScore": "(n,p)",
+   "responseScale": "macro"
+  },
+  {
+   "id": "t_b10_x",
+   "name": "B-10 (n,a) response across (x), row 3, 40 in deep",
+   "kind": "mesh",
+   "cells": [],
+   "scores": [
+    "flux"
+   ],
+   "ebins": "",
+   "nx": 96,
+   "ny": 1,
+   "nz": 1,
+   "lx": -121.92,
+   "ly": -21.59,
+   "lz": -21.59,
+   "ux": 121.92,
+   "uy": -19.05,
+   "uz": -19.05,
+   "detector": "b10",
+   "responseMat": "m_bf3",
+   "responseScore": "(n,a)",
+   "responseScale": "macro"
+  },
+  {
+   "id": "t_b10_y",
+   "name": "B-10 (n,a) response in depth (y), col 7 row 3",
+   "kind": "mesh",
+   "cells": [],
+   "scores": [
+    "flux"
+   ],
+   "ebins": "",
+   "nx": 1,
+   "ny": 96,
+   "nz": 1,
+   "lx": 8.89,
+   "ly": -121.92,
+   "lz": -21.59,
+   "ux": 11.43,
+   "uy": 121.92,
+   "uz": -19.05,
+   "detector": "b10",
+   "responseMat": "m_bf3",
+   "responseScore": "(n,a)",
+   "responseScale": "macro"
+  },
+  {
+   "id": "t_b10_z",
+   "name": "B-10 (n,a) response up (z), col 7, 40 in deep",
+   "kind": "mesh",
+   "cells": [],
+   "scores": [
+    "flux"
+   ],
+   "ebins": "",
+   "nx": 1,
+   "ny": 1,
+   "nz": 120,
+   "lx": 8.89,
+   "ly": -21.59,
+   "lz": -152.4,
+   "ux": 11.43,
+   "uy": -19.05,
+   "uz": 152.4,
+   "detector": "b10",
+   "responseMat": "m_bf3",
+   "responseScore": "(n,a)",
    "responseScale": "macro"
   },
   {
@@ -2867,8 +2949,8 @@
  "settings": {
   "name": "NE403 graphite pile",
   "runMode": "fixed source",
-  "particles": 2000,
-  "batches": 5,
+  "particles": 10000,
+  "batches": 10,
   "inactive": 0,
   "seed": 12345,
   "maxTracks": 20,

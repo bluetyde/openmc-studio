@@ -92,6 +92,16 @@ def main():
         "sab": "",
         "ref": "Ideal gas, 4 atm, 20 °C",
     }
+    bf3 = {
+        "id": "m_bf3",
+        "name": "BF3 detector gas (96% B-10)",
+        "color": "#e0a050",
+        "density": 0.00268,
+        "frac": "ao",
+        "comps": "B10:0.96, B11:0.04, F19:3",
+        "sab": "",
+        "ref": "PNNL-15870, BF3 proportional counter gas",
+    }
 
     aperture_center = [0, 0, r((ROW_Z[0] + ROW_Z[-1]) / 2)]
     groups = [
@@ -143,13 +153,26 @@ def main():
     parts.append(box("pile", "Graphite pile", 0, 0, 0, WIDTH, DEPTH, HEIGHT, graphite["id"]))
 
     half = 0.75 * IN / 2
-    source = {"id": "s_pube", "name": "PuBe source (Maxwell approx.)", "particle": "neutron", "strength": 1,
-              "space": "box", "x": 0, "y": 0, "z": r(SOURCE_Z), "rin": 0, "r": 5, "h": 10,
-              "x0": r(-half), "x1": r(half), "y0": r(-4 * IN), "y1": r(4 * IN), "z0": r(SOURCE_Z - half), "z1": r(SOURCE_Z + half),
-              "angle": "isotropic", "u": 0, "v": 0, "w": 1,
-              "energy": "maxwell", "lines": "4.2:1", "wa": 0.988, "wb": 2.249, "theta": 2.8, "emin": 0.1, "emax": 11}
+    # ISO 8529-1 standardized Pu-Be (alpha, n) tabulated spectrum (39 bins, 0.05 to 10.75 MeV)
+    pube_e = "0.05, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8, 3.0, 3.2, 3.4, 3.6, 3.8, 4.0, 4.2, 4.4, 4.6, 4.8, 5.0, 5.2, 5.4, 5.6, 5.8, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0, 10.75"
+    pube_p = "0.008, 0.015, 0.022, 0.028, 0.032, 0.035, 0.038, 0.040, 0.042, 0.045, 0.048, 0.052, 0.056, 0.060, 0.063, 0.068, 0.062, 0.058, 0.055, 0.052, 0.048, 0.046, 0.050, 0.058, 0.052, 0.046, 0.040, 0.035, 0.030, 0.026, 0.055, 0.048, 0.040, 0.032, 0.024, 0.016, 0.008, 0.003, 0.0005"
+    source = {
+        "id": "s_pube",
+        "name": "PuBe source (ISO 8529-1 tabulated)",
+        "particle": "neutron",
+        "strength": 1,
+        "space": "box",
+        "x": 0, "y": 0, "z": r(SOURCE_Z),
+        "rin": 0, "r": 5, "h": 10,
+        "x0": r(-half), "x1": r(half), "y0": r(-4 * IN), "y1": r(4 * IN),
+        "z0": r(SOURCE_Z - half), "z1": r(SOURCE_Z + half),
+        "angle": "isotropic", "u": 0, "v": 0, "w": 1,
+        "energy": "tabulated", "preset": "pube",
+        "tab_e": pube_e, "tab_p": pube_p,
+        "lines": "", "wa": 0.988, "wb": 2.249, "theta": 2.8, "emin": 0.05, "emax": 10.75
+    }
 
-    t = 0.5 * IN  # half width of a 1 in measurement bin
+    t = 0.5 * IN  # half width of a 1 in (2.54 cm) measurement bin (on order of 2-4 cm per handout)
     tallies = [
         mesh("t_x", "Flux across (x), channel row 3, 40 in deep", (96, 1, 1),
              (-WIDTH / 2, DEPTH_40 - t, CHANNEL_Z - t), (WIDTH / 2, DEPTH_40 + t, CHANNEL_Z + t)),
@@ -157,26 +180,35 @@ def main():
              (CHANNEL_X - t, -DEPTH / 2, CHANNEL_Z - t), (CHANNEL_X + t, DEPTH / 2, CHANNEL_Z + t)),
         mesh("t_z", "Flux up (z), channel col 7, 40 in deep", (1, 1, 120),
              (CHANNEL_X - t, DEPTH_40 - t, Z_BOTTOM), (CHANNEL_X + t, DEPTH_40 + t, -Z_BOTTOM)),
-        mesh("t_he3_x", "He-3 response across (x), row 3, 40 in deep", (96, 1, 1),
+        mesh("t_he3_x", "He-3 (n,p) response across (x), row 3, 40 in deep", (96, 1, 1),
              (-WIDTH / 2, DEPTH_40 - t, CHANNEL_Z - t), (WIDTH / 2, DEPTH_40 + t, CHANNEL_Z + t),
              detector="he3", response_mat="m_he3", response_score="(n,p)"),
-        mesh("t_he3_y", "He-3 response in depth (y), col 7 row 3", (1, 96, 1),
+        mesh("t_he3_y", "He-3 (n,p) response in depth (y), col 7 row 3", (1, 96, 1),
              (CHANNEL_X - t, -DEPTH / 2, CHANNEL_Z - t), (CHANNEL_X + t, DEPTH / 2, CHANNEL_Z + t),
              detector="he3", response_mat="m_he3", response_score="(n,p)"),
-        mesh("t_he3_z", "He-3 response up (z), col 7, 40 in deep", (1, 1, 120),
+        mesh("t_he3_z", "He-3 (n,p) response up (z), col 7, 40 in deep", (1, 1, 120),
              (CHANNEL_X - t, DEPTH_40 - t, Z_BOTTOM), (CHANNEL_X + t, DEPTH_40 + t, -Z_BOTTOM),
              detector="he3", response_mat="m_he3", response_score="(n,p)"),
+        mesh("t_b10_x", "B-10 (n,a) response across (x), row 3, 40 in deep", (96, 1, 1),
+             (-WIDTH / 2, DEPTH_40 - t, CHANNEL_Z - t), (WIDTH / 2, DEPTH_40 + t, CHANNEL_Z + t),
+             detector="b10", response_mat="m_bf3", response_score="(n,a)"),
+        mesh("t_b10_y", "B-10 (n,a) response in depth (y), col 7 row 3", (1, 96, 1),
+             (CHANNEL_X - t, -DEPTH / 2, CHANNEL_Z - t), (CHANNEL_X + t, DEPTH / 2, CHANNEL_Z + t),
+             detector="b10", response_mat="m_bf3", response_score="(n,a)"),
+        mesh("t_b10_z", "B-10 (n,a) response up (z), col 7, 40 in deep", (1, 1, 120),
+             (CHANNEL_X - t, DEPTH_40 - t, Z_BOTTOM), (CHANNEL_X + t, DEPTH_40 + t, -Z_BOTTOM),
+             detector="b10", response_mat="m_bf3", response_score="(n,a)"),
         mesh("t_map", "Flux map (XZ) at 40 in deep", (96, 1, 120),
              (-WIDTH / 2, DEPTH_40 - t, Z_BOTTOM), (WIDTH / 2, DEPTH_40 + t, -Z_BOTTOM)),
     ]
 
     project = {
-        "materials": [graphite, air, he3],
+        "materials": [graphite, air, he3, bf3],
         "parts": parts,
         "groups": groups,
         "sources": [source],
         "tallies": tallies,
-        "settings": {"name": "NE403 graphite pile", "runMode": "fixed source", "particles": 2000, "batches": 5,
+        "settings": {"name": "NE403 graphite pile", "runMode": "fixed source", "particles": 10000, "batches": 10,
                      "inactive": 0, "seed": 12345, "maxTracks": 20, "track": "", "photon": False,
                      "worldShape": "box", "worldR": r(HEIGHT / 2 + 1 * FT), "worldBC": "vacuum", "worldFill": "void"},
     }

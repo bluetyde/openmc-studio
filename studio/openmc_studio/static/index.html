@@ -391,6 +391,7 @@ input[type=checkbox]{accent-color:var(--accent)}
 </div>
 <input type="file" id="openFile" accept=".json,application/json" hidden>
 <div class="menu" id="matMenu" hidden role="menu"></div>
+<div class="menu" id="sourceMenu" hidden role="menu"></div>
 <div class="menu" id="arrayMenu" hidden role="dialog" aria-label="Repeat in an array"></div>
 <div class="dropline" id="dropLine" hidden></div>
 <script>
@@ -663,12 +664,114 @@ const DEFAULT_SETTINGS = {name:'Shielding demo', runMode:'fixed source', particl
   entropyMesh:false, entropyNx:10, entropyNy:10, entropyNz:10,
   worldShape:'box', worldR:100, worldBC:'vacuum', worldFill:'void'};
 
-function newSource(id, name, particle = 'neutron') {
-  return {id, name, particle, strength:1, space:'point', x:0, y:0, z:0, rin:0, r:5, h:10,
+var SOURCE_PRESETS = [
+  {
+    id: 'cf252',
+    name: 'Californium-252 (Spontaneous fission Watt)',
+    particle: 'neutron',
+    energy: 'watt',
+    wa: 1.025,
+    wb: 2.926,
+    desc: 'Cf-252 spontaneous fission Watt spectrum (ISO 8529-1: a = 1.025 MeV, b = 2.926 MeV⁻¹)'
+  },
+  {
+    id: 'u235',
+    name: 'Uranium-235 (Thermal fission Watt)',
+    particle: 'neutron',
+    energy: 'watt',
+    wa: 0.988,
+    wb: 2.249,
+    desc: 'U-235 thermal neutron-induced fission Watt spectrum (a = 0.988 MeV, b = 2.249 MeV⁻¹)'
+  },
+  {
+    id: 'dt_fusion',
+    name: 'D-T Fusion Plasma (Muir Gaussian, 14.08 MeV)',
+    particle: 'neutron',
+    energy: 'muir',
+    muir_e0: 14.08,
+    muir_mrat: 5.0,
+    muir_kt: 20000.0,
+    desc: 'Deuterium-Tritium fusion neutron spectrum (E0 = 14.08 MeV, m_rat = 5.0, kT = 20 keV)'
+  },
+  {
+    id: 'dd_fusion',
+    name: 'D-D Fusion Plasma (Muir Gaussian, 2.45 MeV)',
+    particle: 'neutron',
+    energy: 'muir',
+    muir_e0: 2.45,
+    muir_mrat: 4.0,
+    muir_kt: 20000.0,
+    desc: 'Deuterium-Deuterium fusion neutron spectrum (E0 = 2.45 MeV, m_rat = 4.0, kT = 20 keV)'
+  },
+  {
+    id: 'ambe',
+    name: 'Am-Be (ISO 8529-1 tabulated)',
+    particle: 'neutron',
+    energy: 'tabulated',
+    tab_e: '0.04, 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8, 3.0, 3.2, 3.4, 3.6, 3.8, 4.0, 4.2, 4.4, 4.6, 4.8, 5.0, 5.2, 5.4, 5.6, 5.8, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0, 10.5, 11.0, 11.5',
+    tab_p: '0.005, 0.010, 0.024, 0.031, 0.033, 0.034, 0.036, 0.035, 0.036, 0.038, 0.042, 0.043, 0.048, 0.052, 0.051, 0.050, 0.053, 0.059, 0.061, 0.056, 0.052, 0.048, 0.045, 0.043, 0.041, 0.040, 0.038, 0.036, 0.033, 0.029, 0.025, 0.052, 0.045, 0.038, 0.031, 0.024, 0.016, 0.009, 0.004, 0.002, 0.0008, 0.0002',
+    desc: 'AmBe ISO 8529-1 standardized (alpha, n) reference neutron spectrum'
+  },
+  {
+    id: 'pube',
+    name: 'Pu-Be (ISO 8529-1 tabulated)',
+    particle: 'neutron',
+    energy: 'tabulated',
+    tab_e: '0.05, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8, 3.0, 3.2, 3.4, 3.6, 3.8, 4.0, 4.2, 4.4, 4.6, 4.8, 5.0, 5.2, 5.4, 5.6, 5.8, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0, 10.75',
+    tab_p: '0.008, 0.015, 0.022, 0.028, 0.032, 0.035, 0.038, 0.040, 0.042, 0.045, 0.048, 0.052, 0.056, 0.060, 0.063, 0.068, 0.062, 0.058, 0.055, 0.052, 0.048, 0.046, 0.050, 0.058, 0.052, 0.046, 0.040, 0.035, 0.030, 0.026, 0.055, 0.048, 0.040, 0.032, 0.024, 0.016, 0.008, 0.003, 0.0005',
+    desc: 'PuBe standardized (alpha, n) neutron spectrum (0.05 to 10.75 MeV)'
+  },
+  {
+    id: 'co60',
+    name: 'Cobalt-60 (Discrete gamma lines)',
+    particle: 'photon',
+    energy: 'lines',
+    lines: '1.1732:1.0, 1.3325:1.0',
+    desc: 'Co-60 gamma decay cascade (1.1732 MeV and 1.3325 MeV photons)'
+  },
+  {
+    id: 'cs137',
+    name: 'Cesium-137 (Discrete gamma line)',
+    particle: 'photon',
+    energy: 'lines',
+    lines: '0.6617:1.0',
+    desc: 'Cs-137 / Ba-137m isomeric transition gamma line (0.6617 MeV photon)'
+  }
+];
+
+function applySourcePreset(s, key) {
+  const p = SOURCE_PRESETS.find(x => x.id === key);
+  if (!p) {
+    s.preset = '';
+    return false;
+  }
+  s.preset = p.id;
+  s.particle = p.particle;
+  s.energy = p.energy;
+  if (p.energy === 'watt') {
+    s.wa = p.wa;
+    s.wb = p.wb;
+  } else if (p.energy === 'muir') {
+    s.muir_e0 = p.muir_e0;
+    s.muir_mrat = p.muir_mrat;
+    s.muir_kt = p.muir_kt;
+  } else if (p.energy === 'tabulated') {
+    s.tab_e = p.tab_e;
+    s.tab_p = p.tab_p;
+  } else if (p.energy === 'lines') {
+    s.lines = p.lines;
+  }
+  return true;
+}
+
+function newSource(id, name, particle = 'neutron', preset = '') {
+  const s = {id, name, particle, strength:1, space:'point', x:0, y:0, z:0, rin:0, r:5, h:10,
     x0:-5, y0:-5, z0:-5, x1:5, y1:5, z1:5, angle:'isotropic', u:0, v:0, w:1,
     energy:'lines', lines: particle === 'photon' ? '0.662:1' : '14.1:1', wa:0.988, wb:2.249, theta:1.2895, emin:0.1, emax:2,
     muir_e0:14.08, muir_mrat:5.0, muir_kt:20000.0,
-    tab_e:'0.0, 1.0, 2.0, 5.0', tab_p:'0.2, 0.5, 0.3'};
+    tab_e:'0.0, 1.0, 2.0, 5.0', tab_p:'0.2, 0.5, 0.3', preset: ''};
+  if (preset) applySourcePreset(s, preset);
+  return s;
 }
 function newPart(id, name, shape) {
   return {id, name, shape, x:0, y:0, z:0, r:10, r2:5, h:20, a:15, b:10, c:8, axis:'z', sx:20, sy:20, sz:20, rx:0, ry:0, rz:0, material:'void'};
@@ -715,6 +818,7 @@ function normalizeProject(o) { // fill fields added in later versions
   });
   (o.sources || []).forEach(s => {
     s.particle = s.particle || 'neutron';
+    s.preset = s.preset || '';
     s.muir_e0 = Number.isFinite(s.muir_e0) ? s.muir_e0 : 14.08;
     s.muir_mrat = Number.isFinite(s.muir_mrat) ? s.muir_mrat : 5.0;
     s.muir_kt = Number.isFinite(s.muir_kt) ? s.muir_kt : 20000.0;
@@ -1258,7 +1362,7 @@ function problems() {
 /* ───────── model.py generator ───────── */
 function num(v) {
   if (!fin(v)) return 'nan';
-  if (v !== 0 && (Math.abs(v) >= 1e6 || Math.abs(v) < 1e-3)) return v.toExponential().replace('e+', 'e');
+  if (v !== 0 && (Math.abs(v) >= 1e6 || Math.abs(v) < 1e-3)) return (+v.toPrecision(12)).toExponential().replace('e+', 'e');
   const s = String(+v.toPrecision(12));
   return /[.e]/.test(s) ? s : s + '.0';
 }
@@ -2192,9 +2296,17 @@ function addMaterial(key) {
   log('info', `Added ${esc(m.name)}.${m.pristine ? ' Give it to a part, or edit it, to keep it in the project.' : ''}`);
   select('material', m.id);
 }
-function addSource(particle) {
-  const s = newSource(newId('s'), uniqueName(S.sources, particle === 'photon' ? 'Photon source' : 'Neutron source'), particle);
-  if (particle === 'photon') S.settings.photon = true;
+function addSource(particle, preset = '') {
+  let name = particle === 'photon' ? 'Photon source' : 'Neutron source';
+  if (preset) {
+    const p = SOURCE_PRESETS.find(x => x.id === preset);
+    if (p) {
+      name = p.name.split(' (')[0];
+      particle = p.particle;
+    }
+  }
+  const s = newSource(newId('s'), uniqueName(S.sources, name), particle, preset);
+  if (s.particle === 'photon') S.settings.photon = true;
   S.sources.push(s);
   select('source', s.id);
 }
@@ -2573,7 +2685,7 @@ const RIBBON = {
     {label:'Boundary', btns:[['world', 'World', () => select('world')]]}
   ],
   Physics:[
-    {label:'Sources', btns:[['source', 'Neutron', () => addSource('neutron')], ['source', 'Photon', () => addSource('photon')]]},
+    {label:'Sources', btns:[['source', 'Neutron', () => addSource('neutron')], ['source', 'Photon', () => addSource('photon')], ['source', 'Preset ▾', e => openSourceMenu(e.currentTarget)]]},
     {label:'Tallies', btns:[['cellTally', 'Cell', () => addTally('cell')], ['meshTally', 'Mesh', () => addTally('mesh')], ['surfaceTally', 'Surface', () => addTally('surface')]]},
     {label:'Run', btns:[
       ['dice', 'Eigenvalue', () => toggleSetting('runMode'), null, () => S.settings.runMode === 'eigenvalue'],
@@ -2914,6 +3026,10 @@ function specFor(kind, o) {
         F('vec', null, 'Direction', {keys:['u', 'v', 'w'], show:() => o.angle === 'mono', hint:'Any length; it is normalized. Same as VEC with DIR=1.'})
       ]},
       {title:'Energy', fields:[
+        F('select', 'preset', 'Preset library', {
+          options:() => [['', 'Custom (no preset)'], ...SOURCE_PRESETS.map(p => [p.id, p.name])],
+          hint:'Load a standard radioisotope or fusion source spectrum.'
+        }),
         F('select', 'energy', 'Spectrum', {options:() => [['lines', 'Discrete lines'], ['watt', 'Watt fission'], ['maxwell', 'Maxwell fission'], ['muir', 'Muir (fusion plasma)'], ['uniform', 'Uniform'], ['tabulated', 'Tabulated (histogram)']]}),
         F('text', 'lines', 'Lines', {show:en('lines'), hint:'MeV:intensity, comma separated. 14.1:1 is D-T; 2.45:1 is D-D; 1.1732:1, 1.3325:1 is Co-60.'}),
         F('num', 'wa', 'a', {unit:'MeV', show:en('watt')}), F('num', 'wb', 'b', {unit:'1/MeV', show:en('watt'), hint:'U-235 thermal fission: a = 0.988, b = 2.249.'}),
@@ -2924,7 +3040,8 @@ function specFor(kind, o) {
         F('num', 'emin', 'Minimum', {unit:'MeV', show:en('uniform')}), F('num', 'emax', 'Maximum', {unit:'MeV', show:en('uniform')}),
         F('text', 'tab_e', 'Bin edges', {show:en('tabulated'), hint:'MeV, rising boundaries (e.g. 0.0, 0.5, 1.0, 2.0). Or paste MCNP SI/SP cards.'}),
         F('text', 'tab_p', 'Probabilities', {show:en('tabulated'), hint:'Bin weights or relative probabilities (N-1 values for N edges).'}),
-        {type:'buttons', btns:[['Paste MCNP SI/SP cards…', () => openPasteSiSp(o)]], show:en('tabulated')}
+        {type:'buttons', btns:[['Load preset ▾', e => openSourceMenu(e.currentTarget, k => { applySourcePreset(o, k); renderProps(); schedule(); })], ['Paste MCNP SI/SP cards…', () => openPasteSiSp(o)]], show:en('tabulated')},
+        {type:'buttons', btns:[['Load preset ▾', e => openSourceMenu(e.currentTarget, k => { applySourcePreset(o, k); renderProps(); schedule(); })]], show:() => !en('tabulated')()}
       ]},
       {title:'MCNP equivalent', fields:[{type:'mcnp', text:() => mcnpSource(o)}]}
     ];
@@ -3126,6 +3243,10 @@ function fieldEl(f, obj) {
           if (s.value === 'b10') { obj.responseScore = '(n,a)'; obj.responseNuc = 'B10'; }
           else if (s.value === 'he3') { obj.responseScore = '(n,p)'; obj.responseNuc = 'He3'; }
           else if (s.value === 'custom') { obj.responseScore = obj.responseScore || '(n,p)'; obj.responseNuc = obj.responseNuc || 'all'; }
+        } else if (f.key === 'preset' && sel.kind === 'source') {
+          applySourcePreset(obj, s.value);
+        } else if (sel.kind === 'source' && (f.key === 'energy' || f.key === 'particle')) {
+          obj.preset = '';
         }
         renderProps(); schedule(); const again = document.getElementById(fid); if (again) again.focus();
       });
@@ -4588,6 +4709,55 @@ function openPasteSiSp(src) {
   } else {
     alert("Couldn't find both SI and SP lines in pasted text.");
   }
+}
+
+const SOURCEMENU = {btn:null, onSelect:null};
+function openSourceMenu(btn, onSelect = null) {
+  const menu = $('#sourceMenu');
+  if (!menu) return;
+  if (!menu.hidden && SOURCEMENU.btn === btn) { menu.hidden = true; return; }
+  SOURCEMENU.btn = btn;
+  SOURCEMENU.onSelect = onSelect;
+  const r = btn.getBoundingClientRect();
+  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 320)) + 'px';
+  menu.style.top = (r.bottom + 4) + 'px';
+  
+  let html = '<div style="padding:6px 10px;font-weight:600;font-size:11.5px;color:#8f9ba8;border-bottom:1px solid #282c34">Standard Source Spectrum Presets</div>';
+  html += '<div style="max-height:360px;overflow-y:auto;padding:4px 0">';
+  SOURCE_PRESETS.forEach(p => {
+    const isPhoton = p.particle === 'photon';
+    const tag = isPhoton ? 'Photon' : 'Neutron';
+    const badgeCol = isPhoton ? '#d19a66' : '#61afef';
+    html += `<button type="button" class="sitem" data-preset="${p.id}" style="display:flex;flex-direction:column;align-items:flex-start;width:100%;padding:6px 10px;background:none;border:none;color:#d7dae0;cursor:pointer;text-align:left;gap:2px;border-bottom:1px solid rgba(255,255,255,0.04)">
+      <div style="display:flex;align-items:center;gap:6px;width:100%">
+        <span style="font-size:10px;font-weight:600;padding:1px 5px;border-radius:3px;background:${badgeCol}22;color:${badgeCol}">${tag}</span>
+        <span style="font-size:12px;font-weight:500">${esc(p.name)}</span>
+      </div>
+      <span style="font-size:10.5px;color:#7f848e">${esc(p.desc)}</span>
+    </button>`;
+  });
+  html += '</div>';
+  menu.innerHTML = html;
+  menu.hidden = false;
+  
+  menu.querySelectorAll('.sitem').forEach(b => {
+    b.addEventListener('click', () => {
+      menu.hidden = true;
+      const pid = b.dataset.preset;
+      if (SOURCEMENU.onSelect) {
+        SOURCEMENU.onSelect(pid);
+      } else {
+        addSource(null, pid);
+      }
+    });
+    b.addEventListener('mouseenter', () => { b.style.background = 'rgba(255,255,255,0.06)'; });
+    b.addEventListener('mouseleave', () => { b.style.background = 'none'; });
+  });
+  menu.onkeydown = e => {
+    if (e.key === 'Escape') { e.preventDefault(); menu.hidden = true; btn.focus(); }
+  };
+  const firstBtn = menu.querySelector('.sitem');
+  if (firstBtn) firstBtn.focus();
 }
 
 const ARRAYMENU = {btn:null};
@@ -6498,6 +6668,7 @@ $('#matMenu').addEventListener('keydown', e => { // arrow keys move through the 
 document.addEventListener('mousedown', e => {
   const m = $('#matMenu'); if (!m.hidden && !m.contains(e.target) && !e.target.closest('.rbtn, .matpick')) m.hidden = true;
   const am = $('#arrayMenu'); if (am && !am.hidden && !am.contains(e.target) && !e.target.closest('.rbtn')) am.hidden = true;
+  const sm = $('#sourceMenu'); if (sm && !sm.hidden && !sm.contains(e.target) && !e.target.closest('.rbtn, button')) sm.hidden = true;
 });
 let drag = null, justDragged = false;
 $('#tree').addEventListener('click', e => {
@@ -6698,7 +6869,7 @@ document.addEventListener('keydown', e => {
     moveSelected(e.key === 'ArrowUp' ? -1 : 1);
     if (fromTree) setTimeout(() => { const b = document.querySelector('#tree .titem.is-sel'); if (b) b.focus(); }, 90);
   }
-  if (e.key === 'Escape') { $('#matMenu').hidden = true; if (drag) dragEnd({type:'pointercancel'}); if (TDRAG) endTransform(true); else if (sel.kind === 'multi') select('settings'); }
+  if (e.key === 'Escape') { $('#matMenu').hidden = true; const sm = $('#sourceMenu'); if (sm) sm.hidden = true; if (drag) dragEnd({type:'pointercancel'}); if (TDRAG) endTransform(true); else if (sel.kind === 'multi') select('settings'); }
   if (!e.ctrlKey && !e.metaKey && !e.altKey && ['1', '2', '3', '4'].includes(e.key)) setTool(['select', 'move', 'scale', 'rotate'][+e.key - 1]);
   if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'f' && view.mode === '3d') focusSelection();
 });

@@ -69,6 +69,17 @@ and the MCNP lattice work; fixes listed under Completed).
     hard to read values from.
   - Note on cost: the same histories over 100x more voxels give about 10x the relative error, so a 3D map is a
     statistics decision, not a memory one.
+- **VTK export of mesh tallies and geometry** (cheap): `mesh.write_data_to_vtk()` is one call and the official
+  OpenMC plotter exports VTK too. Gives a real 3D flux view in ParaView now, without waiting for the volume
+  renderer in the mesh plan's stage 2. Add STL export of the geometry for CAD viewers while we're there.
+- **Overlap and lost-particle check before a run** (cheap): the official plotter has an overlap view for this.
+  Problems catches modelling mistakes, but nothing catches two parts overlapping in space, which silently
+  biases results. We already do this for MCNP decks in `geometry_check.py`; the OpenMC side is missing.
+  Sample points (or use OpenMC's geometry-debug run) and report the offending pair in Problems.
+- **Source sites and collision points in the viewport**: the OpenMC plotter draws source sites; MCNP's Visual
+  Editor draws collision points, surface crossings and tally contributions. Source sites are nearly free since
+  tracks already render, and this is the honest version of the splat idea (stage 4 of the mesh plan): each
+  point is one event, not a fit.
 - **Stochastic Geometry Volumes (`openmc.calculate_volumes`)**:
   - Stochastic ray-tracing volume calculation populating volume $\pm 1\sigma$ directly onto parts/materials for volumetric normalization ($\text{reactions/cm}^3/\text{s}$).
 - **Multiple Independent Sources (`SDEF` Multi-Source)**: done in the MCNP export.
@@ -113,6 +124,9 @@ and the MCNP lattice work; fixes listed under Completed).
 - **PNNL Materials Compendium & Cross-Section Explorer**:
   - 1-click standard presets from the PNNL Compendium for structural alloys, shielding concretes, borated polymers, fuels, and control poisons.
   - Interactive microscopic cross-section plot ($\sigma_t, \sigma_\gamma, \sigma_f, \sigma_s$) directly from OpenMC's HDF5 library.
+  - **Cheap route**: `openmc.plotter.plot_xs` is built in and needs only the data library we already have. Best
+    teaching value per hour on this list: plotting a material with and without its S(a,b) table shows the whole
+    thermal-scattering story at a glance (e.g. `c_Be` or `c_Graphite`), as does He-3 (n,p) for a detector.
 - **Weight Windows & Importance Maps (`openmc.WeightWindows`)**:
   - Spatial weight window mesh configuration for deep shielding penetration, with 2D/3D importance heatmaps and MCNP `WWG`/`WWP` cards.
 
@@ -126,7 +140,19 @@ and the MCNP lattice work; fixes listed under Completed).
 - **Spherical Mesh Tallies (`openmc.SphericalMesh`)**:
   - Spherical grid binning ($r, \theta, \phi$) with arbitrary center origin for spherical tokamak chambers and point-source dosimetry.
 
-### 5. Package: CAD & Geometry Interoperability
+### 5. Package: Conversion & Interoperability (a "Convert" tab)
+
+- **A Convert tab in the ribbon** gathering everything that crosses a file format, so import/export isn't
+  scattered between Export and the file menu: CAD in and out, MCNP in and out, OpenMC scripts and XML in,
+  VTK/STL out, and whatever phase-space format we support later. Each entry says what survives the trip and
+  what doesn't, since none of these conversions is lossless.
+- **Import an MCNP deck** (`openmc_mcnp_adapter` converts MCNP models to OpenMC):
+  - We already write MCNP decks *and* check them against the OpenMC model point by point. Import closes the
+    loop: read a hand-written deck (e.g. the user's NE403 graphite deck) into Studio's scene graph, then run
+    the existing geometry check to prove the round trip.
+  - Expect gaps: macrobodies, lattices, transforms and repeated structures each need mapping back, and Studio
+    parts are shapes rather than raw cells, so some decks will import as geometry we can display but not edit
+    as parts. Say so per cell rather than failing the whole file.
 - **GEOUNED CAD-to-OpenMC Translation**:
   - Integration with **GEOUNED** (open-source tool developed by UNED utilizing FreeCAD and OpenCASCADE):
     - **CAD to CSG**: Convert standard engineering CAD models (STEP / IGES) into native OpenMC constructive solid geometry (CSG) surfaces and cells with analytical representations.

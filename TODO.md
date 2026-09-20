@@ -11,7 +11,8 @@ and the MCNP lattice work; fixes listed under Completed).
     orientations and with two axial levels.
   - Still open: prove it once in real MCNP. Plot the pile deck and a hex deck with lattice index labels
     (manual p. 290), or compare short runs against the cell-by-cell decks.
-  - **RPP Macrobody Element**: Represent the `LAT=1` base element cell using a single `RPP` macrobody card instead of 6 individual `PX/PY/PZ` planes (improves deck readability and matches human-written deck conventions; requires adding `RPP` support to `geometry_check.py`).
+  - **RPP macrobody element**: done. The `LAT=1` element is one `RPP` card instead of six planes, and
+    `geometry_check.py` reads it (its facet order gives the same index directions, manual p. 278, 760).
   - Cell tallies on parts inside a lattice: done in model.py (CellInstanceFilter) and in model.mcnp as
     `(unit < latcell[i j k] < filled cell)` bins (manual p. 452-455). The validator follows each bin through
     the lattice cards and compares it with the OpenMC instance point by point. Still to prove in real MCNP
@@ -121,16 +122,41 @@ and the MCNP lattice work; fixes listed under Completed).
   - Drag-and-drop parser for existing `model.py` scripts and XML suites (`geometry.xml`, `materials.xml`, `settings.xml`, `tallies.xml`) into OpenMC Studio's scene graph.
 
 ### 6. MCNP 6.3 Performance & Geometry Optimizations (Research Analysis)
-- **Negative Universes (`u=-n`) for Lattice Tracking Acceleration**:
-  - Manual ref: §5.5.5.1 (PDF p. 288–289). Precede the `u=` entry with a minus sign (e.g. `u=-2`) for any finite cell fully enclosed by the unit cell boundary (fuel pellet, clad, inner gas gap). Tells MCNP tracking to skip distance-to-boundary calculations against higher-level lattice boundaries, yielding an estimated 10–25% speedup in particle tracking.
-- **Macrobodies (`RPP`, `RCC`, `HEX`) vs. Primitive Half-Space Planes**:
-  - Manual ref: §3.4.1 #5 (PDF p. 243) & §5.3.4 (PDF p. 271–278). Replace sets of 6 planar surfaces (`PX`, `PY`, `PZ`) with native `RPP` macrobodies, and cylindrical pins with `RCC`. Reduces surface card counts by up to 75%, simplifies boolean intersections, and accelerates MCNP internal ray-bounding evaluations.
-- **Pruning the Complement Operator (`#`)**:
-  - Manual ref: §3.4.1 #6 (PDF p. 243) & §2.2.1 (PDF p. 56). Avoid nested `#` complement tokens which trigger de Morgan surface expansions during particle tracking.
-- **Direct Analytic Source Sampling (`SP -2`, `SP -3`)**:
-  - Manual ref: §5.8.1–5.8.3 (PDF p. 379, 396–400). Replace large discrete histogram tables (`SI/SP`) with closed-form analytic sampling (Maxwell `SP -2`, Watt fission `SP -3`, Gaussian fusion `SP -4`) for $O(1)$ random number evaluation.
-- **I/O & Worker Disk Overhead Reduction (`PRDMP 0 0 0 0`)**:
-  - Manual ref: §3.4.3 #2 (PDF p. 244). Add `PRDMP 0 0 0 0` and suppress unneeded print tables in automated worker runs to eliminate scratch `RUNTPE` disk writes.
+**No MCNP runs here.** Nothing in this section has been measured: this machine has no MCNP executable, so
+every speed claim below is from the manual or from reasoning, never from a timing. Measure before optimising.
+
+- **Direct analytic source sampling (`SP -2`, `SP -3`, `SP -4`)**: **done**. Maxwell, Watt and the Gaussian
+  (Muir) fusion spectrum export as closed-form cards from `src/mcnp_cards.py`, instead of histogram tables.
+- **Macrobodies**: **`RPP` and `RCC` done**, `HEX` open.
+  - `src/lattice_cards.py` writes the `LAT=1` element as one `RPP`; `src/macrobody_cards.py` turns standalone
+    boxes into `RPP` and finite cylinders into `RCC`.
+  - The gain is **readability and deck style, not speed**: MCNP decomposes every macrobody into ordinary
+    surfaces internally (manual p. 271), and the input tip at p. 243 is about simple input, not tracking cost.
+  - Left: a `HEX` macrobody for hex-prism parts and hex lattice elements, for the same readability reason.
+- **Negative universes (`u=-n`)**: **considered and declined as a default** (decided 2026-09-19, see
+  `messages/openmc.md` 13:45). Don't reopen it without the evidence below.
+  - The manual (p. 288) promises only that a problem "will run faster", beside a Caution that MCNP cannot
+    detect a mistake in this feature: "Extremely wrong answers can be quietly calculated."
+  - The "10-25% speedup" is not in the manual. A search of the text found nothing; it needs a citation.
+  - Our geometry check cannot catch a wrong `u=-n`: the regions are unchanged, only MCNP's tracking differs.
+    Every other MCNP feature we export has a check that fails when we get it wrong. This one would have none.
+  - The graphite pile has no cell that qualifies anyway: the aperture spans the full depth of its element and
+    touches its faces, and the graphite around it is unbounded.
+  - What would change our mind: an opt-in switch, restricted to cells whose bounding box sits strictly inside
+    the element with a margin, plus one real MCNP run compared against the same deck without it.
+- **Pruning the complement operator (`#`)**: partly done, low priority.
+  - `src/macrobody_cards.py` folds de Morgan unions back into a single macrobody sense.
+  - Cell complements (`#c`) are untouched. Our decks use `#` only in the graveyard cell, which has `IMP:N=0`,
+    so particles die there immediately. The manual's warning (p. 261, tip 2) is about complements that drag
+    unneeded surfaces into a cell, which Studio already limits to overlapping bounding boxes.
+- **Runtape and print volume (`PRDMP`)**: open, and **not as previously written**. `PRDMP ndp ndm mct ndmp dmmp`
+  (manual p. 576-577) takes *intervals*, not switches:
+  - `ndm` is how often a dump is written (histories, or minutes if negative). Zero is not "off"; the default is
+    every 60 minutes plus one at the end, and the manual gives no way to suppress the final dump.
+  - `ndmp` caps how many dumps the runtape keeps, which is the real way to bound its size.
+  - `mct = 0` means **no MCTAL file**, the opposite of what an automated run wants if it ever reads tallies
+    back; `mct = 1` writes one at the end.
+  - Worth setting only when someone actually runs these decks and measures the I/O.
 
 ---
 

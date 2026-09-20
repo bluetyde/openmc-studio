@@ -778,6 +778,120 @@ if (addedCo.name !== 'Cobalt-60' || addedCo.preset !== 'co60' || addedCo.particl
 }
 console.log('Source Spectrum Preset Library tests PASSED!');
 
+// ── Test Energy Bin Structure Presets & Detector Response Tallies ──
+console.log('\nTesting Energy Bin Structure Presets & 1-Click Detector Response Tallies...');
+const ePresets = sandbox.ENERGY_PRESETS;
+if (!Array.isArray(ePresets) || ePresets.length < 6) {
+  console.error(`FAILED: Expected at least 6 ENERGY_PRESETS, got ${ePresets ? ePresets.length : 'none'}`);
+  process.exit(1);
+}
+
+const requiredEIds = ['two_group', 'three_group', 'four_group', 'cd_cutoff', 'decade_10', 'lanl_30'];
+requiredEIds.forEach(id => {
+  const ep = ePresets.find(x => x.id === id);
+  if (!ep || !ep.name || !ep.ebins || !ep.desc) {
+    console.error(`FAILED: Missing or incomplete energy preset "${id}"`);
+    process.exit(1);
+  }
+  const parsed = sandbox.parseNums(ep.ebins);
+  if (!parsed.vals || parsed.vals.length < 2) {
+    console.error(`FAILED: Energy preset "${id}" has insufficient edges: ${ep.ebins}`);
+    process.exit(1);
+  }
+  for (let i = 0; i < parsed.vals.length - 1; i++) {
+    if (parsed.vals[i] >= parsed.vals[i+1]) {
+      console.error(`FAILED: Energy preset "${id}" edges not strictly ascending at index ${i}: ${ep.ebins}`);
+      process.exit(1);
+    }
+  }
+});
+
+// Test DETECTOR_PRESETS
+const dPresets = sandbox.DETECTOR_PRESETS;
+if (!Array.isArray(dPresets) || dPresets.length < 4) {
+  console.error(`FAILED: Expected at least 4 DETECTOR_PRESETS, got ${dPresets ? dPresets.length : 'none'}`);
+  process.exit(1);
+}
+
+// Test addDetectorTally helper
+vm.runInContext("clearPhysics('tallies');", sandbox);
+vm.runInContext("S.materials = [];", sandbox); // start clean to test auto-provisioning
+
+// 1. Add He-3 detector tally
+vm.runInContext("addDetectorTally('he3');", sandbox);
+const addedHe3 = vm.runInContext("S.tallies[0]", sandbox);
+if (!addedHe3 || addedHe3.detector !== 'he3' || addedHe3.responseScore !== '(n,p)' || addedHe3.responseNuc !== 'He3') {
+  console.error('FAILED: addDetectorTally("he3") failed:', addedHe3);
+  process.exit(1);
+}
+const hasHe3Mat = vm.runInContext("S.materials.some(m => m.name.includes('He-3'))", sandbox);
+if (!hasHe3Mat) {
+  console.error('FAILED: He3 detector tally did not auto-provision He3 gas material');
+  process.exit(1);
+}
+
+// 2. Add B-10 detector tally
+vm.runInContext("addDetectorTally('b10');", sandbox);
+const addedB10 = vm.runInContext("S.tallies[1]", sandbox);
+if (!addedB10 || addedB10.detector !== 'b10' || addedB10.responseScore !== '(n,a)' || addedB10.responseNuc !== 'B10') {
+  console.error('FAILED: addDetectorTally("b10") failed:', addedB10);
+  process.exit(1);
+}
+const hasB10Mat = vm.runInContext("S.materials.some(m => m.name.includes('BF3'))", sandbox);
+if (!hasB10Mat) {
+  console.error('FAILED: B10 detector tally did not auto-provision BF3 gas material');
+  process.exit(1);
+}
+
+// 3. Add U-235 fission chamber tally
+vm.runInContext("addDetectorTally('fission');", sandbox);
+const addedFiss = vm.runInContext("S.tallies[2]", sandbox);
+if (!addedFiss || addedFiss.detector !== 'fission' || addedFiss.responseScore !== 'fission' || addedFiss.responseNuc !== 'U235') {
+  console.error('FAILED: addDetectorTally("fission") failed:', addedFiss);
+  process.exit(1);
+}
+const hasUo2Mat = vm.runInContext("S.materials.some(m => m.name.includes('Uranium dioxide'))", sandbox);
+if (!hasUo2Mat) {
+  console.error('FAILED: Fission detector tally did not auto-provision Uranium dioxide material');
+  process.exit(1);
+}
+
+// 4. Add Cadmium foil activation tally with energy bins
+vm.runInContext("addDetectorTally('foil_cd');", sandbox);
+const addedFoil = vm.runInContext("S.tallies[3]", sandbox);
+if (!addedFoil || addedFoil.scores[0] !== '(n,gamma)' || addedFoil.ebins !== '0.0, 5e-7, 20.0') {
+  console.error('FAILED: addDetectorTally("foil_cd") failed:', addedFoil);
+  process.exit(1);
+}
+
+// Test model.py and MCNP generation for detector tallies & energy presets
+vm.runInContext("S.settings.worldFill = S.materials[0].id;", sandbox);
+const pyDet = sandbox.generate([]);
+if (!pyDet.includes('_get_detector_filter') || !pyDet.includes('18, "macro"')) {
+  console.error('FAILED: Python export missing fission chamber detector filter call with MT 18:\n', pyDet);
+  process.exit(1);
+}
+if (!pyDet.includes('openmc.EnergyFilter([0.0, 0.5, 2e7])')) {
+  console.error('FAILED: Python export missing cadmium cutoff energy filter:\n', pyDet);
+  process.exit(1);
+}
+
+// Check MCNP card for fission tally
+const mcnpFiss = sandbox.mcnpTally(addedFiss);
+if (!/FM\d+ \(N \d+ 18\)/.test(mcnpFiss)) {
+  console.error('FAILED: MCNP card for fission chamber missing FM (N <mat> 18):\n', mcnpFiss);
+  process.exit(1);
+}
+
+// Check MCNP card for cadmium foil tally (E card with upper boundaries 5e-7 and 20)
+const mcnpFoil = sandbox.mcnpTally(addedFoil);
+if (!/E\d+ 5e-7 20/.test(mcnpFoil)) {
+  console.error('FAILED: MCNP card for cadmium foil missing E card with 5e-7 20:\n', mcnpFoil);
+  process.exit(1);
+}
+
+console.log('Energy Bin Structure Presets & 1-Click Detector Response Tallies tests PASSED!');
+
 console.log('\nAll frontend model generation & MCNP translation tests PASSED!');
 
 

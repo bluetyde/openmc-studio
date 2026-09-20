@@ -392,6 +392,8 @@ input[type=checkbox]{accent-color:var(--accent)}
 <input type="file" id="openFile" accept=".json,application/json" hidden>
 <div class="menu" id="matMenu" hidden role="menu"></div>
 <div class="menu" id="sourceMenu" hidden role="menu"></div>
+<div class="menu" id="detectorMenu" hidden role="menu"></div>
+<div class="menu" id="energyMenu" hidden role="menu"></div>
 <div class="menu" id="arrayMenu" hidden role="dialog" aria-label="Repeat in an array"></div>
 <div class="dropline" id="dropLine" hidden></div>
 <script>
@@ -739,6 +741,94 @@ var SOURCE_PRESETS = [
   }
 ];
 
+var ENERGY_PRESETS = [
+  {
+    id: 'two_group',
+    name: '2-Group (Thermal / Fast)',
+    ebins: '0.0, 6.25e-7, 20.0',
+    desc: 'Thermal (< 0.625 eV) and fast (> 0.625 eV) reactor groups'
+  },
+  {
+    id: 'three_group',
+    name: '3-Group (Thermal / Epithermal / Fast)',
+    ebins: '0.0, 6.25e-7, 0.1, 20.0',
+    desc: 'Thermal (< 0.625 eV), resonance/epithermal (0.625 eV to 100 keV), fast (> 100 keV)'
+  },
+  {
+    id: 'four_group',
+    name: '4-Group (Reactor physics standard)',
+    ebins: '0.0, 6.25e-7, 0.00553, 0.821, 20.0',
+    desc: 'Thermal (< 0.625 eV), resolved resonance (0.625 eV-5.53 keV), slowing-down (5.53-821 keV), fast (> 821 keV)'
+  },
+  {
+    id: 'cd_cutoff',
+    name: 'Cadmium Cutoff (Sub-Cd / Epi-Cd)',
+    ebins: '0.0, 5e-7, 20.0',
+    desc: 'Thermal sub-cadmium (< 0.5 eV) and epi-cadmium (> 0.5 eV) foil activation'
+  },
+  {
+    id: 'decade_10',
+    name: '10-Decade Logarithmic Spectrum',
+    ebins: '1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1.0, 20.0',
+    desc: '10 logarithmic energy decades from 1 meV (cold) to 20 MeV (fast)'
+  },
+  {
+    id: 'lanl_30',
+    name: 'LANL 30-Group Standard',
+    ebins: '1e-10, 1.39e-8, 3e-7, 4.14e-7, 5.32e-7, 6.83e-7, 8.76e-7, 1.123e-6, 1.44e-6, 1.855e-6, 2.38e-6, 3.06e-6, 3.93e-6, 5.04e-6, 1.075e-5, 3.73e-5, 1.01e-4, 4.54e-4, 1.58e-3, 5.53e-3, 2.48e-2, 6.74e-2, 0.183, 0.498, 1.353, 2.231, 3.679, 6.065, 10.0, 13.5, 20.0',
+    desc: 'Standard 30-group fast and thermal reactor benchmark structure'
+  }
+];
+
+var DETECTOR_PRESETS = [
+  {
+    id: 'he3',
+    name: 'He-3 Proportional Counter',
+    particle: 'neutron',
+    detector: 'he3',
+    reaction: '(n,p)',
+    mt: '103',
+    nuclide: 'He3',
+    matPreset: 'he3',
+    matName: 'He3 gas',
+    desc: 'He-3(n,p)T reaction [MT 103] with macroscopic gas scaling'
+  },
+  {
+    id: 'b10',
+    name: 'B-10 BF3 Proportional Counter',
+    particle: 'neutron',
+    detector: 'b10',
+    reaction: '(n,a)',
+    mt: '107',
+    nuclide: 'B10',
+    matPreset: 'bf3',
+    matName: 'BF3 gas',
+    desc: 'B-10(n,a)Li-7 reaction [MT 107] with macroscopic gas scaling'
+  },
+  {
+    id: 'fission',
+    name: 'U-235 Fission Chamber',
+    particle: 'neutron',
+    detector: 'fission',
+    reaction: 'fission',
+    mt: '18',
+    nuclide: 'U235',
+    matPreset: 'uo2',
+    matName: 'Uranium dioxide',
+    desc: 'U-235(n,f) reaction [MT 18] in fissile detector deposit'
+  },
+  {
+    id: 'foil_cd',
+    name: 'Cadmium-Ratio Foil Activation',
+    particle: 'neutron',
+    detector: 'none',
+    reaction: '(n,gamma)',
+    scores: ['(n,gamma)'],
+    ebins: '0.0, 5e-7, 20.0',
+    desc: 'Thermal (< 0.5 eV) vs. epi-cadmium (> 0.5 eV) radiative capture activation'
+  }
+];
+
 function applySourcePreset(s, key) {
   const p = SOURCE_PRESETS.find(x => x.id === key);
   if (!p) {
@@ -835,6 +925,9 @@ function normalizeProject(o) { // fill fields added in later versions
     } else if (t.detector === 'he3') {
       if (!t.responseScore || t.responseScore === '(n,a)') t.responseScore = '(n,p)';
       t.responseNuc = t.responseNuc || 'He3';
+    } else if (t.detector === 'fission') {
+      t.responseScore = 'fission';
+      t.responseNuc = t.responseNuc || 'U235';
     } else {
       t.responseScore = t.responseScore || '(n,p)';
       t.responseNuc = t.responseNuc || 'all';
@@ -1498,6 +1591,14 @@ function resolveDetector(t) {
     respNuc = 'B10';
     if (!respMatId) {
       const autoMat = S.materials.find(m => (m.comps && (m.comps.includes('B10') || m.comps.includes('B0') || /\bB\b/.test(m.comps))) || /b-?10|bf3|boron/i.test(m.name));
+      if (autoMat) respMatId = autoMat.id;
+    }
+  } else if (t.detector === 'fission') {
+    respScore = 'fission';
+    mt = '18';
+    respNuc = 'U235';
+    if (!respMatId) {
+      const autoMat = S.materials.find(m => (m.comps && m.comps.includes('U235')) || /u-?235|fiss|fuel|heu|leu/i.test(m.name));
       if (autoMat) respMatId = autoMat.id;
     }
   } else if (t.detector === 'custom') {
@@ -2347,6 +2448,40 @@ function addTally(kind) {
   S.tallies.push(t);
   select('tally', t.id);
 }
+
+function addDetectorTally(key) {
+  const p = DETECTOR_PRESETS.find(x => x.id === key);
+  if (!p) return;
+  
+  let matId = '';
+  if (p.matPreset) {
+    const {m, added} = materialForKey(p.matPreset);
+    matId = m.id;
+    if (added) log('info', `Added detector medium "${m.name}" to Materials.`);
+  }
+  
+  const pick = sel.kind === 'part' && sel.id ? [sel.id] : (S.parts.length > 0 ? [S.parts[0].id] : ['world']);
+  const t = {
+    id: newId('t'),
+    name: uniqueName(S.tallies, p.name.split(' (')[0]),
+    kind: 'cell',
+    cells: pick,
+    surfaces: [],
+    scores: p.scores ? [...p.scores] : ['flux'],
+    ebins: p.ebins || '',
+    detector: p.detector,
+    responseMat: matId,
+    responseScale: 'macro',
+    responseNuc: p.nuclide || 'all',
+    responseScore: p.reaction,
+    nx: 50, ny: 50, nz: 50, lx: -50, ly: -50, lz: -50, ux: 50, uy: 50, uz: 50
+  };
+  S.tallies.push(t);
+  select('tally', t.id);
+  renderAll();
+  schedule();
+  log('info', `Added detector response tally "${t.name}".`);
+}
 function removeSelected() {
   if (sel.kind === 'group' || sel.kind === 'multi') {
     const items = selItems(), label = sel.kind === 'group' ? `group ${(groupById(sel.id) || {}).name}` : `${items.length} items`;
@@ -2686,7 +2821,7 @@ const RIBBON = {
   ],
   Physics:[
     {label:'Sources', btns:[['source', 'Neutron', () => addSource('neutron')], ['source', 'Photon', () => addSource('photon')], ['source', 'Preset ▾', e => openSourceMenu(e.currentTarget)]]},
-    {label:'Tallies', btns:[['cellTally', 'Cell', () => addTally('cell')], ['meshTally', 'Mesh', () => addTally('mesh')], ['surfaceTally', 'Surface', () => addTally('surface')]]},
+    {label:'Tallies', btns:[['cellTally', 'Cell', () => addTally('cell')], ['meshTally', 'Mesh', () => addTally('mesh')], ['surfaceTally', 'Surface', () => addTally('surface')], ['cellTally', 'Detector ▾', e => openDetectorMenu(e.currentTarget)]]},
     {label:'Run', btns:[
       ['dice', 'Eigenvalue', () => toggleSetting('runMode'), null, () => S.settings.runMode === 'eigenvalue'],
       ['source', 'Photons', () => toggleSetting('photon'), null, () => !!S.settings.photon],
@@ -3069,13 +3204,18 @@ function specFor(kind, o) {
         F('vec', null, 'Z axial [min, max]', {keys:['zmin', 'zmax'], unit:'cm', show:() => mesh() && o.meshGeom === 'cylindrical'}),
         F('vec', null, 'Origin (x, y, z)', {keys:['ox', 'oy', 'oz'], unit:'cm', show:() => mesh() && o.meshGeom === 'cylindrical'}),
         F('multi', 'scores', 'Scores', {options:() => SCORES.map(s => [s, s])}),
-        F('text', 'ebins', 'Energy edges', {placeholder:'none', hint:'MeV, rising, including the lowest edge: 0, 5e-7, 0.1, 20 gives thermal, epithermal and fast bins.'})
+        F('text', 'ebins', 'Energy edges', {placeholder:'none', hint:'MeV, rising, including the lowest edge: 0, 5e-7, 0.1, 20 gives thermal, epithermal and fast bins.'}),
+        {type:'buttons', btns:[
+          ['Energy presets ▾', e => openEnergyMenu(e.currentTarget, ep => { o.ebins = ep.ebins; renderProps(); schedule(); })],
+          ['Clear edges', () => { o.ebins = ''; renderProps(); schedule(); }]
+        ]}
       ]},
       {title:'Detector response', fields:[
         F('select', 'detector', 'Response', {options:() => [
           ['none', 'None (unweighted)'],
           ['he3', 'He-3 (n,p) proportional counter [MT 103]'],
           ['b10', 'B-10 (n,a) BF3 counter [MT 107]'],
+          ['fission', 'U-235 fission chamber [MT 18]'],
           ['custom', 'Custom material & reaction']
         ]}),
         F('select', 'responseMat', 'Detector material', {
@@ -3242,6 +3382,7 @@ function fieldEl(f, obj) {
         if (f.key === 'detector') {
           if (s.value === 'b10') { obj.responseScore = '(n,a)'; obj.responseNuc = 'B10'; }
           else if (s.value === 'he3') { obj.responseScore = '(n,p)'; obj.responseNuc = 'He3'; }
+          else if (s.value === 'fission') { obj.responseScore = 'fission'; obj.responseNuc = 'U235'; }
           else if (s.value === 'custom') { obj.responseScore = obj.responseScore || '(n,p)'; obj.responseNuc = obj.responseNuc || 'all'; }
         } else if (f.key === 'preset' && sel.kind === 'source') {
           applySourcePreset(obj, s.value);
@@ -4748,6 +4889,94 @@ function openSourceMenu(btn, onSelect = null) {
         SOURCEMENU.onSelect(pid);
       } else {
         addSource(null, pid);
+      }
+    });
+    b.addEventListener('mouseenter', () => { b.style.background = 'rgba(255,255,255,0.06)'; });
+    b.addEventListener('mouseleave', () => { b.style.background = 'none'; });
+  });
+  menu.onkeydown = e => {
+    if (e.key === 'Escape') { e.preventDefault(); menu.hidden = true; btn.focus(); }
+  };
+  const firstBtn = menu.querySelector('.sitem');
+  if (firstBtn) firstBtn.focus();
+}
+
+const DETECTORMENU = {btn:null};
+function openDetectorMenu(btn) {
+  const menu = $('#detectorMenu');
+  if (!menu) return;
+  if (!menu.hidden && DETECTORMENU.btn === btn) { menu.hidden = true; return; }
+  DETECTORMENU.btn = btn;
+  const r = btn.getBoundingClientRect();
+  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 320)) + 'px';
+  menu.style.top = (r.bottom + 4) + 'px';
+  
+  let html = '<div style="padding:6px 10px;font-weight:600;font-size:11.5px;color:#8f9ba8;border-bottom:1px solid #282c34">Standard Detector Response Tallies</div>';
+  html += '<div style="max-height:360px;overflow-y:auto;padding:4px 0">';
+  DETECTOR_PRESETS.forEach(p => {
+    const badgeCol = p.detector === 'none' ? '#98c379' : '#e5c07b';
+    const tag = p.reaction || 'Detector';
+    html += `<button type="button" class="sitem" data-preset="${p.id}" style="display:flex;flex-direction:column;align-items:flex-start;width:100%;padding:6px 10px;background:none;border:none;color:#d7dae0;cursor:pointer;text-align:left;gap:2px;border-bottom:1px solid rgba(255,255,255,0.04)">
+      <div style="display:flex;align-items:center;gap:6px;width:100%">
+        <span style="font-size:10px;font-weight:600;padding:1px 5px;border-radius:3px;background:${badgeCol}22;color:${badgeCol}">${tag}</span>
+        <span style="font-size:12px;font-weight:500">${esc(p.name)}</span>
+      </div>
+      <span style="font-size:10.5px;color:#7f848e">${esc(p.desc)}</span>
+    </button>`;
+  });
+  html += '</div>';
+  menu.innerHTML = html;
+  menu.hidden = false;
+  
+  menu.querySelectorAll('.sitem').forEach(b => {
+    b.addEventListener('click', () => {
+      menu.hidden = true;
+      addDetectorTally(b.dataset.preset);
+    });
+    b.addEventListener('mouseenter', () => { b.style.background = 'rgba(255,255,255,0.06)'; });
+    b.addEventListener('mouseleave', () => { b.style.background = 'none'; });
+  });
+  menu.onkeydown = e => {
+    if (e.key === 'Escape') { e.preventDefault(); menu.hidden = true; btn.focus(); }
+  };
+  const firstBtn = menu.querySelector('.sitem');
+  if (firstBtn) firstBtn.focus();
+}
+
+const ENERGYMENU = {btn:null, onSelect:null};
+function openEnergyMenu(btn, onSelect = null) {
+  const menu = $('#energyMenu');
+  if (!menu) return;
+  if (!menu.hidden && ENERGYMENU.btn === btn) { menu.hidden = true; return; }
+  ENERGYMENU.btn = btn;
+  ENERGYMENU.onSelect = onSelect;
+  const r = btn.getBoundingClientRect();
+  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 320)) + 'px';
+  menu.style.top = (r.bottom + 4) + 'px';
+  
+  let html = '<div style="padding:6px 10px;font-weight:600;font-size:11.5px;color:#8f9ba8;border-bottom:1px solid #282c34">Standard Energy Bin Structures</div>';
+  html += '<div style="max-height:360px;overflow-y:auto;padding:4px 0">';
+  ENERGY_PRESETS.forEach(p => {
+    const numBins = p.ebins.split(',').length - 1;
+    html += `<button type="button" class="sitem" data-preset="${p.id}" style="display:flex;flex-direction:column;align-items:flex-start;width:100%;padding:6px 10px;background:none;border:none;color:#d7dae0;cursor:pointer;text-align:left;gap:2px;border-bottom:1px solid rgba(255,255,255,0.04)">
+      <div style="display:flex;align-items:center;gap:6px;width:100%">
+        <span style="font-size:10px;font-weight:600;padding:1px 5px;border-radius:3px;background:#61afef22;color:#61afef">${numBins} ${numBins === 1 ? 'bin' : 'bins'}</span>
+        <span style="font-size:12px;font-weight:500">${esc(p.name)}</span>
+      </div>
+      <span style="font-size:10.5px;color:#7f848e">${esc(p.desc)}</span>
+      <span style="font-size:9.5px;font-family:monospace;color:#5c6370;margin-top:1px">${esc(p.ebins.length > 40 ? p.ebins.slice(0, 38) + '…' : p.ebins)}</span>
+    </button>`;
+  });
+  html += '</div>';
+  menu.innerHTML = html;
+  menu.hidden = false;
+  
+  menu.querySelectorAll('.sitem').forEach(b => {
+    b.addEventListener('click', () => {
+      menu.hidden = true;
+      const p = ENERGY_PRESETS.find(x => x.id === b.dataset.preset);
+      if (ENERGYMENU.onSelect && p) {
+        ENERGYMENU.onSelect(p);
       }
     });
     b.addEventListener('mouseenter', () => { b.style.background = 'rgba(255,255,255,0.06)'; });
@@ -6669,6 +6898,8 @@ document.addEventListener('mousedown', e => {
   const m = $('#matMenu'); if (!m.hidden && !m.contains(e.target) && !e.target.closest('.rbtn, .matpick')) m.hidden = true;
   const am = $('#arrayMenu'); if (am && !am.hidden && !am.contains(e.target) && !e.target.closest('.rbtn')) am.hidden = true;
   const sm = $('#sourceMenu'); if (sm && !sm.hidden && !sm.contains(e.target) && !e.target.closest('.rbtn, button')) sm.hidden = true;
+  const dm = $('#detectorMenu'); if (dm && !dm.hidden && !dm.contains(e.target) && !e.target.closest('.rbtn, button')) dm.hidden = true;
+  const em = $('#energyMenu'); if (em && !em.hidden && !em.contains(e.target) && !e.target.closest('.rbtn, button')) em.hidden = true;
 });
 let drag = null, justDragged = false;
 $('#tree').addEventListener('click', e => {
@@ -6869,7 +7100,15 @@ document.addEventListener('keydown', e => {
     moveSelected(e.key === 'ArrowUp' ? -1 : 1);
     if (fromTree) setTimeout(() => { const b = document.querySelector('#tree .titem.is-sel'); if (b) b.focus(); }, 90);
   }
-  if (e.key === 'Escape') { $('#matMenu').hidden = true; const sm = $('#sourceMenu'); if (sm) sm.hidden = true; if (drag) dragEnd({type:'pointercancel'}); if (TDRAG) endTransform(true); else if (sel.kind === 'multi') select('settings'); }
+  if (e.key === 'Escape') {
+    $('#matMenu').hidden = true;
+    const sm = $('#sourceMenu'); if (sm) sm.hidden = true;
+    const dm = $('#detectorMenu'); if (dm) dm.hidden = true;
+    const em = $('#energyMenu'); if (em) em.hidden = true;
+    if (drag) dragEnd({type:'pointercancel'});
+    if (TDRAG) endTransform(true);
+    else if (sel.kind === 'multi') select('settings');
+  }
   if (!e.ctrlKey && !e.metaKey && !e.altKey && ['1', '2', '3', '4'].includes(e.key)) setTool(['select', 'move', 'scale', 'rotate'][+e.key - 1]);
   if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'f' && view.mode === '3d') focusSelection();
 });

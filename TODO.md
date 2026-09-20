@@ -53,6 +53,22 @@ and the MCNP lattice work; fixes listed under Completed).
   - **Lethargy Flux Spectrum**: Plot flux per unit lethargy $\phi(u) = E \cdot \phi(E)$ vs. $\log_{10} E$, presenting the thermal Maxwellian peak, $1/E$ slowing-down resonance region, and fission spectrum on equal footing.
   - **1D Spatial Line Cuts**: Extract 1D radial or axial flux profiles from 2D/3D mesh tallies with shaded $\pm 1\sigma$ Monte Carlo uncertainty bands.
   - **Reaction Rate & Absorption Breakdown**: Interactive pie and stacked bar charts detailing neutron fate (% absorbed in fuel vs moderator vs poison vs leakage).
+- **Mesh maps: slabs, 3D and how to look at them** (full plan: `Claude Code Test\plans\mesh-maps-plan.md`):
+  - A mesh tally is a **slab**: one axis has a single bin, so it looks like a sliver from any other view. The
+    bins and corners are already editable in the tally properties; what's missing is saying so.
+  - Stage 1: a Map control (XY / XZ / YZ slab or 3D box) with a thickness field, the voxel count **and the
+    expected relative error**, an "add the other two planes" button, an edge-on hint in the viewport, and
+    layer labels that name the plane.
+  - Stage 2: a volume view for 3D maps (brightest-along-ray, isosurface), marched per pixel so resolution
+    doesn't cost frames. Today a 3D mesh is tallied in full but drawn one slice at a time.
+  - Stage 3: functional expansion tallies (`SpatialLegendreFilter`, `ZernikeFilter`, ...) for a smooth flux
+    field with real error bars instead of a million voxels. Experiment on the pile first; MCNP has no
+    equivalent, so the export must refuse it with a reason.
+  - Stage 4: Gaussian splats for **event clouds** (fission, collision and source sites, track vertices), where
+    each splat is one event. Not for mesh tallies: a fitted cloud smooths across material boundaries and is
+    hard to read values from.
+  - Note on cost: the same histories over 100x more voxels give about 10x the relative error, so a 3D map is a
+    statistics decision, not a memory one.
 - **Stochastic Geometry Volumes (`openmc.calculate_volumes`)**:
   - Stochastic ray-tracing volume calculation populating volume $\pm 1\sigma$ directly onto parts/materials for volumetric normalization ($\text{reactions/cm}^3/\text{s}$).
 - **Multiple Independent Sources (`SDEF` Multi-Source)**: done in the MCNP export.

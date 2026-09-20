@@ -407,6 +407,7 @@ const ICON = {
   material:'<path d="M7 2.5h4M7.5 2.5V7L3.5 14a1.3 1.3 0 0 0 1.1 1.9h8.8a1.3 1.3 0 0 0 1.1-1.9L10.5 7V2.5"/><path d="M5.2 11h7.6"/>',
   source:'<circle cx="9" cy="9" r="2" fill="currentColor"/><path d="M9 1.5v3M9 13.5v3M1.5 9h3M13.5 9h3M3.7 3.7l2.1 2.1M12.2 12.2l2.1 2.1M3.7 14.3l2.1-2.1M12.2 5.8l2.1-2.1"/>',
   cellTally:'<circle cx="9" cy="9" r="6.5"/><circle cx="9" cy="9" r="3"/><circle cx="9" cy="9" r=".8" fill="currentColor"/>',
+  surfaceTally:'<path d="M12.5 2.5v13"/><path d="M2.5 9h8"/><path d="M8 6l2.5 3-2.5 3"/>',
   meshTally:'<rect x="2.5" y="2.5" width="13" height="13" rx="1"/><path d="M6.8 2.5v13M11.2 2.5v13M2.5 6.8h13M2.5 11.2h13"/>',
   undo:'<path d="M6.5 4.5L3 8l3.5 3.5"/><path d="M3.5 8H11a4 4 0 0 1 0 8H8"/>',
   redo:'<path d="M11.5 4.5L15 8l-3.5 3.5"/><path d="M14.5 8H7a4 4 0 0 0 0 8h3"/>',
@@ -658,7 +659,7 @@ function matSig(m) { return JSON.stringify([m.name, m.color, m.density, m.frac, 
 const isUntouchedCopy = m => !!m.pristine && m.pristine === matSig(m);
 
 const DEFAULT_SETTINGS = {name:'Shielding demo', runMode:'fixed source', particles:10000, batches:10, inactive:0, seed:12345,
-  maxTracks:50, track:'', photon:false, photonCutoff:1000, temperatureDefault:293.6, temperatureMethod:'interpolation',
+  maxTracks:50, track:'', photon:false, photonCutoff:1000, fissionNeutrons:true, temperatureDefault:293.6, temperatureMethod:'interpolation',
   entropyMesh:false, entropyNx:10, entropyNy:10, entropyNz:10,
   worldShape:'box', worldR:100, worldBC:'vacuum', worldFill:'void'};
 
@@ -701,6 +702,7 @@ function normalizeProject(o) { // fill fields added in later versions
   o.settings.photonCutoff = Number.isFinite(o.settings.photonCutoff) ? o.settings.photonCutoff : 1000;
   o.settings.temperatureDefault = Number.isFinite(o.settings.temperatureDefault) ? o.settings.temperatureDefault : 293.6;
   o.settings.temperatureMethod = o.settings.temperatureMethod || 'interpolation';
+  o.settings.fissionNeutrons = o.settings.fissionNeutrons !== false;  // older projects predate the switch
   o.settings.entropyNx = Number.isFinite(o.settings.entropyNx) ? o.settings.entropyNx : 10;
   o.settings.entropyNy = Number.isFinite(o.settings.entropyNy) ? o.settings.entropyNy : 10;
   o.settings.entropyNz = Number.isFinite(o.settings.entropyNz) ? o.settings.entropyNz : 10;
@@ -1236,6 +1238,9 @@ function problems() {
   if (eig) {
     if (!(Number.isInteger(st.inactive) && st.inactive >= 0 && st.inactive < st.batches)) add('error', 'Inactive batches must be a whole number below the batch count.', 'settings');
     if (!S.materials.some(m => used.has(m.id) && isFissileMat(m))) add('error', 'Eigenvalue runs need fissile material (U or Pu) in a part. Switch to fixed source or add fuel.', 'settings');
+    if (st.fissionNeutrons === false) add('error', 'Eigenvalue runs need fission neutrons: each generation is born from the last. Turn Fission neutrons back on, or use a fixed source.', 'settings');
+  } else if (st.fissionNeutrons !== false && S.materials.some(m => used.has(m.id) && isFissileMat(m))) {
+    add('warn', 'Fixed source with fuel in the model: neutron chains multiply, and if k reaches 1 OpenMC stops with "secondary particle bank growing without bound". Switch to Eigenvalue for k, or turn Fission neutrons off for a source-driven answer.', 'settings');
   }
   if (!(Number.isInteger(st.seed) && st.seed >= 1)) add('error', 'Seed must be a whole number of 1 or more.', 'settings');
   if (!(Number.isInteger(st.maxTracks) && st.maxTracks >= 0)) add('error', 'Tracks to write must be a whole number (0 turns it off).', 'settings');
@@ -1911,6 +1916,10 @@ function buildScript(probs, mark, opts = {}) {
   }
   push(`settings.seed = ${IS('seed')}  # same seed + same model = the same particle histories`,
     `settings.source = [${srcVars.join(', ')}]`);
+  if (!eig && st.fissionNeutrons === false) {
+    push('# Fission is treated as capture, so chains die out in this fixed-source run (MCNP: NONU).',
+      'settings.create_fission_neutrons = False');
+  }
   if (st.photon) {
     push('settings.photon_transport = True');
     if (st.photonCutoff) {
@@ -2189,10 +2198,38 @@ function addSource(particle) {
   S.sources.push(s);
   select('source', s.id);
 }
+function toggleSetting(key) {
+  const st = S.settings;
+  if (key === 'runMode') st.runMode = st.runMode === 'eigenvalue' ? 'fixed source' : 'eigenvalue';
+  else st[key] = !st[key];
+  log('info', {runMode:`Run mode: ${st.runMode}.`, photon:`Photon transport ${st.photon ? 'on' : 'off'}.`,
+    fissionNeutrons:st.fissionNeutrons ? 'Fission makes new neutrons.'
+      : 'Fission is treated as capture (MCNP NONU): chains die out, so a multiplying model still finishes.'}[key]);
+  if (sel.kind === 'settings') renderProps();
+  renderRibbon();
+  schedule();
+}
+
+// Clearing a whole list is one undo away: HISTORY.boundary makes the next snapshot its own step. Like Delete,
+// it doesn't ask first -- the log says what went and Ctrl+Z brings it back.
+function clearPhysics(what) {
+  const n = S[what].length;
+  if (!n) { log('info', `Nothing to clear: no ${what}.`); return; }
+  HISTORY.boundary = true;
+  S[what] = [];
+  if (['source', 'tally'].includes(sel.kind)) sel = {kind:'settings'};
+  log('info', `Cleared ${n} ${n === 1 ? what.slice(0, -1) : what}. Undo brings them back.`);
+  renderAll();
+  schedule();
+}
+
 function addTally(kind) {
   const R = S.settings.worldR, flat = {xy:'z', xz:'y', yz:'x'}[view.plane];
-  const t = {id:newId('t'), name:uniqueName(S.tallies, kind === 'mesh' ? 'Mesh tally' : 'Cell tally'), kind,
-    cells: kind === 'cell' && sel.kind === 'part' && sel.id ? [sel.id] : [], scores:['flux'], ebins:'',
+  const named = {mesh:'Mesh tally', surface:'Surface tally'}[kind] || 'Cell tally';
+  const pick = sel.kind === 'part' && sel.id ? [sel.id] : [];
+  const t = {id:newId('t'), name:uniqueName(S.tallies, named), kind,
+    cells: kind === 'cell' ? pick : [], surfaces: kind === 'surface' ? pick : [],
+    scores: kind === 'surface' ? ['current'] : ['flux'], ebins:'',
     nx:50, ny:50, nz:50, lx:-R, ly:-R, lz:-R, ux:R, uy:R, uz:R};
   if (kind === 'mesh') { t['n' + flat] = 1; t['l' + flat] = view.slice - 1; t['u' + flat] = view.slice + 1; }
   S.tallies.push(t);
@@ -2537,7 +2574,14 @@ const RIBBON = {
   ],
   Physics:[
     {label:'Sources', btns:[['source', 'Neutron', () => addSource('neutron')], ['source', 'Photon', () => addSource('photon')]]},
-    {label:'Tallies', btns:[['cellTally', 'Cell', () => addTally('cell')], ['meshTally', 'Mesh', () => addTally('mesh')]]},
+    {label:'Tallies', btns:[['cellTally', 'Cell', () => addTally('cell')], ['meshTally', 'Mesh', () => addTally('mesh')], ['surfaceTally', 'Surface', () => addTally('surface')]]},
+    {label:'Run', btns:[
+      ['dice', 'Eigenvalue', () => toggleSetting('runMode'), null, () => S.settings.runMode === 'eigenvalue'],
+      ['source', 'Photons', () => toggleSetting('photon'), null, () => !!S.settings.photon],
+      ['cellTally', 'Fission neutrons', () => toggleSetting('fissionNeutrons'), () => S.settings.runMode !== 'eigenvalue', () => S.settings.fissionNeutrons !== false]]},
+    {label:'Edit', btns:[['del', 'Delete', removeSelected, () => ['source', 'tally'].includes(sel.kind) && !!getSel()],
+      ['reset', 'Clear tallies', () => clearPhysics('tallies'), () => S.tallies.length > 0],
+      ['reset', 'Clear sources', () => clearPhysics('sources'), () => S.sources.length > 0]]},
     {label:'Random numbers', btns:[['dice', 'New seed', newSeed], ['settings', 'Settings', () => select('settings')]]}
   ],
   Export:[
@@ -2972,6 +3016,7 @@ function specFor(kind, o) {
       F('int', 'particles', 'Particles', {unit:'per batch'}),
       F('int', 'batches', 'Batches'),
       F('int', 'inactive', 'Inactive', {show:() => st.runMode === 'eigenvalue', hint:'Batches discarded while the fission source converges, like the skipped cycles in KCODE.'}),
+      F('check', 'fissionNeutrons', 'Fission neutrons', {show:() => st.runMode !== 'eigenvalue', text:'Fission makes new neutrons', hint:'Off treats fission as capture (MCNP NONU), so chains die out. Use it for a source-driven answer in a multiplying model, where fixed-source runs otherwise stop with "secondary particle bank growing without bound".'}),
       F('check', 'photon', 'Photons', {text:'Transport photons'}),
       F('num', 'photonCutoff', 'Photon cutoff', {unit:'eV', show:() => st.photon, hint:'Energy cutoff below which photons are killed (default 1000 eV = 1 keV).'}),
       F('check', 'entropyMesh', 'Shannon entropy', {show:() => st.runMode === 'eigenvalue', text:'Calculate Shannon entropy mesh', hint:'Assess fission source spatial convergence across batches.'}),

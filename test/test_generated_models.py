@@ -125,6 +125,14 @@ class GeneratedModels(unittest.TestCase):
         per_face = means["t_block"].reshape(6, -1).sum(axis=1)  # SurfaceFilter order: -x, +x, -y, +y, -z, +z
         self.assertTrue(np.all(per_face[0::2] < 0) and np.all(per_face[1::2] > 0), f"face currents {per_face}")
 
+    def test_fission_as_capture_finishes(self):
+        """A multiplying model in fixed-source mode only finishes because fission is treated as capture
+        (create_fission_neutrons = False). With fission neutrons on, OpenMC stops with "secondary particle bank
+        appears to be growing without bound"."""
+        ns, means = run(os.path.join(GEN, "fission_off.py"))
+        self.assertIs(ns["model"].settings.create_fission_neutrons, False)
+        self.assertGreater(means["t_core"].sum(), 0)
+
     def test_detector_responses(self):
         ns, means = run(os.path.join(GEN, "detectors.py"))
         macro, micro = means["t_he3_macro"].sum(), means["t_he3_micro"].sum()

@@ -120,6 +120,15 @@ write('two_sources', {materials: [water],
   groups: [], tallies: [cellTally('t_tank', ['tank'])],
   settings: settings({worldR: 40})});
 
+// 5d. A multiplying model run as a fixed source: fission is treated as capture (create_fission_neutrons = False,
+//     MCNP NONU), so the chains die out instead of stopping OpenMC with "secondary particle bank growing without
+//     bound". Without the switch this model does not finish.
+write('fission_off', {materials: [{id: 'm_heu', name: 'HEU', color: '#c8b273', density: 18.7, frac: 'wo', comps: 'U235:0.9, U238:0.1', sab: '', ref: ''}],
+  parts: [part('core', 'sphere', 0, 0, 0, {r: 5}, 'm_heu')],
+  sources: [pointSource()], groups: [],
+  tallies: [cellTally('t_core', ['core'])],
+  settings: settings({worldR: 20, fissionNeutrons: false})});
+
 // 6. Cell tallies on parts inside lattices (CellInstanceFilter), rectangular and hexagonal, with a plain part (a
 //    probe outside the lattice box) in the same tally. The flat twin tallies the same parts as ordinary cells; the
 //    Python test compares the two. (A tally on the part around a lattice turns the lattice off; see latticeHost.)

@@ -61,9 +61,7 @@ and the MCNP lattice work; fixes listed under Completed).
   - Still open: a box source together with a sphere or cylinder source. MCNP's one SDEF card has one volume
     shape, so the export refuses the mix; Problems could warn. Points mix with any one shape.
   - In model.mcnp, clicking source cards only links to a source when there's one source.
-- **Physics tab**: source spectrum presets (PuBe, AmBe, Cf-252, D-T), a one-click detector-response tally,
-  and energy-bin presets (thermal / epithermal / fast) are still to do. The surface-current tally button,
-  the run-mode, photon and fission-neutron toggles, Delete and Clear are in.
+- **Physics tab**: source spectrum presets (PuBe, AmBe, Cf-252, D-T, D-D, U-235, Co-60, Cs-137), 1-click detector-response tallies (He-3, BF3, U-235 fission chamber, Cadmium foil activation), and energy-bin presets (2-group, 3-group, 4-group, Cadmium cutoff, 10-decade log, LANL 30-group) are complete. The surface-current tally button, run-mode, photon and fission-neutron toggles, Delete and Clear are in.
 - **Tally Segmenting Cards (`FS`)**:
   - Geometric segmentation of cell and surface tallies using secondary dividing surfaces (manual §10.2.4, Examples 33 & 34).
   - The exporter already writes FS for surface currents (to cut a surface down to one part's face); a

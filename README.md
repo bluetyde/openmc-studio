@@ -148,6 +148,13 @@ doesn't need to be in the geometry: model.py multiplies the flux by the gas's cr
   an `FS` card that cuts the surface down to the part's face (manual p. 459-460, 474-475). The FC comment
   ends with where OpenMC's number is, e.g. `[S 14 C 2 SEG 12-17 COS 2 X+1]`: add FS segments 12-17 in cosine
   bin 2 and keep the sign. Tick parts that don't overlap: a part carved out of another ticked part is refused.
+- **Physics tab**: the sources and tallies you can add (cell, mesh and surface), toggles for run mode,
+  photon transport and fission neutrons, Delete and Clear for the lists, and the seed.
+- **Fission neutrons** (fixed source only): off treats fission as capture, so neutron chains die out. Without
+  it, a fixed-source run containing fuel stops with "secondary particle bank appears to be growing without
+  bound" once k reaches 1. model.py gets `settings.create_fission_neutrons = False` and model.mcnp a `NONU`
+  card (manual p. 319). Problems warns before you run either way: fuel in a fixed-source model, or an
+  eigenvalue run with fission neutrons off.
 - **Settings**: photon transport, material temperatures, eigenvalue runs with a k and Shannon entropy
   convergence chart, and vacuum, reflective, white or periodic (box world only) boundaries.
 

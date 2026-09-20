@@ -573,6 +573,70 @@ if (!pyOutput.includes('openmc.Material(name="Inconel-718")') || !pyOutput.inclu
 
 console.log('PNNL Materials Compendium Preset Library tests PASSED!');
 
+// ── Physics tab: surface tally button, the fission-neutron switch and the two Problems checks ──
+const physics = vm.runInContext("RIBBON.Physics.flatMap(g => (g.btns || []).map(b => typeof b[1] === 'function' ? b[1]() : b[1]))", sandbox);
+['Surface', 'Eigenvalue', 'Photons', 'Fission neutrons', 'Delete', 'Clear tallies', 'Clear sources'].forEach(label => {
+  if (!physics.includes(label)) {
+    console.error(`FAILED: the Physics ribbon has no "${label}" button (found ${physics.join(', ')})`);
+    process.exit(1);
+  }
+});
+
+const S_phys = {
+  settings: {...vm.runInContext('DEFAULT_SETTINGS', sandbox), runMode: 'fixed source', worldR: 50, worldShape: 'box', worldFill: 'void'},
+  parts: [{id:'p1', name:'Fuel', shape:'sphere', x:0, y:0, z:0, r:5, material:'m_heu'},
+          {id:'p2', name:'Block', shape:'box', x:20, y:0, z:0, sx:10, sy:10, sz:10, material:'m_gr'}],
+  groups: [], sources: [{id:'s1', name:'Source', particle:'neutron', strength:1, space:'point', x:0, y:0, z:0,
+    angle:'isotropic', energy:'lines', lines:'2:1'}],
+  materials: [{id:'m_heu', name:'HEU', comps:'U235: 0.9, U238: 0.1', density:18.7},
+              {id:'m_gr', name:'Graphite', comps:'C: 1.0', density:1.7}],
+  tallies: [{id:'t1', name:'Flux', kind:'cell', cells:['p2'], scores:['flux'], ebins:''}]
+};
+sandbox.normalizeProject(S_phys);
+vm.runInContext("S = " + JSON.stringify(S_phys) + ";", sandbox);
+
+const warnText = () => sandbox.problems().map(p => p.text).join(' | ');
+if (!/chains multiply/.test(warnText())) {
+  console.error('FAILED: a fixed-source model with fuel should warn about multiplying chains');
+  process.exit(1);
+}
+if (/create_fission_neutrons/.test(sandbox.generate([]))) {
+  console.error('FAILED: create_fission_neutrons should not be written while fission neutrons are on');
+  process.exit(1);
+}
+
+vm.runInContext("S.settings.fissionNeutrons = false;", sandbox);
+if (/chains multiply/.test(warnText())) {
+  console.error('FAILED: the multiplying warning should go away once fission neutrons are off');
+  process.exit(1);
+}
+if (!sandbox.generate([]).includes('settings.create_fission_neutrons = False')) {
+  console.error('FAILED: model.py should set create_fission_neutrons = False when the switch is off');
+  process.exit(1);
+}
+
+vm.runInContext("S.settings.runMode = 'eigenvalue'; S.settings.inactive = 2;", sandbox);
+if (!/need fission neutrons/.test(warnText())) {
+  console.error('FAILED: an eigenvalue run with fission neutrons off should be an error');
+  process.exit(1);
+}
+if (sandbox.generate([]).includes('create_fission_neutrons')) {
+  console.error('FAILED: eigenvalue runs must never write create_fission_neutrons');
+  process.exit(1);
+}
+
+vm.runInContext("S.settings.runMode = 'fixed source'; S.settings.fissionNeutrons = true; sel = {kind:'part', id:'p2'}; addTally('surface');", sandbox);
+const surfT = JSON.parse(vm.runInContext('JSON.stringify(S.tallies[S.tallies.length - 1])', sandbox));
+if (surfT.kind !== 'surface' || surfT.name !== 'Surface tally' || surfT.scores[0] !== 'current' || surfT.surfaces[0] !== 'p2') {
+  console.error('FAILED: addTally("surface") should make a current tally on the selected part, got ' + JSON.stringify(surfT));
+  process.exit(1);
+}
+vm.runInContext("clearPhysics('tallies');", sandbox);
+if (vm.runInContext('S.tallies.length', sandbox) !== 0) {
+  console.error('FAILED: clearPhysics("tallies") should empty the tally list');
+  process.exit(1);
+}
+
 console.log('\nAll frontend model generation & MCNP translation tests PASSED!');
 
 

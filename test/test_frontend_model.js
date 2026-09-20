@@ -637,7 +637,149 @@ if (vm.runInContext('S.tallies.length', sandbox) !== 0) {
   process.exit(1);
 }
 
+// ── Test Source Spectrum Preset Library ──
+console.log('\nTesting Source Spectrum Preset Library...');
+const presets = sandbox.SOURCE_PRESETS;
+if (!Array.isArray(presets) || presets.length !== 8) {
+  console.error(`FAILED: Expected 8 SOURCE_PRESETS, got ${presets ? presets.length : 'none'}`);
+  process.exit(1);
+}
+
+const expectedPresetIds = ['cf252', 'u235', 'dt_fusion', 'dd_fusion', 'ambe', 'pube', 'co60', 'cs137'];
+expectedPresetIds.forEach(id => {
+  const p = presets.find(x => x.id === id);
+  if (!p) {
+    console.error(`FAILED: Missing source preset "${id}" in SOURCE_PRESETS`);
+    process.exit(1);
+  }
+  if (!p.name || !p.particle || !p.energy || !p.desc) {
+    console.error(`FAILED: Preset "${id}" missing required metadata fields:`, p);
+    process.exit(1);
+  }
+});
+
+// Test applySourcePreset and mcnpSource cards for each preset
+expectedPresetIds.forEach(pid => {
+  const testSrc = sandbox.newSource('s_test_' + pid, 'Test ' + pid);
+  const ok = sandbox.applySourcePreset(testSrc, pid);
+  if (!ok || testSrc.preset !== pid) {
+    console.error(`FAILED: applySourcePreset failed for "${pid}"`);
+    process.exit(1);
+  }
+  
+  const mcnpCard = sandbox.mcnpSource(testSrc);
+  if (pid === 'cf252') {
+    if (!mcnpCard.includes('SP1 -3 1.025 2.926') || !mcnpCard.includes('PAR=1')) {
+      console.error('FAILED: MCNP card for Cf-252 watt preset mismatch:\n' + mcnpCard);
+      process.exit(1);
+    }
+  } else if (pid === 'u235') {
+    if (!mcnpCard.includes('SP1 -3 0.988 2.249') || !mcnpCard.includes('PAR=1')) {
+      console.error('FAILED: MCNP card for U-235 watt preset mismatch:\n' + mcnpCard);
+      process.exit(1);
+    }
+  } else if (pid === 'dt_fusion') {
+    if (!mcnpCard.includes('SP1 -4') || !mcnpCard.includes('14.08') || !mcnpCard.includes('PAR=1')) {
+      console.error('FAILED: MCNP card for D-T fusion preset mismatch:\n' + mcnpCard);
+      process.exit(1);
+    }
+  } else if (pid === 'dd_fusion') {
+    if (!mcnpCard.includes('SP1 -4') || !mcnpCard.includes('2.45') || !mcnpCard.includes('PAR=1')) {
+      console.error('FAILED: MCNP card for D-D fusion preset mismatch:\n' + mcnpCard);
+      process.exit(1);
+    }
+  } else if (pid === 'ambe') {
+    if (!mcnpCard.includes('SI1 H') || !mcnpCard.includes('SP1 D') || !mcnpCard.includes('PAR=1')) {
+      console.error('FAILED: MCNP card for Am-Be tabulated preset mismatch:\n' + mcnpCard);
+      process.exit(1);
+    }
+  } else if (pid === 'pube') {
+    if (!mcnpCard.includes('SI1 H') || !mcnpCard.includes('SP1 D') || !mcnpCard.includes('PAR=1')) {
+      console.error('FAILED: MCNP card for Pu-Be tabulated preset mismatch:\n' + mcnpCard);
+      process.exit(1);
+    }
+  } else if (pid === 'co60') {
+    if (!mcnpCard.includes('PAR=2') || !mcnpCard.includes('1.1732') || !mcnpCard.includes('1.3325')) {
+      console.error('FAILED: MCNP card for Co-60 photon preset mismatch:\n' + mcnpCard);
+      process.exit(1);
+    }
+  } else if (pid === 'cs137') {
+    if (!mcnpCard.includes('PAR=2') || !mcnpCard.includes('0.6617')) {
+      console.error('FAILED: MCNP card for Cs-137 photon preset mismatch:\n' + mcnpCard);
+      process.exit(1);
+    }
+  }
+});
+
+// Test project-wide OpenMC Python export with preset sources
+const S_presets = {
+  settings: { ...sandbox.DEFAULT_SETTINGS, runMode: 'fixed source', photon: true, seed: 99 },
+  parts: [],
+  groups: [],
+  sources: expectedPresetIds.map((pid, idx) => {
+    const s = sandbox.newSource('s_' + pid, 'Source ' + pid);
+    sandbox.applySourcePreset(s, pid);
+    return s;
+  }),
+  materials: [{ id: 'm_void', name: 'Void', comps: 'H: 1', density: 0.001 }],
+  tallies: []
+};
+sandbox.normalizeProject(S_presets);
+vm.runInContext("S = " + JSON.stringify(S_presets) + ";", sandbox);
+const pyPresets = sandbox.generate([]);
+
+if (!pyPresets.includes('openmc.stats.Watt(a=1.025e6, b=2.926e-6)')) {
+  console.error('FAILED: Python export missing Cf-252 Watt spectrum');
+  process.exit(1);
+}
+if (!pyPresets.includes('openmc.stats.Watt(a=988000.0, b=2.249e-6)')) {
+  console.error('FAILED: Python export missing U-235 Watt spectrum');
+  process.exit(1);
+}
+if (!pyPresets.includes('openmc.stats.muir(e0=1.408e7, m_rat=5.0, kt=20000.0)')) {
+  console.error('FAILED: Python export missing D-T Muir spectrum');
+  process.exit(1);
+}
+if (!pyPresets.includes('openmc.stats.muir(e0=2.45e6, m_rat=4.0, kt=20000.0)')) {
+  console.error('FAILED: Python export missing D-D Muir spectrum');
+  process.exit(1);
+}
+if (!pyPresets.includes('openmc.stats.Discrete([1.1732e6, 1.3325e6]')) {
+  console.error('FAILED: Python export missing Co-60 discrete gamma lines');
+  process.exit(1);
+}
+if (!pyPresets.includes('openmc.stats.Discrete([661700.0]')) {
+  console.error('FAILED: Python export missing Cs-137 discrete gamma line');
+  process.exit(1);
+}
+if (!pyPresets.includes('src_source_ambe.energy = openmc.stats.Tabular(')) {
+  console.error('FAILED: Python export missing Am-Be Tabular distribution');
+  process.exit(1);
+}
+if (!pyPresets.includes('src_source_pube.energy = openmc.stats.Tabular(')) {
+  console.error('FAILED: Python export missing Pu-Be Tabular distribution');
+  process.exit(1);
+}
+
+// Test addSource helper with preset argument
+vm.runInContext("clearPhysics('sources');", sandbox);
+vm.runInContext("addSource('neutron', 'cf252');", sandbox);
+const addedCf = vm.runInContext("S.sources[0]", sandbox);
+if (addedCf.name !== 'Californium-252' || addedCf.preset !== 'cf252' || addedCf.wa !== 1.025) {
+  console.error('FAILED: addSource with cf252 preset failed:', addedCf);
+  process.exit(1);
+}
+
+vm.runInContext("addSource('photon', 'co60');", sandbox);
+const addedCo = vm.runInContext("S.sources[1]", sandbox);
+if (addedCo.name !== 'Cobalt-60' || addedCo.preset !== 'co60' || addedCo.particle !== 'photon') {
+  console.error('FAILED: addSource with co60 preset failed:', addedCo);
+  process.exit(1);
+}
+console.log('Source Spectrum Preset Library tests PASSED!');
+
 console.log('\nAll frontend model generation & MCNP translation tests PASSED!');
+
 
 
 

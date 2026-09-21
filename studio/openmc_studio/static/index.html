@@ -7058,6 +7058,8 @@ $('#problems').addEventListener('click', e => {
 });
 $('#otProblems').addEventListener('click', () => setOutTab('problems'));
 $('#otLog').addEventListener('click', () => setOutTab('log'));
+$('#otResults').addEventListener('click', () => setOutTab('results'));
+$('#otRuns').addEventListener('click', () => { setOutTab('runs'); refreshRuns(); });
 $('#tabView').addEventListener('click', () => setDocTab('view'));
 $('#tabCode').addEventListener('click', () => setDocTab('code'));
 $('#tabMcnp').addEventListener('click', () => setDocTab('mcnp'));

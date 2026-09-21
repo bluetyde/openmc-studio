@@ -5387,12 +5387,22 @@ function targetCenter(t) {
 function buildHandles(t, A) {
   const c = targetCenter(t), [sx, sy] = A.toScreen(c), H = [];
   const unit = i => [0, 1, 2].map(k => k === i ? 1 : 0);
-  const sdir = d => { const [ax, ay] = A.toScreen([c[0] + d[0], c[1] + d[1], c[2] + d[2]]); return [ax - sx, ay - sy]; }; // px per cm along d
+  // Probe the view a short way along d and scale back up. A fixed 1 cm step is not a small
+  // step for a sub-centimetre model: with the camera 0.19 cm from a TRISO particle it lands
+  // behind the lens, so the projection is NaN and the handle is drawn nowhere. Aim the step
+  // at about 40 px on screen, and never exceed the 1 cm that larger models already used.
+  const step = Math.min(1, 40 / A.pxPerCm) || 1;
+  const sdir = d => { // px per cm along d, or null where the view can't answer
+    const [ax, ay] = A.toScreen([c[0] + d[0] * step, c[1] + d[1] * step, c[2] + d[2] * step]);
+    return fin(ax) && fin(ay) ? [(ax - sx) / step, (ay - sy) / step] : null;
+  };
   if (![sx, sy].every(fin)) return H;
   if (TOOL.mode === 'move') {
     if (A.freeMove) H.push({type:'free', key:'free', x:sx, y:sy, r:7});
     A.axesShown.forEach(i => {
-      const w = sdir(unit(i)), L = Math.hypot(w[0], w[1]);
+      const w = sdir(unit(i));
+      if (!w) return;
+      const L = Math.hypot(w[0], w[1]);
       if (L < 0.2 * A.pxPerCm) return;
       [1, -1].forEach(s => H.push({type:'move', key:`move${i}${s}`, axis:i, sign:s, w, x0:sx, y0:sy, x:sx + s * w[0] / L * 72, y:sy + s * w[1] / L * 72, color:AXCOL[i]}));
     });
@@ -5401,14 +5411,14 @@ function buildHandles(t, A) {
     if (p.shape === 'sphere') {
       A.axesShown.forEach(i => {
         const w = sdir(unit(i));
-        if (Math.hypot(w[0], w[1]) < 0.2 * A.pxPerCm) return;
+        if (!w || Math.hypot(w[0], w[1]) < 0.2 * A.pxPerCm) return;
         [1, -1].forEach(s => H.push({type:'radius', key:`radius${i}${s}`, sign:s, w, x0:sx, y0:sy, x:sx + s * w[0] * p.r, y:sy + s * w[1] * p.r, color:AXCOL[i]}));
       });
     } else {
       const M = partFrame(p).M;
       [0, 1, 2].forEach(k => {
         const d = [M[0][k], M[1][k], M[2][k]], w = sdir(d);
-        if (Math.hypot(w[0], w[1]) < 0.25 * A.pxPerCm) return; // pointing at the viewer: no usable handle
+        if (!w || Math.hypot(w[0], w[1]) < 0.25 * A.pxPerCm) return; // pointing at the viewer: no usable handle
         const half = (p.shape === 'box' || p.shape === 'wedge') ? [p.sx, p.sy, p.sz][k] / 2 : (k < 2 ? p.r : p.h / 2);
         const main = [0, 1, 2].reduce((b, i) => Math.abs(d[i]) > Math.abs(d[b]) ? i : b, 0);
         [1, -1].forEach(s => H.push({type:'size', key:`size${k}${s}`, k, sign:s, d, w, x0:sx, y0:sy, x:sx + s * w[0] * half, y:sy + s * w[1] * half, color:AXCOL[main]}));

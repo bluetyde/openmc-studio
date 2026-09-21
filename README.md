@@ -1,7 +1,11 @@
-# OpenMC on this SSD
+# OpenMC Studio
 
-OpenMC Studio and nuclear data that work on both the Mac and the Windows PC (WSL).
-The drive is exFAT, so both can read and write it.
+A local app for building OpenMC models, running them and exporting MCNP decks: a small Python server and a
+browser page. It runs on macOS, Linux and Windows (through WSL2), from wherever you put it — an internal
+disk or an external drive.
+
+**Setting up for the first time? See [INSTRUCTIONS.md](INSTRUCTIONS.md)**: conda environment, nuclear data
+download, and how to start the app.
 
 ## Start OpenMC Studio
 
@@ -14,16 +18,16 @@ under **Results**. Click a neutron track, then **Replay neutron** to rerun exact
 that neutron with the same seed.
 
 To stop Studio, close that window or press Ctrl+C in it. Runs are saved on the
-computer (not the SSD) in `~/OpenMC-runs`, one folder per run with `model.py`,
+computer (not a removable drive) in `~/OpenMC-runs`, one folder per run with `model.py`,
 the statepoint, tracks and the log. Past runs are under **Runs**.
 
 It needs a conda env named `openmc-mcnp` with OpenMC installed; nothing else to
 install. If your env has another name, start it from a terminal:
-`OPENMC_STUDIO_ENV=<name> bash "<drive>/OpenMC/studio/start.sh"`.
-If the env has no nuclear data set, Studio uses the library on this drive.
+`OPENMC_STUDIO_ENV=<name> bash studio/start.sh`.
+If the env has no nuclear data set, Studio uses a library sitting beside this repository, if there is one.
 
-If the Mac says the `.command` file can't be opened, run it once from Terminal:
-`bash "/Volumes/Extreme SSD/OpenMC/Start OpenMC Studio.command"`.
+If macOS says the `.command` file can't be opened, run it once from Terminal:
+`bash "Start OpenMC Studio.command"` from the repository folder.
 
 ## Moving, scaling and rotating parts
 
@@ -245,7 +249,7 @@ python studio/tools/check_materials.py --add batch.txt
 ```
 
 The checker compares every numbered entry with the PDF text (`studio/tools/pnnl-15870-rev1.txt`, kept
-on the SSD but not in git): name, density, components and each weight fraction. `--add` merges only
+beside the repository but not in git): name, density, components and each weight fraction. `--add` merges only
 if the batch has no errors and doesn't repeat numbers already in the library (`--replace` overwrites
 them). In WSL or on the Mac inside the `openmc-mcnp` environment, add `--nuclear-data` to also check
 that OpenMC can build each material from the installed ENDF/B-VIII.0 data.
@@ -286,49 +290,36 @@ This folder is the repo `github.com/bluetyde/openmc-studio` (private). The nucle
 data is not in git (see `.gitignore`); `nuclear_data/archives/SHA256SUMS` records
 which archive it came from.
 
-- Git refuses repos on exFAT drives until you mark them safe, once per computer:
-  - Windows: `git config --global --add safe.directory D:/OpenMC`
-  - Mac: `git config --global --add safe.directory "/Volumes/Extreme SSD/OpenMC"`
-- To set up a new drive or computer from GitHub: clone the repo, then download
-  `endfb80.tar.xz` from https://openmc.org/data/ (ENDF/B-VIII.0), check it with
-  `SHA256SUMS`, and extract it into `nuclear_data/`.
+- Git refuses repos on drives it thinks belong to another user (exFAT, for instance) until you mark the
+  path safe, once per computer: `git config --global --add safe.directory /path/to/openmc-studio`
+- Setting up another computer: clone the repo and follow [INSTRUCTIONS.md](INSTRUCTIONS.md). To keep the
+  data beside the repository instead, download ENDF/B-VIII.0 from https://openmc.org/data/, check it against
+  `nuclear_data/archives/SHA256SUMS`, and extract it into `nuclear_data/`.
 
 ## Nuclear data setup (optional)
 
-Studio finds the library on this drive by itself. To use OpenMC outside Studio
-(your own scripts), point the conda env at it once:
+Full instructions, including the download, are in [INSTRUCTIONS.md](INSTRUCTIONS.md). Studio finds a library
+that sits beside this repository by itself. To use OpenMC outside Studio (your own scripts), point the conda
+env at it once:
 
-### Mac
+### If the library sits beside this repository
 
-1. Plug in the SSD. It mounts at `/Volumes/Extreme SSD`.
-2. Point your OpenMC env at the library (use your env's name if it isn't `openmc-mcnp`):
-   ```bash
-   bash "/Volumes/Extreme SSD/OpenMC/setup/point_conda_env_here.sh" openmc-mcnp
-   ```
-3. Reactivate the env and check it:
-   ```bash
-   conda deactivate; conda activate openmc-mcnp
-   python "/Volumes/Extreme SSD/OpenMC/setup/verify.py"
-   ```
-
-The setting is saved in the env, so this is a one-time step. If the drive is renamed,
-run step 2 again.
-
-### Windows PC (WSL)
-
-The PC already has its own copy at `/root/nuclear_data/endfb-viii.0-hdf5`, and the
-`openmc-mcnp` env uses it. That copy is on WSL's own disk, which loads faster than
-the SSD through `/mnt/d`, and it works with the SSD unplugged.
-
-To use the SSD copy instead:
 ```bash
-bash /mnt/d/OpenMC/setup/point_conda_env_here.sh openmc-mcnp
+bash setup/point_conda_env_here.sh openmc-mcnp      # use your env's name if it differs
+conda deactivate && conda activate openmc-mcnp      # the setting lives in the env
+python setup/verify.py
 ```
-To switch back to the local copy:
+
+### If it lives somewhere else
+
 ```bash
-conda env config vars set -n openmc-mcnp OPENMC_CROSS_SECTIONS=/root/nuclear_data/endfb-viii.0-hdf5/cross_sections.xml
+conda env config vars set -n openmc-mcnp   OPENMC_CROSS_SECTIONS=/path/to/endfb-viii.0-hdf5/cross_sections.xml
+conda deactivate && conda activate openmc-mcnp
 ```
-Reactivate the env after either change.
+
+Either way it is a one-time step per computer, and it survives moving or renaming the drive only if the path
+still matches — run it again if the path changes. A copy on an internal disk loads faster than one on an
+external drive; a copy beside the repository travels with it.
 
 ## Notes
 
@@ -337,11 +328,11 @@ Reactivate the env after either change.
   the page sends it. Don't share that link.
 - **Eject before unplugging.** exFAT has no journal, so pulling the drive mid-write can
   corrupt files. On the Mac, eject in Finder; on Windows, use Safely Remove Hardware.
-- If OpenMC says it can't find `cross_sections.xml`, the SSD isn't mounted or the env
-  points at the other copy. `verify.py` says which.
+- If OpenMC says it can't find `cross_sections.xml`, the library is missing or the env points at another
+  copy; if it lives on a removable drive, check the drive is connected. `setup/verify.py` says which.
 - macOS may add hidden `._*` files next to the data. They're harmless; OpenMC only
   opens the files listed in `cross_sections.xml`.
-- Running `test/shielding_demo.py` writes results into the current folder. Run it from
-  a folder on the computer, not on the SSD, e.g. `cd ~ && python "/Volumes/Extreme SSD/OpenMC/test/shielding_demo.py"`.
+- Running `test/shielding_demo.py` writes results into the current folder. Run it from a folder on an
+  internal disk rather than a removable drive, e.g. `cd ~ && python /path/to/openmc-studio/test/shielding_demo.py`.
 - To check the archive: `cd nuclear_data/archives && shasum -a 256 -c SHA256SUMS` (Mac) or
   `sha256sum -c SHA256SUMS` (WSL).

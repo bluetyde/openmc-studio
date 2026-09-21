@@ -6,7 +6,7 @@ Run inside the activated conda env:
 It checks the OPENMC_CROSS_SECTIONS setting, confirms the data files the
 OpenMC Studio material presets need are present, then runs a small
 fixed-source problem twice with the same seed and compares the results.
-Nothing is written to the SSD; the test runs in a temporary folder.
+Nothing is written to the repository; the test runs in a temporary folder.
 """
 import os
 import sys
@@ -31,9 +31,11 @@ def main():
     print(f"OpenMC {openmc.__version__}, Python {sys.version.split()[0]}")
     xs = os.environ.get("OPENMC_CROSS_SECTIONS")
     if not xs:
-        fail("OPENMC_CROSS_SECTIONS is not set. Run point_conda_env_here.sh, then reactivate the env.")
+        fail("OPENMC_CROSS_SECTIONS is not set. Run setup/point_conda_env_here.sh (or set it yourself, see "
+             "INSTRUCTIONS.md), then reactivate the env.")
     if not os.path.isfile(xs):
-        fail(f"OPENMC_CROSS_SECTIONS points at {xs}, which doesn't exist. Is the SSD plugged in?")
+        fail(f"OPENMC_CROSS_SECTIONS points at {xs}, which doesn't exist. If the library is on a removable "
+             f"drive, check it is connected; otherwise see INSTRUCTIONS.md.")
     print(f"Library: {xs}")
 
     lib = openmc.data.DataLibrary.from_xml(xs)

@@ -1,12 +1,13 @@
 #!/bin/bash
-# Point a conda env at the ENDF/B-VIII.0 library on this SSD.
-# Works on macOS and on Linux/WSL: it finds the library relative to this script,
-# so it does not matter where the drive is mounted.
+# Point a conda env at the ENDF/B-VIII.0 library that sits beside this repository.
+# Works on macOS, Linux and WSL: the library is found relative to this script, so it does not matter
+# where the repository lives or where a drive is mounted.
 #
-#   macOS:  bash "/Volumes/Extreme SSD/OpenMC/setup/point_conda_env_here.sh" [env-name]
-#   WSL:    bash /mnt/d/OpenMC/setup/point_conda_env_here.sh [env-name]
+#   bash setup/point_conda_env_here.sh [env-name]        # from the repository root
+#   bash /path/to/OpenMC/setup/point_conda_env_here.sh   # from anywhere
 #
-# env-name defaults to openmc-mcnp.
+# env-name defaults to openmc-mcnp. If your data is elsewhere, set OPENMC_CROSS_SECTIONS yourself
+# (see INSTRUCTIONS.md).
 set -euo pipefail
 
 ENV_NAME="${1:-openmc-mcnp}"
@@ -16,7 +17,7 @@ XS="$ROOT/nuclear_data/endfb-viii.0-hdf5/cross_sections.xml"
 
 if [ ! -f "$XS" ]; then
   echo "Can't find $XS"
-  echo "Check that the SSD is mounted and the library was extracted."
+  echo "Check that the library was extracted there (see INSTRUCTIONS.md). If it is on a removable drive, check the drive is connected."
   exit 1
 fi
 

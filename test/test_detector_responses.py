@@ -9,14 +9,14 @@ import sys
 import unittest
 import numpy as np
 
-# Ensure OPENMC_CROSS_SECTIONS is set for nuclear data lookups if present
-if 'OPENMC_CROSS_SECTIONS' not in os.environ:
-    wsl_xs = '/root/nuclear_data/endfb-viii.0-hdf5/cross_sections.xml'
-    if os.path.exists(wsl_xs):
-        os.environ['OPENMC_CROSS_SECTIONS'] = wsl_xs
-
 import openmc
 import openmc.data
+
+# Nuclear data comes from the environment, or from OpenMC's own config if it has one (see INSTRUCTIONS.md).
+if 'OPENMC_CROSS_SECTIONS' not in os.environ:
+    _cfg = str(openmc.config.get('cross_sections', '') or '')
+    if _cfg and os.path.exists(_cfg):
+        os.environ['OPENMC_CROSS_SECTIONS'] = _cfg
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GENERATED = os.path.join(HERE, "generated", "detectors.py")

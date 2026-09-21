@@ -12,11 +12,14 @@ import tempfile
 import openmc
 import numpy as np
 
-# Ensure nuclear data path is set
+# Nuclear data comes from the environment, or from OpenMC's own config if it has one. Any machine works;
+# see INSTRUCTIONS.md if neither is set.
 if not os.environ.get("OPENMC_CROSS_SECTIONS"):
-    default_xs = "/root/nuclear_data/endfb-viii.0-hdf5/cross_sections.xml"
-    if os.path.exists(default_xs):
-        os.environ["OPENMC_CROSS_SECTIONS"] = default_xs
+    cfg = str(openmc.config.get("cross_sections", "") or "")
+    if cfg and os.path.exists(cfg):
+        os.environ["OPENMC_CROSS_SECTIONS"] = cfg
+    else:
+        raise SystemExit("Set OPENMC_CROSS_SECTIONS to a cross_sections.xml (see INSTRUCTIONS.md).")
 
 def test_thermal_scattering_physics():
     print("--- 1. Testing OpenMC S(alpha, beta) Physics & Execution ---")

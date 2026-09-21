@@ -48,5 +48,5 @@ System Volume Information/
 .claude/
 *.swp
 
-# ── PNNL-15870 Rev. 1 text for the material checker (extracted from the PDF; kept on the SSD only) ──
+# ── PNNL-15870 Rev. 1 text for the material checker (extracted from the PDF; kept locally, not in git) ──
 studio/tools/pnnl-15870-rev1.txt

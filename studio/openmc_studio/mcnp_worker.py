@@ -213,7 +213,8 @@ def main():
 
                 report["stage"] = "remediate"
                 emit_progress(job.get("id"), 7, 8, "remediate", "Remediating deck (sources, tallies, settings)...", t0)
-                report.update(remediate(translated, model, runnable, detector_responses=ns.get("detector_responses")))
+                report.update(remediate(translated, model, runnable, detector_responses=ns.get("detector_responses"),
+                                        studio_ids=ns.get("studio_ids")))
                 report["notes"] = prep_notes + report.get("notes", [])
                 add_group_comments(runnable, ns.get("groups"))
 

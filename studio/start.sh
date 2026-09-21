@@ -29,12 +29,12 @@ if ! python -c "import openmc" 2>/dev/null; then
   exit 1
 fi
 
-# Nuclear data: use the env's setting if it works, otherwise the library on this drive.
+# Nuclear data: use the env's setting if it works, otherwise the library in this repository's nuclear_data/.
 if [ -z "${OPENMC_CROSS_SECTIONS:-}" ] || [ ! -f "$OPENMC_CROSS_SECTIONS" ]; then
   DRIVE_XS="$(dirname "$HERE")/nuclear_data/endfb-viii.0-hdf5/cross_sections.xml"
   if [ -f "$DRIVE_XS" ]; then
     export OPENMC_CROSS_SECTIONS="$DRIVE_XS"
-    echo "Using the nuclear data on this drive: $DRIVE_XS"
+    echo "Using the nuclear data in this repository: $DRIVE_XS"
   else
     echo "Warning: no nuclear data found. Runs will fail until OPENMC_CROSS_SECTIONS is set."
   fi

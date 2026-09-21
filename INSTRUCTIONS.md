@@ -11,8 +11,9 @@ the app. That is the whole setup.
 
 ## 1. Install conda
 
-Any conda works. [Miniforge](https://github.com/conda-forge/miniforge) is the smallest, and on macOS it has
-native Apple Silicon builds.
+Any conda works. [Miniforge](https://github.com/conda-forge/miniforge) is the smallest. On an Apple Silicon Mac
+you also need Rosetta 2 (`softwareupdate --install-rosetta --agree-to-license`), because OpenMC has no native
+Apple Silicon package (see step 2).
 
 On **Windows**, install conda **inside WSL2**, not in Windows itself: OpenMC's conda package is built for
 Linux and macOS. If you don't have WSL2 yet, `wsl --install` in PowerShell, then open the Ubuntu terminal.
@@ -24,14 +25,37 @@ conda create -n openmc-mcnp -c conda-forge python=3.11 openmc numpy h5py
 conda activate openmc-mcnp
 ```
 
+**Apple Silicon Macs:** conda-forge has no `openmc` build for `osx-arm64`, only for `osx-64`, so the command
+above fails there ("No match found"). Build the environment for Intel and let Rosetta run it, and pin the
+environment to that so later installs don't drift back to arm64:
+
+```bash
+CONDA_SUBDIR=osx-64 conda create -n openmc-mcnp -c conda-forge python=3.11 openmc numpy h5py
+conda activate openmc-mcnp
+conda config --env --set subdir osx-64
+```
+
 That is enough to build models, run them and use every part of Studio except the MCNP export. For that, add:
 
 ```bash
 conda install -c conda-forge montepy openjdk=8      # deck parsing, and Java for MCNPy's bridge
-pip install mcnpy                                   # the OpenMC -> MCNP translator
 ```
 
-Versions this was developed against: OpenMC 0.15.3, MontePy 1.1.3, MCNPy 0.0.7, Python 3.11.
+MCNPy is **not on PyPI** (`pip install mcnpy` finds nothing), and neither is MetaPy, which it needs (the
+`metapy` on PyPI is an unrelated package). Both are installed from wheel files kept in their repositories.
+Clone them somewhere outside this repository and install MetaPy first:
+
+```bash
+git clone https://github.rpi.edu/NuCoMP/metapy && git clone https://github.rpi.edu/NuCoMP/mcnpy.git
+pip install metapy/dist/metapy-0.0.1-py3-none-any.whl
+pip install mcnpy/dist/mcnpy-0.0.7-py3-none-any.whl
+python -c "import mcnpy"    # must print "Metamodel Gateway Server Started", then "... Killed"
+```
+
+The MCNPy clone is about 130 MB and can take several minutes. That last line is the real test: an import that
+succeeds without those two messages means the Java bridge isn't working.
+
+Versions this was developed against: OpenMC 0.15.3, MontePy 1.1.3, MCNPy 0.0.7, MetaPy 0.0.1, Python 3.11.
 
 ## 3. Get the nuclear data
 
@@ -109,9 +133,22 @@ node test/test_frontend_model.js     # no data or OpenMC needed
 ```
 
 The MCNP export has its own tests in the companion repository, `openmc-mcnp-project`. Point Studio at it
-with `OPENMC_MCNP_PROJECT=/path/to/openmc-mcnp-project`; otherwise Studio looks for it beside your home
-directory. Those tests need MCNPy, which needs Java, and MCNPy's bridge uses a fixed port (25333), so only
-one MCNP export can run on a machine at a time.
+with `OPENMC_MCNP_PROJECT=/path/to/openmc-mcnp-project` once: Studio remembers the path (in
+`~/OpenMC-runs/mcnp_project_path.txt`) after its first successful export. Without it, Studio looks in
+`~/openmc-mcnp-project` and a few common folders under your home directory (`~/Developer`, `~/Projects`,
+`~/Documents`, `~/code`, `~/git`, `~/repos`). Those tests need MCNPy, which needs Java, and MCNPy's bridge
+uses a fixed port (25333), so only one MCNP export can run on a machine at a time.
+
+Some Studio tests import code from that companion repository, and expect it at its current version:
+
+```bash
+export OPENMC_MCNP_PROJECT=/path/to/openmc-mcnp-project
+PYTHONPATH="$OPENMC_MCNP_PROJECT/src" python test/test_mcnp_group_columns.py
+python test/test_thermal_scattering.py                     # finds the repository through OPENMC_MCNP_PROJECT
+```
+
+Run `git pull` in `openmc-mcnp-project` first. An old checkout fails these two tests, with
+`No module named 'deck_format'` and `Missing c_H_in_H2O_solid in SAB_MCNP_MAP`, and nothing else looks wrong.
 
 ---
 

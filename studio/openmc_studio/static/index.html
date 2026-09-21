@@ -1668,12 +1668,16 @@ function buildScript(probs, mark, opts = {}) {
     const b = Math.round(params[params.length - 1] / SURF_BUCKET), scale = q => family === 'Q' ? 1 + Math.abs(q) : 1;
     for (let k = b - 1; k <= b + 1; k++) {
       const hit = (surfs.get(`${family}|${k}`) || []).find(s => s.params.every((q, i) => Math.abs(q - params[i]) <= SURF_TOL * scale(q)));
-      if (hit) return hit.v;
+      if (hit) {
+        const previous = SURF[hit.slot];
+        if (previous && JSON.stringify(previous.owner) !== JSON.stringify(owner)) previous.shared = true;
+        return hit.v;
+      }
     }
     const v = name(prefix, label);
     const key = `${family}|${b}`;
-    surfs.set(key, [...(surfs.get(key) || []), {params, v}]);
-    SURF.push({...desc, owner});
+    surfs.set(key, [...(surfs.get(key) || []), {params, v, slot:SURF.length}]);
+    SURF.push({...desc, owner, variable:v});
     const ctor = ctorFn();
     push(`${v} = ${ctor.slice(0, -1)}${isWorld ? (ctor.endsWith('()') ? bc : ', ' + bc) : ''})`);
     return v;
@@ -2143,7 +2147,22 @@ function buildScript(probs, mark, opts = {}) {
   if (wantAll) push(`settings.max_tracks = ${IS('maxTracks')}`);
   if (tracks.length) push(`settings.track = [${tracks.map(t => `(${t.join(', ')})`).join(', ')}]  # (batch, generation, particle)`);
   owner = null;
-  push('', 'model = openmc.Model(geometry=geometry, materials=materials, settings=settings, tallies=tallies)', '',
+  // Capture actual OpenMC IDs at runtime, not their assumed creation order.
+  // Stable Studio IDs survive renaming and repeated names; surface slots refer
+  // only to descriptors in this exact generated request.
+  const idEntries = {cell:[], material:[], tally:[], lattice:[], surface:[], source:[]};
+  S.sources.forEach((s, i) => idEntries.source.push(`${i}: _studio_json.loads(${pyStr(JSON.stringify({kind:'source',id:s.id}))})`));
+  L.forEach((line, i) => {
+    const m = line.match(/^(\w+) = openmc\.(Cell|Material|Tally|RectLattice|HexLattice)\(/);
+    if (!m || !OWN[i]) return;
+    const kind = {Cell:'cell',Material:'material',Tally:'tally',RectLattice:'lattice',HexLattice:'lattice'}[m[2]];
+    const o = OWN[i];
+    idEntries[kind].push(`${m[1]}.id: _studio_json.loads(${pyStr(JSON.stringify({kind:o.kind,id:o.id || o.kind}))})`);
+  });
+  SURF.forEach((s, slot) => { if (s.owner && !s.shared) idEntries.surface.push(`${s.variable}.id: _studio_json.loads(${pyStr(JSON.stringify({kind:s.owner.kind,id:s.owner.id || s.owner.kind,slot}))})`); });
+  push('', '# Stable object IDs for MCNP comment links (no effect on transport).', 'import json as _studio_json',
+    'studio_ids = {', ...Object.entries(idEntries).map(([kind, entries]) => `    ${pyStr(kind)}: {${entries.join(', ')}},`), '}',
+    '', 'model = openmc.Model(geometry=geometry, materials=materials, settings=settings, tallies=tallies)', '',
     'if __name__ == "__main__":',
     '    import sys',
     '    if "--export-xml" in sys.argv:  # OpenMC Studio exports model.xml this way for MCNP translation',
@@ -3957,7 +3976,7 @@ function mcnpContext(P, built) {
   }
   const tallyScores = [];
   S.tallies.forEach(t => t.scores.forEach(() => tallyScores.push(t)));
-  return {surfaces: built.surfaces, materials: built.materials, cells: built.cells, source: src, dists, tallyScores, groups: (S.groups || []).map(g => ({id:g.id, name:g.name, path:groupPath(g.id)}))};
+  return {requireIds:true, objects:{part:S.parts.slice(),group:(S.groups || []).slice(),material:built.materials.slice(),tally:S.tallies.slice(),source:S.sources.slice()}, surfaces: built.surfaces, materials: built.materials, cells: built.cells, source: src, dists, tallyScores, groups: (S.groups || []).map(g => ({id:g.id, name:g.name, path:groupPath(g.id)}))};
 }
 // Which Studio tally each deck tally number belongs to. The exporter numbers tallies in order, but a surface-current
 // tally uses one number per (surface, part) bin, so numbers can't be computed from the tally list. Read them from
@@ -3993,13 +4012,71 @@ function mcnpDisplayLine(line) {
   for (const ch of line) out += ch === '\t' ? ' '.repeat(8 - out.length % 8) : ch;
   return out;
 }
+// Versioned provenance is recognized only inside MCNP comments, never code or
+// labels. Partial, duplicate or malformed records fail closed for that card.
+function readMcnpIds(deck) {
+  const records = new Map(), chunks = new Map(), invalid = new Set(); let present = false;
+  deck.split('\n').slice(1).forEach(raw => {
+    const line = mcnpDisplayLine(raw.replace(/\r$/, ''));
+    const full = line.match(/^ {0,4}[cC](?:\s|$)(.*)$/);
+    const text = full ? full[1].trim() : line.includes('$') ? line.slice(line.indexOf('$') + 1).trim() : '';
+    if (/^@studio-(?:map-)?v/.test(text)) present = true;
+    const match = text.match(/^@studio-v1 (cell|surface|material|tally|data) (\d+|[A-Z][A-Z0-9]*) (\d+)\/(\d+) (\S+)$/);
+    if (!match) {
+      const bad = text.match(/^@studio-v1 (cell|surface|material|tally|data) (\d+|[A-Z][A-Z0-9]*)\b/);
+      if (bad) invalid.add(`${bad[1]}:${bad[2]}`);
+      return;
+    }
+    const [,kind,number,part,total,payload] = match, key = `${kind}:${number}`;
+    let item = chunks.get(key);
+    if (!item) { item = {total:+total,parts:new Map(),bad:false}; chunks.set(key,item); }
+    if (+total !== item.total || +total < 1 || +total > 256 || +part < 1 || +part > +total || item.parts.has(+part) || payload.length > 64) item.bad = true;
+    item.parts.set(+part,payload);
+  });
+  chunks.forEach((item,key) => {
+    if (invalid.has(key) || item.bad || item.parts.size !== item.total) return;
+    try {
+      const text = Array.from({length:item.total}, (_,i) => item.parts.get(i+1)).join('');
+      const o = JSON.parse(decodeURIComponent(text));
+      if (!o || !['part','group','material','tally','source','settings','world'].includes(o.kind) || typeof o.id !== 'string' || !o.id) return;
+      const allowed = {cell:['part','group','world'],surface:['part','group','world'],material:['material'],tally:['tally'],data:['settings','source']};
+      if (!allowed[key.split(':')[0]].includes(o.kind)) return;
+      if (o.slot !== undefined && (!Number.isInteger(o.slot) || o.slot < 0)) return;
+      records.set(key,o);
+    } catch (_) { /* incomplete or corrupt metadata: read-only */ }
+  });
+  return {present,records};
+}
+function stableMcnpOwner(record, ctx) {
+  if (!record) return null;
+  if (['world','settings'].includes(record.kind)) return record.id === record.kind ? {kind:record.kind} : null;
+  const objects = ctx.objects && ctx.objects[record.kind];
+  if (!objects || objects.filter(o => o.id === record.id).length !== 1) return null;
+  return {kind:record.kind,id:record.id};
+}
+
 function annotateMcnp(deck, ctx, editable) {
   const owners = [], refs = [];
+  const provenance = readMcnpIds(deck), strict = !!ctx.requireIds || provenance.present;
+  ctx.stable = strict ? provenance.records : null;
+  const record = (kind, n) => provenance.records.get(`${kind}:${n}`);
+  const stableOwner = (kind, n) => stableMcnpOwner(record(kind,n),ctx);
+  const material = n => strict ? (stableOwner('material',n) ? ctx.materials.find(m => m.id === record('material',n).id) : null) : ctx.materials[n-1];
+  const surface = n => {
+    if (!strict) return ctx.surfaces[n-1];
+    const r = record('surface',n), owner = stableOwner('surface',n);
+    if (!owner) return null;
+    const desc = r.slot !== undefined ? ctx.surfaces[r.slot] : null;
+    return desc && desc.owner && desc.owner.kind === owner.kind && (desc.owner.id || owner.kind) === r.id && owner.kind !== 'group' ? {...desc,owner} : {owner};
+  };
   // the tallies as they were when this deck was requested (ctx.tallyScores lists each once per score)
-  ctx.tallyByNum = mcnpTallyNumbers(deck, [...new Set(ctx.tallyScores || S.tallies)]);
+  ctx.tallyByNum = strict ? {} : mcnpTallyNumbers(deck, [...new Set(ctx.tallyScores || S.tallies)]);
+  if (strict) provenance.records.forEach((r,key) => {
+    if (key.startsWith('tally:') && r.kind === 'tally' && stableMcnpOwner(r,ctx)) ctx.tallyByNum[+key.slice(6)] = ctx.objects.tally.find(t => t.id === r.id);
+  });
   let block = 0, card = null, cardOwner = null, kw = null, kwIndex = 0, valueIndex = 0, amp = false;
-  const cellOwner = n => ctx.cells[n - 1] || {kind:'world'}; // MCNP-only cells (lattice element, outside) -> world
-  const matOwner = n => ctx.materials[n - 1] ? {kind:'material', id:ctx.materials[n - 1].id} : null;
+  const cellOwner = n => strict ? stableOwner('cell',n) : ctx.cells[n - 1] || {kind:'world'};
+  const matOwner = n => material(n) ? {kind:'material', id:material(n).id} : null;
   const fieldRef = (obj, key, extra) => obj ? {t:'field', obj, key, ...extra} : null;
 
   const html = deck.replace(/\n$/, '').split('\n').map((line, li) => {
@@ -4014,16 +4091,16 @@ function annotateMcnp(deck, ctx, editable) {
       const mm = trimmed.match(/^c\s+---\s+Material\s+(\d+):/i);
       const tm = trimmed.match(/^c\s+---\s+Tally\s+(\d+):/i);
       let own = null;
-      if (gm) {
+      if (gm && !strict) {
         const path = gm[1].trim();
         const g = path && (ctx.groups || []).find(x => x.path === path || x.name === path);
         own = g ? {kind:'group', id:g.id} : null;
       } else if (cm) {
         const cid = parseInt(cm[1], 10);
-        own = cid === 999 ? {kind:'world'} : cellOwner(cid);
+        own = !strict && cid === 999 ? {kind:'world'} : cellOwner(cid);
       } else if (sm) {
         const sid = parseInt(sm[1], 10);
-        own = ctx.surfaces[sid - 1] ? ctx.surfaces[sid - 1].owner : null;
+        own = surface(sid) ? surface(sid).owner : null;
       } else if (mm) {
         own = matOwner(parseInt(mm[1], 10));
       } else if (tm) {
@@ -4041,7 +4118,8 @@ function annotateMcnp(deck, ctx, editable) {
     const refFor = (tok, n) => {
       // n: numeric-token index within the card (continuations included)
       if (block === 0) { // cells: "N M -rho ..." (void cells: "N 0 ...")
-        if (n === 2 && card.mat > 0) return fieldRef(ctx.materials[card.mat - 1], 'density', {neg:true});
+        if (strict && !cardOwner) return null;
+        if (n === 2 && card.mat > 0) return fieldRef(material(card.mat), 'density', {neg:true});
         return null;
       }
       if (block === 1) { // surfaces
@@ -4062,6 +4140,7 @@ function annotateMcnp(deck, ctx, editable) {
       }
       // data cards
       const H = card.head;
+      if (strict && !cardOwner) return null;
       if (H === 'KCODE') return [fieldRef(S.settings, 'particles', {int:true}), null, fieldRef(S.settings, 'inactive', {int:true}), fieldRef(S.settings, 'batches', {int:true})][n] || null;
       if (H === 'SDEF') {
         const s = ctx.source; if (!s) return null;
@@ -4102,9 +4181,9 @@ function annotateMcnp(deck, ctx, editable) {
       if (eq >= 0) { pre = piece.slice(0, eq + 1); tok = piece.slice(eq + 1); kw = pre.slice(0, -1).toUpperCase(); kwIndex = 0; }
       if (!card) { // first token of a card; tokens are counted per card, across continuation lines
         if (block === 0) card = {kind:'cell', num:parseInt(piece, 10), n:0};
-        else if (block === 1) { const sn = parseInt(piece.replace(/^[*+]/, ''), 10); card = {kind:'surf', num:sn, surf:ctx.surfaces[sn - 1], n:0}; }
+        else if (block === 1) { const sn = parseInt(piece.replace(/^[*+]/, ''), 10); card = {kind:'surf', num:sn, surf:surface(sn), n:0}; }
         else card = {kind:'data', head:piece.toUpperCase().replace(/:.*$/, ''), n:0};
-        cardOwner = block === 0 ? (card.num === 999 ? {kind:'world'} : cellOwner(card.num))
+        cardOwner = block === 0 ? (!strict && card.num === 999 ? {kind:'world'} : cellOwner(card.num))
           : block === 1 ? (card.surf ? card.surf.owner : null)
           : cardOwnerFor(card.head, ctx, matOwner);
         out += `<span class="t-card">${esc(piece)}</span>`;
@@ -4132,6 +4211,7 @@ function annotateMcnp(deck, ctx, editable) {
 }
 function cardOwnerFor(head, ctx, matOwner) {
   let m;
+  if (ctx.stable && /^(SDEF|KSRC|SI\d+|SP\d+|DS\d+|NPS|KCODE|MODE|NONU)$/.test(head)) return stableMcnpOwner(ctx.stable.get(`data:${head}`),ctx);
   if ((m = head.match(/^MT?(\d+)$/))) return matOwner(+m[1]);
   if (/^(SDEF|SI\d+|SP\d+)$/.test(head)) return ctx.source ? {kind:'source', id:ctx.source.id} : null;
   if (/^(NPS|KCODE|KSRC|MODE)$/.test(head)) return {kind:'settings'};

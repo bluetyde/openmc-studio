@@ -2847,7 +2847,8 @@ const RIBBON = {
       ['cellTally', 'Fission neutrons', () => toggleSetting('fissionNeutrons'), () => S.settings.runMode !== 'eigenvalue', () => S.settings.fissionNeutrons !== false]]},
     {label:'Edit', btns:[['del', 'Delete', removeSelected, () => ['source', 'tally'].includes(sel.kind) && !!getSel()],
       ['reset', 'Clear tallies', () => clearPhysics('tallies'), () => S.tallies.length > 0],
-      ['reset', 'Clear sources', () => clearPhysics('sources'), () => S.sources.length > 0]]},
+      ['reset', 'Clear sources', () => clearPhysics('sources'), () => S.sources.length > 0],
+      ['reset', 'Clear overlay', clearOverlay, () => !!LOCAL.results]]},
     {label:'Random numbers', btns:[['dice', 'New seed', newSeed], ['settings', 'Settings', () => select('settings')]]}
   ],
   Export:[
@@ -4819,22 +4820,39 @@ function drawTracksOverlay(ctx, cx, cy, scale) {
   });
   ctx.globalAlpha = 1; ctx.setLineDash([]);
 }
-function pickTrack(evt) {
-  const R = LOCAL.results;
-  if (!R || !R.tracks.length || !$('#showTracks').checked || !vpGeom) return false;
-  const rect = $('#vp').getBoundingClientRect(), mx = evt.clientX - rect.left, my = evt.clientY - rect.top;
-  const {cx, cy, scale} = vpGeom;
+// Nearest track to (mx, my), given whatever projects a world point to this view's pixels.
+// toXY returns null for a point the view can't place, e.g. behind the 3D camera.
+function nearestTrack(mx, my, toXY) {
   let best = null, bestD = 6;
-  R.tracks.forEach(tr => tr.tracks.forEach(pt => {
+  LOCAL.results.tracks.forEach(tr => tr.tracks.forEach(pt => {
     const p = pt.xyz;
     for (let i = 1; i < p.length / 3; i++) {
-      const [u0, v0] = projUV(p[3 * i - 3], p[3 * i - 2], p[3 * i - 1]), [u1, v1] = projUV(p[3 * i], p[3 * i + 1], p[3 * i + 2]);
-      const ax = cx + u0 * scale, ay = cy - v0 * scale, bx = cx + u1 * scale, by = cy - v1 * scale;
-      const L2 = (bx - ax) ** 2 + (by - ay) ** 2, t = L2 ? Math.max(0, Math.min(1, ((mx - ax) * (bx - ax) + (my - ay) * (by - ay)) / L2)) : 0;
-      const d = Math.hypot(mx - (ax + t * (bx - ax)), my - (ay + t * (by - ay)));
+      const a = toXY(p[3 * i - 3], p[3 * i - 2], p[3 * i - 1]), b = toXY(p[3 * i], p[3 * i + 1], p[3 * i + 2]);
+      if (!a || !b) continue;
+      const d = segDist(mx, my, a[0], a[1], b[0], b[1]);
       if (d < bestD) { bestD = d; best = tr; }
     }
   }));
+  return best;
+}
+function tracksPickable() {
+  return !!(LOCAL.results && LOCAL.results.tracks.length && $('#showTracks').checked);
+}
+// The 3D view: project through the same camera the renderer uses.
+function pickTrack3(mx, my) {
+  if (!tracksPickable() || !V3.geom) return false;
+  const B = V3.geom.B;
+  const best = nearestTrack(mx, my, (x, y, z) => { const q = project3(B, [x, y, z]); return fin(q[0]) ? q : null; });
+  return selectTrack(best);
+}
+function pickTrack(evt) {
+  if (!tracksPickable() || !vpGeom) return false;
+  const rect = $('#vp').getBoundingClientRect(), mx = evt.clientX - rect.left, my = evt.clientY - rect.top;
+  const {cx, cy, scale} = vpGeom;
+  const best = nearestTrack(mx, my, (x, y, z) => { const [u, v] = projUV(x, y, z); return [cx + u * scale, cy - v * scale]; });
+  return selectTrack(best);
+}
+function selectTrack(best) {
   if (!best) { if (LOCAL.selTrack) { LOCAL.selTrack = null; $('#replayBtn').hidden = true; schedule(); } return false; }
   LOCAL.selTrack = best.id;
   const main = best.tracks[0], E = main.E;
@@ -4848,7 +4866,16 @@ function pickTrack(evt) {
 $('#showMesh').addEventListener('change', schedule);
 $('#showTracks').addEventListener('change', schedule);
 $('#meshPick').addEventListener('change', schedule);
-$('#clearOverlayBtn')?.addEventListener('click', clearResults);
+function clearOverlay() {
+  if (!LOCAL.results) { log('info', 'Nothing to clear: no results are on the viewport.'); return; }
+  $('#showMesh').checked = false;
+  $('#showTracks').checked = false;
+  LOCAL.selTrack = null;
+  $('#replayBtn').hidden = true;
+  log('info', 'Hid the flux map and the tracks. The run is still loaded — tick the layers to bring them back, or open Results.');
+  schedule();
+}
+$('#clearOverlayBtn')?.addEventListener('click', clearOverlay);
 $('#replayBtn').addEventListener('click', () => {
   if (!LOCAL.selTrack) return;
   S.settings.track = LOCAL.selTrack.join(', ');
@@ -7135,6 +7162,7 @@ $('#vp3o').addEventListener('pointerup', e => {
   const [mx, my] = v3Local(e);
   const src = (V3.sources || []).find(q => Math.hypot(q.X - mx, q.Y - my) < 10);
   if (src) { selectFromView('source', src.id, e); return; }
+  if (pickTrack3(mx, my)) return;
   const i = pick3(mx, my);
   if (i >= 0) selectFromView('part', S.parts[i].id, e);
 });

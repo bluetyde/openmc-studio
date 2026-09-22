@@ -43,6 +43,12 @@ const fs = require('fs'), path = require('path'), assert = require('assert');
     assert.equal(await page.locator('#cad-import-run').isDisabled(), true, 'Import button should be disabled without file');
     console.log('  [PASS] CAD Import modal elements');
 
+    const beforeImport = await page.evaluate(() => JSON.stringify(S));
+    await page.locator('#cadFileInput').setInputFiles({name:'sample.step', mimeType:'text/plain', buffer:Buffer.from('ISO-10303-21;')});
+    await page.locator('#cad-import-run').click();
+    assert.match(await page.locator('#cad-import-status').innerText(), /unavailable/);
+    assert.equal(await page.evaluate(() => JSON.stringify(S)), beforeImport, 'Unsupported import must not change the scene');
+
     // Test dismissals: Cancel button
     await page.locator('#cad-import-cancel').click();
     assert.equal(await page.evaluate(() => document.querySelector('#cadImportMenu').hidden), true, 'Cancel button must hide #cadImportMenu');
@@ -94,11 +100,40 @@ const fs = require('fs'), path = require('path'), assert = require('assert');
     await page.locator('#cad-export-run').click();
     assert.equal(await page.evaluate(() => document.querySelector('#cadExportMenu').hidden), true, 'Export button must hide #cadExportMenu');
 
-    const saved = await page.evaluate(() => window.__stepSaved);
-    assert(saved, 'STEP Export should have invoked saveFile');
-    assert(saved.filename.endsWith('.step'), 'Filename should end with .step');
-    assert(saved.dataLength > 100, 'STEP file data length should be > 100 characters');
-    console.log(`  [PASS] STEP Export execution (${saved.filename}, ${saved.dataLength} bytes, note: ${saved.note})`);
+    assert.equal(await page.evaluate(() => window.__stepSaved), null, 'Offline export must not save an invalid STEP');
+    assert.match(await page.locator('#log').innerText(), /FreeCAD worker/);
+    await page.evaluate(() => {
+      LOCAL.on = true;
+      api = async () => ({ok:false, error:'Unsupported shape: wedge'});
+    });
+    await cadExportBtn.click();
+    await page.locator('#cad-export-run').click();
+    assert.equal(await page.evaluate(() => window.__stepSaved), null, 'Server rejection must not invoke a fallback');
+    assert.match(await page.locator('#log').innerText(), /Unsupported shape: wedge/);
+    await page.evaluate(() => {
+      api = async () => ({ok:true, step_data:'verified worker output', units:'mm'});
+    });
+    await cadExportBtn.click();
+    await page.locator('#cad-export-run').click();
+    assert.ok(await page.evaluate(() => window.__stepSaved), 'Successful worker output can be downloaded');
+    console.log('  [PASS] No invalid fallback on offline/server failures; successful worker output downloads');
+
+    const ingestion = await page.evaluate(() => {
+      S.parts = []; S.groups = []; S.tallies = [];
+      const raw = {id:'same',shape:'sphere',name:'CAD sphere',x:0,y:0,z:0,r:.025};
+      const a = insertCadParts([raw], 'first', 'cm')[0];
+      const b = insertCadParts([raw], 'second', 'cm')[0];
+      let rejected = false;
+      try { insertCadParts([raw], 'bad units', 'mm'); } catch(e) { rejected = true; }
+      return {ids:[a.id,b.id], materials:S.parts.map(p=>p.material),
+        count:S.parts.length, rejected, errors:problems().filter(p=>p.sev==='error'),
+        defaults:[a.rx,a.ry,a.rz,a.r]};
+    });
+    assert.notEqual(ingestion.ids[0], ingestion.ids[1]);
+    assert.deepEqual(ingestion.materials, ['void','void']);
+    assert.equal(ingestion.count, 2); assert.ok(ingestion.rejected);
+    assert.deepEqual(ingestion.errors, []);
+    assert.deepEqual(ingestion.defaults, [0,0,0,.025]);
 
     // Test dismissals: Cancel button
     await cadExportBtn.click();

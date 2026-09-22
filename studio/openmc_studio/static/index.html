@@ -2887,7 +2887,7 @@ function tessellateWedge(p) {
     { n: [-1, 0, 0], v1: b0, v2: t0, v3: t2 },
     { n: [-1, 0, 0], v1: b0, v2: t2, v3: b2 },
     { n: facetNormal(b1, b2, t2), v1: b1, v2: b2, v3: t2 },
-    { n: facetNormal(b1, t2, t1), v1: b1, v2: b2, v3: t1 }
+    { n: facetNormal(b1, t2, t1), v1: b1, v2: t2, v3: t1 }
   ];
 }
 
@@ -3134,67 +3134,45 @@ function openStlMenu(btn) {
 }
 
 /* ───────── CAD & STEP Translation ───────── */
-function generateStepText(parts, opts = {}) {
-  const units = opts.units || 'cm';
-  const scale = units === 'mm' ? 10.0 : 1.0;
-  const modelName = (opts.modelName || (S && S.settings && S.settings.name) || 'OpenMC_Studio_Model').replace(/[^\w-]+/g, '_');
-  const dateStr = new Date().toISOString().replace(/\.\d+Z$/, '');
+function generateStepText() {
+  throw new Error('STEP export requires the local FreeCAD worker. Use STL when FreeCAD is unavailable.');
+}
 
-  const lines = [
-    'ISO-10303-21;',
-    'HEADER;',
-    "FILE_DESCRIPTION(('OpenMC Studio Model export','AP214'),'2;1');",
-    `FILE_NAME('${modelName}.step','${dateStr}',('Antigravity'),('OpenMC Studio'),'OpenMC Studio STEP Generator','OpenMC Studio','');`,
-    "FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));",
-    'ENDSEC;',
-    'DATA;',
-    "#1 = CARTESIAN_POINT('ORIGIN',(0.,0.,0.));",
-    "#2 = DIRECTION('Z_DIR',(0.,0.,1.));",
-    "#3 = DIRECTION('X_DIR',(1.,0.,0.));",
-    "#4 = AXIS2_PLACEMENT_3D('GLOBAL_AXIS',#1,#2,#3);"
-  ];
-
-  let eid = 10;
-  const solids = [];
-  for (const p of parts) {
-    const name = (p.name || p.id || 'part').replace(/[^\w-]+/g, '_');
-    const shape = p.shape || 'box';
-    const cx = (p.x || 0) * scale, cy = (p.y || 0) * scale, cz = (p.z || 0) * scale;
-    const ptCenter = `#${eid++}`;
-    lines.push(`${ptCenter} = CARTESIAN_POINT('${name}_POS',(${cx.toFixed(4)},${cy.toFixed(4)},${cz.toFixed(4)}));`);
-    const ptAxis = `#${eid++}`;
-    lines.push(`${ptAxis} = AXIS2_PLACEMENT_3D('${name}_FRAME',${ptCenter},#2,#3);`);
-
-    const solidId = `#${eid++}`;
-    if (shape === 'sphere') {
-      const r = (p.r || 1) * scale;
-      const surfId = `#${eid++}`;
-      lines.push(`${surfId} = SPHERICAL_SURFACE('${name}_SURF',${ptAxis},${r.toFixed(4)});`);
-      lines.push(`${solidId} = SOLID_MODEL('${name}',${surfId});`);
-    } else if (shape === 'cylinder') {
-      const r = (p.r || 1) * scale;
-      const surfId = `#${eid++}`;
-      lines.push(`${surfId} = CYLINDRICAL_SURFACE('${name}_SURF',${ptAxis},${r.toFixed(4)});`);
-      lines.push(`${solidId} = SOLID_MODEL('${name}',${surfId});`);
-    } else {
-      const sx = (p.sx || 2) * scale, sy = (p.sy || 2) * scale, sz = (p.sz || 2) * scale;
-      lines.push(`${solidId} = BLOCK('${name}',${ptAxis},${sx.toFixed(4)},${sy.toFixed(4)},${sz.toFixed(4)});`);
+// One insertion boundary for CAD adapters: fresh identities, explicit units and
+// Studio defaults. Validate all parts before changing the current project.
+function insertCadParts(parts, groupName, units) {
+  if (units !== 'cm') throw new Error('CAD adapter must return geometry in centimeters.');
+  if (!Array.isArray(parts) || !parts.length) throw new Error('No CAD solids were returned.');
+  const ids = new Set([...S.parts, ...S.groups, ...S.materials, ...S.sources, ...S.tallies].map(o => o.id));
+  const fresh = prefix => { let id; do { id = newId(prefix); } while (ids.has(id)); ids.add(id); return id; };
+  const gid = fresh('g');
+  const prepared = parts.map(raw => {
+    const fields = {box:['sx','sy','sz'], sphere:['r'], cylinder:['r','h'],
+      cone:['r','r2','h'], wedge:['sx','sy','sz'], hex_prism:['r','h'], ellipsoid:['a','b','c']}[raw.shape];
+    if (!fields) throw new Error('Unsupported CAD primitive.');
+    const p = newPart(fresh('p'), String(raw.name || 'CAD solid'), raw.shape);
+    for (const key of ['x','y','z', ...fields]) {
+      if (!Number.isFinite(raw[key])) throw new Error(`Invalid CAD ${key}.`);
+      p[key] = raw[key];
     }
-    solids.push(solidId);
-  }
-
-  const shapeRep = `#${eid++}`;
-  const solidsList = solids.length ? solids.join(',') : '#4';
-  lines.push(`${shapeRep} = SHAPE_REPRESENTATION('OPENMC_STUDIO_GEOMETRY',(${solidsList},#4),#9999);`);
-  lines.push("#9999 = ( GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#9998)) GLOBAL_UNIT_ASSIGNED_CONTEXT((#9995,#9996,#9997)) REPRESENTATION_CONTEXT('Context #1','3D') );");
-  lines.push("#9998 = UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-07),#9995,'DISTANCE_ACCURACY_VALUE','confusion accuracy');");
-  const unitName = units === 'mm' ? 'MILLI' : 'CENTI';
-  lines.push(`#9995 = ( LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.${unitName}.,.METRE.) );`);
-  lines.push("#9996 = ( NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.) );");
-  lines.push("#9997 = ( NAMED_UNIT(*) SOLID_ANGLE_UNIT() SI_UNIT($,.STERADIAN.) );");
-  lines.push('ENDSEC;');
-  lines.push('END-ISO-10303-21;');
-  return lines.join('\n');
+    for (const key of fields) {
+      if (p[key] < 0 || (p[key] === 0 && !(p.shape === 'cone' && ['r','r2'].includes(key)))) throw new Error(`Invalid CAD ${key}.`);
+    }
+    if (p.shape === 'cone' && p.r === 0 && p.r2 === 0) throw new Error('Invalid CAD cone radii.');
+    for (const key of ['rx','ry','rz']) {
+      if (raw[key] !== undefined && !Number.isFinite(raw[key])) throw new Error(`Invalid CAD ${key}.`);
+      p[key] = raw[key] ?? 0;
+    }
+    if (raw.axis !== undefined && !['x','y','z'].includes(raw.axis)) throw new Error('Invalid CAD axis.');
+    p.axis = raw.axis || 'z';
+    p.material = 'void'; // CAD files carry no Studio material identities.
+    p.group = gid;
+    return p;
+  });
+  S.groups.push({id:gid, name:String(groupName || 'CAD import')});
+  S.parts.push(...prepared);
+  renderAll();
+  return prepared;
 }
 
 const CADMENU = {importBtn:null, exportBtn:null, selectedFile:null};
@@ -3206,14 +3184,7 @@ async function openCadImportMenu(btn) {
   CADMENU.importBtn = btn;
   CADMENU.selectedFile = null;
 
-  let backendNote = 'Analytical STEP Engine';
-  if (LOCAL.on) {
-    try {
-      const st = await api('/api/convert/status');
-      if (st && st.env && st.env.engine === 'geouned') backendNote = `GEOUNED ${st.env.geouned || ''} & FreeCAD`;
-      else if (st && st.env && st.env.freecad) backendNote = `FreeCAD ${st.env.freecad} (OpenCASCADE)`;
-    } catch (e) {}
-  }
+  const backendNote = 'Import unavailable: geometry-preserving adapter not implemented';
 
   const r = btn.getBoundingClientRect();
   menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 340)) + 'px';
@@ -3221,7 +3192,7 @@ async function openCadImportMenu(btn) {
   menu.innerHTML = `
     <div class="atitle">Import CAD to CSG</div>
     <div style="font-size:11px;color:var(--accent);margin-bottom:6px;font-weight:600">Engine: ${backendNote}</div>
-    <div style="font-size:11.5px;color:var(--dim);margin-bottom:8px">Convert STEP / IGES B-Rep solids into constructive solid geometry.</div>
+    <div style="font-size:11.5px;color:var(--dim);margin-bottom:8px">STEP / IGES import is not yet supported. Open a Studio project to preserve geometry.</div>
     <div style="border:1px dashed var(--bdr);padding:10px;text-align:center;border-radius:4px;margin-bottom:8px;background:var(--bg2)">
       <button type="button" id="cad-select-file-btn" style="padding:4px 8px;margin-bottom:4px">Select STEP / IGES file</button>
       <div id="cad-file-name" style="font-size:11px;color:var(--dim)">No file selected</div>
@@ -3252,137 +3223,14 @@ async function openCadImportMenu(btn) {
 
   $('#cad-import-cancel').onclick = () => { menu.hidden = true; };
   $('#cad-import-run').onclick = async () => {
-    const f = CADMENU.selectedFile;
-    if (!f) return;
-    const groupName = $('#cad-group-name').value.trim() || 'CAD_Import';
-    const statusEl = $('#cad-import-status');
-    statusEl.textContent = 'Reading CAD file...';
+    const status = $('#cad-import-status');
+    status.textContent = 'CAD import is unavailable until a geometry-preserving adapter is implemented. No geometry was imported.';
     $('#cad-import-run').disabled = true;
-
-    try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const fileData = reader.result;
-        statusEl.textContent = 'Translating B-Rep geometry to CSG...';
-        if (LOCAL.on) {
-          try {
-            const res = await api('/api/convert/cad-to-csg', {
-              method: 'POST',
-              body: JSON.stringify({
-                filename: f.name,
-                data: fileData,
-                options: { group: groupName }
-              })
-            });
-            if (res && res.ok && Array.isArray(res.parts) && res.parts.length > 0) {
-              const gid = 'g_' + Math.random().toString(36).slice(2, 8);
-              S.groups.push({ id: gid, name: groupName });
-              res.parts.forEach(p => { p.group = gid; S.parts.push(p); });
-              log('ok', `Imported ${res.parts.length} CAD solid(s) into group "${groupName}".`);
-              menu.hidden = true;
-              renderAll();
-              return;
-            } else if (res && !res.ok) {
-              throw new Error(res.error || 'CAD worker failed translation');
-            }
-          } catch (err) {
-            log('warn', `Server CAD translation notice: ${err.message}. Using client parser...`);
-          }
-        }
-
-        // In-browser fallback: parse STEP text
-        let textContent = typeof fileData === 'string' ? fileData : new TextDecoder().decode(fileData);
-        if (textContent.startsWith('data:')) {
-          const b64 = textContent.split(',')[1];
-          textContent = atob(b64);
-        }
-        const parsed = parseStepAnalyticalBrowser(textContent, groupName);
-        if (parsed.length > 0) {
-          const gid = 'g_' + Math.random().toString(36).slice(2, 8);
-          S.groups.push({ id: gid, name: groupName });
-          parsed.forEach(p => { p.group = gid; S.parts.push(p); });
-          log('ok', `Imported ${parsed.length} shape(s) from ${f.name} into group "${groupName}".`);
-          menu.hidden = true;
-          renderAll();
-        } else {
-          statusEl.textContent = 'Could not find recognized solids in this STEP file.';
-          $('#cad-import-run').disabled = false;
-        }
-      };
-      reader.readAsDataURL(f);
-    } catch (e) {
-      statusEl.textContent = `Import error: ${e.message}`;
-      $('#cad-import-run').disabled = false;
-    }
   };
 }
 
-function parseStepAnalyticalBrowser(text, groupName) {
-  const parts = [];
-  const points = {};
-  const axes = {};
-
-  const ptRe = /#(\d+)\s*=\s*CARTESIAN_POINT\s*\([^,]*,\s*\(\s*([^,\)]+)\s*,\s*([^,\)]+)\s*,\s*([^,\)]+)\s*\)\s*\)/gi;
-  let m;
-  while ((m = ptRe.exec(text)) !== null) {
-    points[m[1]] = [parseFloat(m[2]), parseFloat(m[3]), parseFloat(m[4])];
-  }
-
-  const axRe = /#(\d+)\s*=\s*AXIS2_PLACEMENT_3D\s*\([^,]*,#(\d+)/gi;
-  while ((m = axRe.exec(text)) !== null) {
-    if (points[m[2]]) axes[m[1]] = points[m[2]];
-  }
-
-  let idx = 1;
-  const cylRe = /#(\d+)\s*=\s*CYLINDRICAL_SURFACE\s*\(\s*'([^']*)'\s*,\s*#(\d+)\s*,\s*([0-9.eE+-]+)\s*\)/gi;
-  while ((m = cylRe.exec(text)) !== null) {
-    const c = axes[m[3]] || [0, 0, 0];
-    parts.push({
-      id: `p_cad_cyl_${idx}`, name: m[2] || `Cylinder_${idx}`,
-      shape: 'cylinder', x: +c[0].toFixed(3), y: +c[1].toFixed(3), z: +c[2].toFixed(3),
-      r: +parseFloat(m[4]).toFixed(3), h: 20, axis: 'z', rotX: 0, rotY: 0, rotZ: 0
-    });
-    idx++;
-  }
-
-  const sphRe = /#(\d+)\s*=\s*SPHERICAL_SURFACE\s*\(\s*'([^']*)'\s*,\s*#(\d+)\s*,\s*([0-9.eE+-]+)\s*\)/gi;
-  while ((m = sphRe.exec(text)) !== null) {
-    const c = axes[m[3]] || [0, 0, 0];
-    parts.push({
-      id: `p_cad_sph_${idx}`, name: m[2] || `Sphere_${idx}`,
-      shape: 'sphere', x: +c[0].toFixed(3), y: +c[1].toFixed(3), z: +c[2].toFixed(3),
-      r: +parseFloat(m[4]).toFixed(3), rotX: 0, rotY: 0, rotZ: 0
-    });
-    idx++;
-  }
-
-  const boxRe = /#(\d+)\s*=\s*BLOCK\s*\(\s*'([^']*)'\s*,\s*#(\d+)\s*,\s*([0-9.eE+-]+)\s*,\s*([0-9.eE+-]+)\s*,\s*([0-9.eE+-]+)\s*\)/gi;
-  while ((m = boxRe.exec(text)) !== null) {
-    const c = axes[m[3]] || [0, 0, 0];
-    parts.push({
-      id: `p_cad_box_${idx}`, name: m[2] || `Box_${idx}`,
-      shape: 'box', x: +c[0].toFixed(3), y: +c[1].toFixed(3), z: +c[2].toFixed(3),
-      sx: +parseFloat(m[4]).toFixed(3), sy: +parseFloat(m[5]).toFixed(3), sz: +parseFloat(m[6]).toFixed(3),
-      rotX: 0, rotY: 0, rotZ: 0
-    });
-    idx++;
-  }
-
-  if (!parts.length && Object.keys(points).length > 0) {
-    const pts = Object.values(points);
-    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), zs = pts.map(p => p[2]);
-    const minX = Math.min(...xs), maxX = Math.max(...xs);
-    const minY = Math.min(...ys), maxY = Math.max(...ys);
-    const minZ = Math.min(...zs), maxZ = Math.max(...zs);
-    parts.push({
-      id: `p_cad_solid_1`, name: groupName || 'CAD_Solid', shape: 'box',
-      x: +((minX + maxX) / 2).toFixed(3), y: +((minY + maxY) / 2).toFixed(3), z: +((minZ + maxZ) / 2).toFixed(3),
-      sx: +(Math.max(maxX - minX, 0.1)).toFixed(3), sy: +(Math.max(maxY - minY, 0.1)).toFixed(3), sz: +(Math.max(maxZ - minZ, 0.1)).toFixed(3),
-      rotX: 0, rotY: 0, rotZ: 0
-    });
-  }
-
-  return parts;
+function parseStepAnalyticalBrowser() {
+  throw new Error('CAD import is unavailable. STEP surfaces cannot be treated as complete solids.');
 }
 
 function openCadExportMenu(btn) {
@@ -3397,14 +3245,13 @@ function openCadExportMenu(btn) {
   const modelName = ((S && S.settings && S.settings.name) || 'model').replace(/[^\w-]+/g, '_');
   menu.innerHTML = `
     <div class="atitle">Export CSG to CAD STEP</div>
-    <div style="font-size:11.5px;color:var(--dim);margin-bottom:8px">Export standard STEP AP214 B-Rep CAD model</div>
+    <div style="font-size:11.5px;color:var(--dim);margin-bottom:8px">FreeCAD required. Exports box, sphere, cylinder and cone primitives; overlap priority is not applied.</div>
     <div class="agrid" style="display:grid;grid-template-columns:80px 1fr;gap:6px;align-items:center;font-size:12px;margin-bottom:10px">
       <span style="font-weight:600">Filename</span>
       <input type="text" id="cad-export-name" value="${modelName}.step" style="padding:2px 4px">
       <span style="font-weight:600">Units</span>
       <select id="cad-export-units" style="padding:2px 4px">
-        <option value="cm" selected>Centimeters (cm, OpenMC)</option>
-        <option value="mm">Millimeters (mm, CAD default)</option>
+        <option value="mm" selected>Millimeters (converted from Studio cm)</option>
       </select>
     </div>
     <div style="display:flex;justify-content:flex-end;gap:6px">
@@ -3420,23 +3267,16 @@ function openCadExportMenu(btn) {
     const units = $('#cad-export-units').value;
     menu.hidden = true;
 
-    if (LOCAL.on) {
-      try {
-        const res = await api('/api/convert/csg-to-cad', {
-          method: 'POST',
-          body: JSON.stringify({ project: S, units })
-        });
-        if (res && res.ok && res.step_data) {
-          saveFile(filename, res.step_data, `(${units}, STEP AP214)`);
-          return;
-        }
-      } catch (err) {
-        log('warn', `Server STEP export notice: ${err.message}; using direct generator...`);
-      }
+    try {
+      if (!LOCAL.on) throw new Error('STEP export requires the local FreeCAD worker. Use STL instead.');
+      const res = await api('/api/convert/csg-to-cad', {
+        method:'POST', body:JSON.stringify({project:S, units})
+      });
+      if (!res || !res.ok || !res.step_data) throw new Error(res?.error || 'STEP export failed.');
+      saveFile(filename, res.step_data, '(mm, STEP primitive solids)');
+    } catch (err) {
+      log('error', `STEP export: ${esc(err.message)} No file was saved.`);
     }
-
-    const stepText = generateStepText(S.parts, { units, modelName });
-    saveFile(filename, stepText, `(${units}, STEP AP214)`);
   };
 }
 

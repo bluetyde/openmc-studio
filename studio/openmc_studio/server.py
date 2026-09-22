@@ -123,35 +123,24 @@ class Studio:
         return self.cad.get_progress()
 
     def cad_to_csg(self, cad_bytes, filename, options=None):
-        work_dir = self.root / "_cad_work"
-        work_dir.mkdir(parents=True, exist_ok=True)
-        in_path = work_dir / f"upload_{int(time.time()*1000)}_{filename}"
-        in_path.write_bytes(cad_bytes)
-        try:
-            return self.cad.cad_to_csg(in_path, options)
-        finally:
-            try:
-                if in_path.exists():
-                    in_path.unlink()
-            except OSError:
-                pass
+        from .cad_worker import IMPORT_ERROR
+        return {"ok": False, "error": IMPORT_ERROR}
 
-    def csg_to_cad(self, project, units="cm", options=None):
+    def csg_to_cad(self, project, units="mm", options=None):
+        import tempfile
         work_dir = self.root / "_cad_work"
         work_dir.mkdir(parents=True, exist_ok=True)
-        name = ((project.get("settings") or {}).get("name") or "model").replace(" ", "_")
-        out_path = work_dir / f"{name}_{int(time.time()*1000)}.step"
+        name = re.sub(r"[^\w-]+", "_", str((project.get("settings") or {}).get("name") or "model"))[:80]
         opts = dict(options or {})
         opts["units"] = units
-        res = self.cad.csg_to_cad(project, out_path, opts)
-        if res and res.get("ok") and out_path.exists():
-            data = out_path.read_bytes()
-            try:
-                out_path.unlink()
-            except OSError:
-                pass
-            return {"ok": True, "step_data": data.decode("utf-8", errors="replace"), "filename": f"{name}.step", "size": len(data)}
-        return res
+        with tempfile.TemporaryDirectory(prefix="export_", dir=work_dir) as temp:
+            out_path = Path(temp) / "model.step"
+            res = self.cad.csg_to_cad(project, out_path, opts)
+            if res and res.get("ok") and out_path.exists():
+                data = out_path.read_text(encoding="utf-8")
+                return {"ok": True, "step_data": data, "filename": f"{name}.step",
+                        "size": out_path.stat().st_size, "units": "mm"}
+            return res
 
     def stop(self, rid):
         run = self.runs.get(rid)
@@ -591,7 +580,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, res)
         if url.path == "/api/convert/csg-to-cad":
             project = body.get("project") or {}
-            units = str(body.get("units") or "cm")
+            units = str(body.get("units") or "mm")
             res = self.studio.csg_to_cad(project, units, body.get("options"))
             return self._send(200, res)
         m = re.match(r"^/api/runs/([^/]+)/stop$", url.path)

@@ -213,3 +213,23 @@ function checkTriangle(t) {
 }
 
 console.log('All STL export tests PASSED successfully!');
+
+// A closed manifold has exactly two triangles at every undirected edge.
+// Counts and unit normals alone miss a wrong corner on the sloped face.
+{
+  const tris = sandbox.tessellateWedge({sx:2, sy:4, sz:6});
+  const edges = new Map();
+  let volume = 0;
+  for (const t of tris) {
+    const v = [t.v1,t.v2,t.v3];
+    for (let i=0;i<3;i++) {
+      const key=[JSON.stringify(v[i]),JSON.stringify(v[(i+1)%3])].sort().join('|');
+      edges.set(key,(edges.get(key)||0)+1);
+    }
+    const [a,b,c]=v;
+    volume += (a[0]*(b[1]*c[2]-b[2]*c[1])+a[1]*(b[2]*c[0]-b[0]*c[2])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;
+  }
+  assert.ok([...edges.values()].every(n=>n===2), 'Wedge must be closed without overlapping edges');
+  assert.ok(Math.abs(volume-24)<1e-9, 'Wedge signed volume must be half its enclosing box');
+  console.log('Wedge closure and signed volume PASS');
+}

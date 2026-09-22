@@ -1,115 +1,96 @@
-"""Automated test for OpenMC Studio CAD Worker protocol, analytical STEP generator,
-and server-side CAD-to-CSG / CSG-to-CAD translation pipeline.
-"""
-import json
-import os
+"""CAD integrity: reject approximate imports and validate exact export requests."""
+import math
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
-# Add studio to sys.path so openmc_studio package is importable
-repo_root = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(repo_root / "studio"))
-
-from openmc_studio import cad_worker
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'studio'))
+from openmc_studio import cad_worker as cad
 from openmc_studio.server import CadWorker, Studio
 
 
-class TestCadWorkerProtocol(unittest.TestCase):
-    def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.runs_root = Path(self.temp_dir.name)
-
-    def tearDown(self):
-        self.temp_dir.cleanup()
-
-    def test_probe_environment(self):
-        env = cad_worker.probe_environment()
-        self.assertTrue(env["ready"])
-        self.assertIn("engine", env)
-        self.assertIn(".step", env["supported_inputs"])
-        self.assertIn(".step", env["supported_outputs"])
-
-    def test_analytical_step_export_and_parse(self):
-        parts = [
-            {"id": "p_box", "shape": "box", "name": "Core_Block", "x": 0.0, "y": 0.0, "z": 0.0, "sx": 10.0, "sy": 10.0, "sz": 10.0},
-            {"id": "p_cyl", "shape": "cylinder", "name": "Fuel_Pin", "x": 5.0, "y": 5.0, "z": 0.0, "r": 1.5, "h": 20.0, "axis": "z"},
-            {"id": "p_sph", "shape": "sphere", "name": "Central_Bead", "x": 0.0, "y": 0.0, "z": 15.0, "r": 2.5}
-        ]
-        step_file = self.runs_root / "model_test.step"
-        size = cad_worker.export_step_analytical(parts, step_file, units="cm")
-        self.assertGreater(size, 200)
-        self.assertTrue(step_file.exists())
-
-        # Verify STEP contents
-        content = step_file.read_text(encoding="utf-8")
-        self.assertIn("ISO-10303-21;", content)
-        self.assertIn("SPHERICAL_SURFACE", content)
-        self.assertIn("CYLINDRICAL_SURFACE", content)
-        self.assertIn("BLOCK", content)
-        self.assertIn("END-ISO-10303-21;", content)
-
-        # Parse back using analytical parser
-        parsed_parts = cad_worker.parse_step_analytical(step_file)
-        self.assertEqual(len(parsed_parts), 3)
-
-        shapes = [p["shape"] for p in parsed_parts]
-        self.assertIn("box", shapes)
-        self.assertIn("cylinder", shapes)
-        self.assertIn("sphere", shapes)
-
-    def test_cad_worker_manager_lifecycle(self):
-        worker = CadWorker(self.runs_root)
-        try:
-            status = worker.get_status()
-            self.assertTrue(status.get("ready"))
-            self.assertTrue(status.get("active"))
-            self.assertIn("env", status)
-
-            # Test CSG to CAD export via worker
-            project = {
-                "settings": {"name": "TestReactor"},
-                "parts": [
-                    {"id": "p1", "shape": "box", "name": "Reflector", "x": 0, "y": 0, "z": 0, "sx": 20, "sy": 20, "sz": 20}
-                ]
-            }
-            out_step = self.runs_root / "worker_out.step"
-            res = worker.csg_to_cad(project, out_step, {"units": "cm"})
-            self.assertTrue(res.get("ok"), f"Worker csg_to_cad failed: {res}")
-            self.assertTrue(out_step.exists())
-
-            # Test CAD to CSG import via worker
-            imp_res = worker.cad_to_csg(out_step, {})
-            self.assertTrue(imp_res.get("ok"), f"Worker cad_to_csg failed: {imp_res}")
-            self.assertGreaterEqual(len(imp_res.get("parts", [])), 1)
-        finally:
-            worker.stop()
-
-    def test_studio_cad_methods(self):
-        studio = Studio(self.runs_root, token="test-token", port=8765)
-        try:
-            st = studio.cad_status()
-            self.assertTrue(st.get("ready"))
-
-            project = {
-                "settings": {"name": "DemoCAD"},
-                "parts": [
-                    {"id": "p_c1", "shape": "cylinder", "name": "Guide_Tube", "x": 0, "y": 0, "z": 0, "r": 2.0, "h": 10.0}
-                ]
-            }
-            exp_res = studio.csg_to_cad(project, units="cm")
-            self.assertTrue(exp_res.get("ok"))
-            self.assertIn("ISO-10303-21", exp_res.get("step_data", ""))
-
-            # Test cad_to_csg upload
-            step_bytes = exp_res["step_data"].encode("utf-8")
-            imp_res = studio.cad_to_csg(step_bytes, "Guide_Tube.step")
-            self.assertTrue(imp_res.get("ok"))
-            self.assertGreaterEqual(len(imp_res.get("parts", [])), 1)
-        finally:
-            studio.cad.stop()
+class Shape:
+    def __init__(self, kind, dims):
+        self.kind, self.dims, self.ops = kind, dims, []
+    def translate(self, v): self.ops.append(('translate', v))
+    def rotate(self, origin, axis, angle): self.ops.append(('rotate', axis, angle))
+    def isNull(self): return False
+    def isValid(self): return True
 
 
-if __name__ == "__main__":
-    unittest.main()
+class TestCadIntegrity(unittest.TestCase):
+    def test_import_never_fabricates_solids_even_with_geouned(self):
+        with patch.object(cad, 'probe_environment', return_value={'freecad':'yes', 'geouned':'yes'}):
+            result = cad.run_cad_to_csg(1, 'anything.step', {}, time.time())
+        self.assertFalse(result['ok'])
+        self.assertNotIn('parts', result)
+        with self.assertRaises(ValueError): cad.parse_step_analytical('anything.step')
+        with self.assertRaises(ValueError): cad.export_step_analytical([], 'anything.step')
+
+    def test_units_and_oriented_cylinder(self):
+        fc = SimpleNamespace(Vector=lambda *xyz: xyz)
+        part = SimpleNamespace(makeCylinder=lambda *d: Shape('cylinder', d))
+        s = cad.make_cad_solid(dict(shape='cylinder', r=1, h=7, axis='x',
+                                    x=2, y=3, z=4, rx=30, ry=20, rz=10), fc, part)
+        self.assertEqual(s.dims, (10, 70))  # cm -> mm, radius and height.
+        self.assertEqual(s.ops[0], ('translate', (0, 0, -35)))
+        self.assertEqual(s.ops[1], ('rotate', (0, 1, 0), 90))
+        self.assertEqual(s.ops[2:5], [('rotate',(1,0,0),30), ('rotate',(0,1,0),20), ('rotate',(0,0,1),10)])
+        self.assertEqual(s.ops[-1], ('translate', (20,30,40)))
+
+    def test_dimensions_reject_unsupported_and_invalid_before_export(self):
+        for shape in ('wedge', 'hex_prism', 'ellipsoid', 'unknown'):
+            with self.assertRaises(ValueError): cad.part_dimensions({'shape':shape})
+        for r in (-1, math.nan, math.inf, 0):
+            with self.assertRaises(ValueError): cad.part_dimensions({'shape':'sphere', 'r':r})
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp) / 'bad.step'
+            with patch.object(cad, 'probe_environment', return_value={'can_export':False}):
+                result = cad.run_csg_to_cad(1, {'parts':[{'shape':'sphere','r':1}]}, out, {'units':'mm'}, time.time())
+                self.assertFalse(result['ok'])
+                self.assertIn('FreeCAD', result['error'])
+            self.assertFalse(out.exists())
+            result = cad.run_csg_to_cad(1, {'parts':[{'shape':'sphere','r':1}]}, out, {'units':'cm'}, time.time())
+            self.assertFalse(result['ok'])
+            self.assertIn('millimeters', result['error'])
+
+    def test_protocol_reports_limitations(self):
+        with tempfile.TemporaryDirectory() as temp:
+            worker = CadWorker(temp)
+            try:
+                status = worker.get_status()
+                self.assertTrue(status['ready'])
+                self.assertFalse(status['env']['can_import'])
+                self.assertEqual(status['env']['supported_inputs'], [])
+                src = Path(temp) / 'unsupported.step'
+                src.write_text('ISO-10303-21;')
+                self.assertFalse(worker.cad_to_csg(src)['ok'])
+                self.assertFalse(worker.csg_to_cad({'parts':[{'shape':'wedge'}]}, Path(temp)/'out.step', {'units':'mm'})['ok'])
+            finally:
+                worker.stop()
+
+    def test_server_rejects_import_without_writing_upload(self):
+        with tempfile.TemporaryDirectory() as temp:
+            studio = Studio(Path(temp), token='test', port=8768)
+            self.assertFalse(studio.cad_to_csg(b'bad', '../../escape.step')['ok'])
+            self.assertFalse((Path(temp)/'_cad_work').exists())
+
+    @unittest.skipUnless(cad.probe_environment()['can_export'], 'FreeCAD is not installed in this Python')
+    def test_real_freecad_step_bounds_and_volume(self):
+        import Part
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp)/'real.step'
+            p = dict(shape='cylinder', r=1, h=7, axis='x', x=2, y=3, z=4)
+            result = cad.run_csg_to_cad(1, {'parts':[p]}, out, {'units':'mm'}, time.time())
+            self.assertTrue(result['ok'], result)
+            shape = Part.read(str(out))
+            self.assertAlmostEqual(shape.Volume, math.pi*10**2*70, places=4)
+            self.assertAlmostEqual(shape.BoundBox.XLength, 70, places=5)
+            self.assertAlmostEqual(shape.BoundBox.XMin, -15, places=5)
+
+
+if __name__ == '__main__': unittest.main()

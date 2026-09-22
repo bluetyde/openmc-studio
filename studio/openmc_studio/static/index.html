@@ -395,6 +395,7 @@ input[type=checkbox]{accent-color:var(--accent)}
 <div class="menu" id="detectorMenu" hidden role="menu"></div>
 <div class="menu" id="energyMenu" hidden role="menu"></div>
 <div class="menu" id="arrayMenu" hidden role="dialog" aria-label="Repeat in an array"></div>
+<div class="menu" id="stlMenu" hidden role="dialog" aria-label="Export 3D STL"></div>
 <div class="dropline" id="dropLine" hidden></div>
 <script>
 "use strict";
@@ -434,7 +435,9 @@ const ICON = {
   group:'<path d="M2.5 5.5a1 1 0 0 1 1-1h3.2l1.5 1.6h6.3a1 1 0 0 1 1 1v7.4a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/>',
   ungroup:'<rect x="2.5" y="2.5" width="6" height="6" rx="1"/><rect x="9.5" y="9.5" width="6" height="6" rx="1"/>',
   pivot:'<circle cx="9" cy="9" r="2.2"/><path d="M9 1.8v3.6M9 12.6v3.6M1.8 9h3.6M12.6 9h3.6"/>',
-  settings:'<path d="M3 5h12M3 9h12M3 13h12"/><circle cx="6" cy="5" r="1.7" fill="#1b1e22"/><circle cx="12" cy="9" r="1.7" fill="#1b1e22"/><circle cx="8" cy="13" r="1.7" fill="#1b1e22"/>'
+  settings:'<path d="M3 5h12M3 9h12M3 13h12"/><circle cx="6" cy="5" r="1.7" fill="#1b1e22"/><circle cx="12" cy="9" r="1.7" fill="#1b1e22"/><circle cx="8" cy="13" r="1.7" fill="#1b1e22"/>',
+  stl:'<path d="M3 13.5l6-10 6 10H3z"/><path d="M9 3.5v10M3 13.5l6-3.5 6 3.5"/>',
+  convert:'<path d="M3 6.5h10M10 3.5l3 3-3 3M15 11.5H5M8 14.5l-3-3 3-3"/>'
 };
 const ic = (n, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
 
@@ -2758,7 +2761,377 @@ async function copyScript() {
 }
 const saveScript = () => IN_ARTIFACT ? saveFile('model.py.txt', generate(problems()), 'Rename it to model.py before running.') : saveFile('model.py', generate(problems()));
 const saveProject = () => saveFile(`${(S.settings.name || 'project').replace(/[^\w-]+/g, '_')}.openmc-studio.json`, JSON.stringify(S, null, 2));
+
+/* ───────── 3D STL Geometry Export ───────── */
+function facetNormal(v1, v2, v3) {
+  const ax = v2[0] - v1[0], ay = v2[1] - v1[1], az = v2[2] - v1[2];
+  const bx = v3[0] - v1[0], by = v3[1] - v1[1], bz = v3[2] - v1[2];
+  const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+  const l = Math.hypot(nx, ny, nz);
+  return l > 1e-12 ? [nx / l, ny / l, nz / l] : [0, 0, 1];
+}
+
+function transformPoint(p, M, c, scale = 1) {
+  const x = (M[0][0] * p[0] + M[0][1] * p[1] + M[0][2] * p[2] + c[0]) * scale;
+  const y = (M[1][0] * p[0] + M[1][1] * p[1] + M[1][2] * p[2] + c[1]) * scale;
+  const z = (M[2][0] * p[0] + M[2][1] * p[1] + M[2][2] * p[2] + c[2]) * scale;
+  return [x, y, z];
+}
+
+function tessellateBox(p) {
+  const hx = p.sx / 2, hy = p.sy / 2, hz = p.sz / 2;
+  const v = [
+    [-hx, -hy, -hz], [hx, -hy, -hz], [hx, hy, -hz], [-hx, hy, -hz],
+    [-hx, -hy,  hz], [hx, -hy,  hz], [hx, hy,  hz], [-hx, hy,  hz]
+  ];
+  const faces = [
+    [4, 5, 6], [4, 6, 7],
+    [0, 2, 1], [0, 3, 2],
+    [1, 2, 6], [1, 6, 5],
+    [0, 7, 3], [0, 4, 7],
+    [3, 6, 2], [3, 7, 6],
+    [0, 1, 5], [0, 5, 4]
+  ];
+  return faces.map(f => {
+    const v1 = v[f[0]], v2 = v[f[1]], v3 = v[f[2]];
+    return { n: facetNormal(v1, v2, v3), v1, v2, v3 };
+  });
+}
+
+function tessellateCylinder(p, segs = 32) {
+  const r = p.r, hz = p.h / 2;
+  const tris = [];
+  const bCenter = [0, 0, -hz], tCenter = [0, 0, hz];
+  const botRing = [], topRing = [];
+  for (let i = 0; i < segs; i++) {
+    const th = (2 * Math.PI * i) / segs;
+    const x = r * Math.cos(th), y = r * Math.sin(th);
+    botRing.push([x, y, -hz]);
+    topRing.push([x, y, hz]);
+  }
+  for (let i = 0; i < segs; i++) {
+    const next = (i + 1) % segs;
+    tris.push({ n: [0, 0, -1], v1: bCenter, v2: botRing[next], v3: botRing[i] });
+    tris.push({ n: [0, 0, 1], v1: tCenter, v2: topRing[i], v3: topRing[next] });
+    const b0 = botRing[i], b1 = botRing[next], t1 = topRing[next], t0 = topRing[i];
+    tris.push({ n: facetNormal(b0, b1, t1), v1: b0, v2: b1, v3: t1 });
+    tris.push({ n: facetNormal(b0, t1, t0), v1: b0, v2: t1, v3: t0 });
+  }
+  return tris;
+}
+
+function tessellateCone(p, segs = 32) {
+  const r1 = p.r, r2 = p.r2 ?? p.r, hz = p.h / 2;
+  const tris = [];
+  const bCenter = [0, 0, -hz], tCenter = [0, 0, hz];
+  const botRing = [], topRing = [];
+  for (let i = 0; i < segs; i++) {
+    const th = (2 * Math.PI * i) / segs;
+    const c = Math.cos(th), s = Math.sin(th);
+    botRing.push([r1 * c, r1 * s, -hz]);
+    topRing.push([r2 * c, r2 * s, hz]);
+  }
+  for (let i = 0; i < segs; i++) {
+    const next = (i + 1) % segs;
+    if (r1 > 1e-9) tris.push({ n: [0, 0, -1], v1: bCenter, v2: botRing[next], v3: botRing[i] });
+    if (r2 > 1e-9) tris.push({ n: [0, 0, 1], v1: tCenter, v2: topRing[i], v3: topRing[next] });
+    const b0 = botRing[i], b1 = botRing[next], t1 = topRing[next], t0 = topRing[i];
+    if (r1 > 1e-9 && r2 > 1e-9) {
+      tris.push({ n: facetNormal(b0, b1, t1), v1: b0, v2: b1, v3: t1 });
+      tris.push({ n: facetNormal(b0, t1, t0), v1: b0, v2: t1, v3: t0 });
+    } else if (r1 > 1e-9) {
+      tris.push({ n: facetNormal(b0, b1, tCenter), v1: b0, v2: b1, v3: tCenter });
+    } else {
+      tris.push({ n: facetNormal(bCenter, t1, t0), v1: bCenter, v2: t1, v3: t0 });
+    }
+  }
+  return tris;
+}
+
+function tessellateHexPrism(p) {
+  const r = p.r, hz = p.h / 2;
+  const R = (2 / Math.sqrt(3)) * r;
+  const tris = [];
+  const bCenter = [0, 0, -hz], tCenter = [0, 0, hz];
+  const botRing = [], topRing = [];
+  for (let i = 0; i < 6; i++) {
+    const th = (i * Math.PI) / 3;
+    const x = R * Math.cos(th), y = R * Math.sin(th);
+    botRing.push([x, y, -hz]);
+    topRing.push([x, y, hz]);
+  }
+  for (let i = 0; i < 6; i++) {
+    const next = (i + 1) % 6;
+    tris.push({ n: [0, 0, -1], v1: bCenter, v2: botRing[next], v3: botRing[i] });
+    tris.push({ n: [0, 0, 1], v1: tCenter, v2: topRing[i], v3: topRing[next] });
+    const b0 = botRing[i], b1 = botRing[next], t1 = topRing[next], t0 = topRing[i];
+    tris.push({ n: facetNormal(b0, b1, t1), v1: b0, v2: b1, v3: t1 });
+    tris.push({ n: facetNormal(b0, t1, t0), v1: b0, v2: t1, v3: t0 });
+  }
+  return tris;
+}
+
+function tessellateWedge(p) {
+  const sx = p.sx, sy = p.sy, sz = p.sz;
+  const hx = sx / 2, hy = sy / 2, hz = sz / 2;
+  const b0 = [-hx, -hy, -hz], b1 = [hx, -hy, -hz], b2 = [-hx, hy, -hz];
+  const t0 = [-hx, -hy,  hz], t1 = [hx, -hy,  hz], t2 = [-hx, hy,  hz];
+  return [
+    { n: [0, 0, -1], v1: b0, v2: b2, v3: b1 },
+    { n: [0, 0, 1], v1: t0, v2: t1, v3: t2 },
+    { n: [0, -1, 0], v1: b0, v2: b1, v3: t1 },
+    { n: [0, -1, 0], v1: b0, v2: t1, v3: t0 },
+    { n: [-1, 0, 0], v1: b0, v2: t0, v3: t2 },
+    { n: [-1, 0, 0], v1: b0, v2: t2, v3: b2 },
+    { n: facetNormal(b1, b2, t2), v1: b1, v2: b2, v3: t2 },
+    { n: facetNormal(b1, t2, t1), v1: b1, v2: b2, v3: t1 }
+  ];
+}
+
+function tessellateSphere(p, segs = 32) {
+  const r = p.r;
+  const rings = Math.max(8, Math.floor(segs / 2));
+  const tris = [];
+  const topPole = [0, 0, r];
+  const botPole = [0, 0, -r];
+  const grid = [];
+  for (let lat = 1; lat < rings; lat++) {
+    const phi = Math.PI / 2 - (lat * Math.PI) / rings;
+    const z = r * Math.sin(phi);
+    const rxy = r * Math.cos(phi);
+    const ring = [];
+    for (let lon = 0; lon < segs; lon++) {
+      const th = (2 * Math.PI * lon) / segs;
+      ring.push([rxy * Math.cos(th), rxy * Math.sin(th), z]);
+    }
+    grid.push(ring);
+  }
+  for (let lon = 0; lon < segs; lon++) {
+    const next = (lon + 1) % segs;
+    const vCurr = grid[0][lon], vNext = grid[0][next];
+    tris.push({ n: facetNormal(topPole, vCurr, vNext), v1: topPole, v2: vCurr, v3: vNext });
+  }
+  for (let lat = 0; lat < grid.length - 1; lat++) {
+    for (let lon = 0; lon < segs; lon++) {
+      const next = (lon + 1) % segs;
+      const v00 = grid[lat][lon], v01 = grid[lat][next];
+      const v10 = grid[lat+1][lon], v11 = grid[lat+1][next];
+      tris.push({ n: facetNormal(v00, v10, v11), v1: v00, v2: v10, v3: v11 });
+      tris.push({ n: facetNormal(v00, v11, v01), v1: v00, v2: v11, v3: v01 });
+    }
+  }
+  const last = grid.length - 1;
+  for (let lon = 0; lon < segs; lon++) {
+    const next = (lon + 1) % segs;
+    const vCurr = grid[last][lon], vNext = grid[last][next];
+    tris.push({ n: facetNormal(vNext, vCurr, botPole), v1: vNext, v2: vCurr, v3: botPole });
+  }
+  return tris;
+}
+
+function tessellateEllipsoid(p, segs = 32) {
+  const a = p.a || p.r || 1;
+  const b = p.b || p.r || 1;
+  const c = p.c || p.r || 1;
+  const unitTris = tessellateSphere({ r: 1 }, segs);
+  return unitTris.map(t => {
+    const v1 = [t.v1[0] * a, t.v1[1] * b, t.v1[2] * c];
+    const v2 = [t.v2[0] * a, t.v2[1] * b, t.v2[2] * c];
+    const v3 = [t.v3[0] * a, t.v3[1] * b, t.v3[2] * c];
+    return { n: facetNormal(v1, v2, v3), v1, v2, v3 };
+  });
+}
+
+function tessellatePart(p, segs = 32) {
+  if (p.shape === 'sphere') return tessellateSphere(p, segs);
+  if (p.shape === 'cylinder') return tessellateCylinder(p, segs);
+  if (p.shape === 'cone') return tessellateCone(p, segs);
+  if (p.shape === 'hex_prism') return tessellateHexPrism(p);
+  if (p.shape === 'wedge') return tessellateWedge(p);
+  if (p.shape === 'ellipsoid') return tessellateEllipsoid(p, segs);
+  return tessellateBox(p);
+}
+
+function generateBinarySTL(triangles, title = 'OpenMC Studio Model') {
+  const nTris = triangles.length;
+  const bufferSize = 84 + nTris * 50;
+  const buffer = new ArrayBuffer(bufferSize);
+  const view = new DataView(buffer);
+  const u8 = new Uint8Array(buffer);
+
+  const headerStr = (title || 'OpenMC Studio Model').slice(0, 79);
+  for (let i = 0; i < headerStr.length; i++) {
+    u8[i] = headerStr.charCodeAt(i);
+  }
+
+  view.setUint32(80, nTris, true);
+
+  let offset = 84;
+  for (let i = 0; i < nTris; i++) {
+    const t = triangles[i];
+    view.setFloat32(offset, t.n[0], true);
+    view.setFloat32(offset + 4, t.n[1], true);
+    view.setFloat32(offset + 8, t.n[2], true);
+
+    view.setFloat32(offset + 12, t.v1[0], true);
+    view.setFloat32(offset + 16, t.v1[1], true);
+    view.setFloat32(offset + 20, t.v1[2], true);
+
+    view.setFloat32(offset + 24, t.v2[0], true);
+    view.setFloat32(offset + 28, t.v2[1], true);
+    view.setFloat32(offset + 32, t.v2[2], true);
+
+    view.setFloat32(offset + 36, t.v3[0], true);
+    view.setFloat32(offset + 40, t.v3[1], true);
+    view.setFloat32(offset + 44, t.v3[2], true);
+
+    view.setUint16(offset + 48, 0, true);
+    offset += 50;
+  }
+  return new Uint8Array(buffer);
+}
+
+function generateAsciiSTL(partGroups) {
+  const lines = [];
+  for (const { name, triangles } of partGroups) {
+    const safeName = (name || 'part').replace(/[^\w-]+/g, '_');
+    lines.push(`solid ${safeName}`);
+    for (const t of triangles) {
+      lines.push(`  facet normal ${t.n[0].toExponential(6)} ${t.n[1].toExponential(6)} ${t.n[2].toExponential(6)}`);
+      lines.push('    outer loop');
+      lines.push(`      vertex ${t.v1[0].toExponential(6)} ${t.v1[1].toExponential(6)} ${t.v1[2].toExponential(6)}`);
+      lines.push(`      vertex ${t.v2[0].toExponential(6)} ${t.v2[1].toExponential(6)} ${t.v2[2].toExponential(6)}`);
+      lines.push(`      vertex ${t.v3[0].toExponential(6)} ${t.v3[1].toExponential(6)} ${t.v3[2].toExponential(6)}`);
+      lines.push('    endloop');
+      lines.push('  endfacet');
+    }
+    lines.push(`endsolid ${safeName}`);
+  }
+  return lines.join('\n');
+}
+
+function generateSTL(parts, opts = {}) {
+  const binary = opts.binary !== false && opts.format !== 'ascii';
+  const quality = opts.quality || 32;
+  const scale = opts.scale || (opts.units === 'mm' ? 10 : 1);
+  const modelName = (opts.modelName || (S && S.settings && S.settings.name) || 'model').replace(/[^\w-]+/g, '_');
+
+  const partGroups = [];
+  let totalTris = 0;
+
+  for (const p of parts) {
+    const localTris = tessellatePart(p, quality);
+    const fr = partFrame(p);
+    const M = fr.M;
+    const c = [p.x, p.y, p.z];
+    const worldTris = localTris.map(t => {
+      const v1 = transformPoint(t.v1, M, c, scale);
+      const v2 = transformPoint(t.v2, M, c, scale);
+      const v3 = transformPoint(t.v3, M, c, scale);
+      const n = facetNormal(v1, v2, v3);
+      return { n, v1, v2, v3 };
+    });
+    partGroups.push({ name: p.name || p.id, triangles: worldTris });
+    totalTris += worldTris.length;
+  }
+
+  let data;
+  if (binary) {
+    const allTris = [];
+    for (const g of partGroups) {
+      for (const t of g.triangles) allTris.push(t);
+    }
+    data = generateBinarySTL(allTris, `OpenMC Studio - ${modelName}`);
+  } else {
+    data = generateAsciiSTL(partGroups);
+  }
+
+  return { data, triangleCount: totalTris, binary, partGroups };
+}
+
+function exportSTL(opts = {}) {
+  const scope = opts.scope || 'all';
+  let targetParts = S.parts;
+  if (scope === 'selected') {
+    const s = getSel();
+    targetParts = s && sel.kind === 'part' ? [s] : S.parts;
+  } else if (scope === 'group') {
+    const gId = sel.kind === 'group' ? sel.id : (getSel() || {}).group;
+    targetParts = gId ? S.parts.filter(p => p.group === gId) : S.parts;
+  }
+  if (!targetParts.length) {
+    log('warn', 'No parts to export to STL.');
+    return null;
+  }
+  const binary = opts.binary !== false && opts.format !== 'ascii';
+  const units = opts.units || 'cm';
+  const quality = parseInt(opts.quality || opts.resolution, 10) || 32;
+  const scale = units === 'mm' ? 10 : 1;
+  const modelName = ((S && S.settings && S.settings.name) || 'model').replace(/[^\w-]+/g, '_');
+  const filename = opts.filename || `${modelName}${scope !== 'all' ? '_' + scope : ''}_${units}.stl`;
+
+  const res = generateSTL(targetParts, { binary, units, quality, scale, modelName });
+  saveFile(filename, res.data, `(${res.triangleCount.toLocaleString()} triangles, ${units})`);
+  return { ...res, filename };
+}
+
+const STLMENU = {btn:null};
+function openStlMenu(btn) {
+  const menu = $('#stlMenu');
+  if (!menu) return;
+  if (!menu.hidden && STLMENU.btn === btn) { menu.hidden = true; return; }
+  const r = btn.getBoundingClientRect();
+  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 308)) + 'px';
+  menu.style.top = (r.bottom + 4) + 'px';
+  menu.innerHTML = `
+    <div class="atitle">Export 3D STL</div>
+    <div style="font-size:11.5px;color:var(--dim);margin-bottom:8px">Triangulated surface mesh for 3D printing, CAD or ParaView</div>
+    <div class="agrid" style="display:grid;grid-template-columns:80px 1fr;gap:6px;align-items:center;font-size:12px;margin-bottom:10px">
+      <span style="font-weight:600">Scope</span>
+      <select id="stl-scope" style="padding:2px 4px">
+        <option value="all">All parts (${S.parts.length})</option>
+        ${sel.kind === 'part' ? `<option value="selected" selected>Selected part (${(getSel()||{}).name || 'part'})</option>` : ''}
+        ${sel.kind === 'group' || selItems().some(x => x.o.group) ? '<option value="group">Selected group</option>' : ''}
+      </select>
+      <span style="font-weight:600">Format</span>
+      <select id="stl-format" style="padding:2px 4px">
+        <option value="binary" selected>Binary STL (.stl, compact)</option>
+        <option value="ascii">ASCII STL (.stl, multi-solid)</option>
+      </select>
+      <span style="font-weight:600">Quality</span>
+      <select id="stl-quality" style="padding:2px 4px">
+        <option value="32" selected>Medium (32 segments)</option>
+        <option value="64">Fine (64 segments)</option>
+        <option value="16">Coarse (16 segments)</option>
+        <option value="128">Ultra (128 segments)</option>
+      </select>
+      <span style="font-weight:600">Units</span>
+      <select id="stl-units" style="padding:2px 4px">
+        <option value="cm" selected>Centimeters (cm, OpenMC)</option>
+        <option value="mm">Millimeters (mm, 3D printing)</option>
+      </select>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:6px">
+      <button type="button" id="stl-cancel" style="padding:4px 10px">Cancel</button>
+      <button type="button" id="stl-export-btn" class="on" style="padding:4px 12px;font-weight:600">Export</button>
+    </div>
+  `;
+  menu.hidden = false;
+  STLMENU.btn = btn;
+
+  $('#stl-cancel').onclick = () => { menu.hidden = true; };
+  $('#stl-export-btn').onclick = () => {
+    const scope = $('#stl-scope').value;
+    const format = $('#stl-format').value;
+    const quality = parseInt($('#stl-quality').value, 10);
+    const units = $('#stl-units').value;
+    menu.hidden = true;
+    exportSTL({ scope, format, quality, units });
+  };
+}
+
 function openProject(file) {
+
   const r = new FileReader();
   r.onload = () => {
     try {
@@ -2851,8 +3224,21 @@ const RIBBON = {
       ['reset', 'Clear overlay', clearOverlay, () => !!LOCAL.results]]},
     {label:'Random numbers', btns:[['dice', 'New seed', newSeed], ['settings', 'Settings', () => select('settings')]]}
   ],
+  Convert:[
+    {label:'3D Mesh', btns:[['stl', 'Export STL…', e => openStlMenu(e.currentTarget)]]},
+    {label:'CAD Translation', btns:[
+      ['convert', 'CAD to CSG…', () => log('info', 'CAD-to-CSG translation (GEOUNED / FreeCAD) is running as an external worker pipeline.')],
+      ['convert', 'CSG to STEP…', () => log('info', 'CSG-to-STEP conversion (GEOUNED / FreeCAD) is running as an external worker pipeline.')]
+    ]},
+    {label:'Nuclear Decks', btns:[
+      ['save', 'MCNP input', () => exportMcnp(), () => LOCAL.on],
+      ['copy', 'Copy model.py', copyScript],
+      ['save', 'Save model.py', saveScript, () => !!downloads]
+    ]}
+  ],
   Export:[
     {label:'Script', btns:[['copy', 'Copy model.py', copyScript], ['save', 'Save model.py', saveScript, () => !!downloads]]},
+    {label:'3D Mesh', btns:[['stl', 'Export STL…', e => openStlMenu(e.currentTarget)]]},
     {label:'MCNP', btns:[['save', 'MCNP input', () => exportMcnp(), () => LOCAL.on]]},
     {label:'Project', btns:[['save', 'Save project', saveProject, () => !!downloads], ['open', 'Open project', () => $('#openFile').click()]]}
   ]
@@ -7017,6 +7403,7 @@ document.addEventListener('mousedown', e => {
   const sm = $('#sourceMenu'); if (sm && !sm.hidden && !sm.contains(e.target) && !e.target.closest('.rbtn, button')) sm.hidden = true;
   const dm = $('#detectorMenu'); if (dm && !dm.hidden && !dm.contains(e.target) && !e.target.closest('.rbtn, button')) dm.hidden = true;
   const em = $('#energyMenu'); if (em && !em.hidden && !em.contains(e.target) && !e.target.closest('.rbtn, button')) em.hidden = true;
+  const stlm = $('#stlMenu'); if (stlm && !stlm.hidden && !stlm.contains(e.target) && !e.target.closest('.rbtn, button')) stlm.hidden = true;
 });
 let drag = null, justDragged = false;
 $('#tree').addEventListener('click', e => {
@@ -7225,6 +7612,8 @@ document.addEventListener('keydown', e => {
     const sm = $('#sourceMenu'); if (sm) sm.hidden = true;
     const dm = $('#detectorMenu'); if (dm) dm.hidden = true;
     const em = $('#energyMenu'); if (em) em.hidden = true;
+    const am = $('#arrayMenu'); if (am) am.hidden = true;
+    const stlm = $('#stlMenu'); if (stlm) stlm.hidden = true;
     if (drag) dragEnd({type:'pointercancel'});
     if (TDRAG) endTransform(true);
     else if (sel.kind === 'multi') select('settings');

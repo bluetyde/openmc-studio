@@ -50,3 +50,28 @@ System Volume Information/
 
 # ── PNNL-15870 Rev. 1 text for the material checker (extracted from the PDF; kept locally, not in git) ──
 studio/tools/pnnl-15870-rev1.txt
+
+# ── FreeCAD & CAD translation artifacts ──
+*.FCStd1
+*.FCStd2
+*.FCStd*~
+*.FCLock
+*.FCBak
+FreeCAD.log
+.FreeCAD/
+FreeCAD/
+*.AppImage
+
+# ── Intermediate CAD/Mesh conversion outputs (outside test/fixtures) ──
+*.brep
+*.step
+*.stp
+*.iges
+*.igs
+*.stl
+!examples/**/*.step
+!examples/**/*.stp
+!examples/**/*.stl
+!test/fixtures/**/*.step
+!test/fixtures/**/*.stp
+!test/fixtures/**/*.stl

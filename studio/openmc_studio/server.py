@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlparse
 from . import __version__
 
 STATIC = Path(__file__).parent / "static"
-MAX_BODY = 5 * 1024 * 1024
+MAX_BODY = 25 * 1024 * 1024
 RUN_ID = re.compile(r"^[0-9]{8}-[0-9]{6}-[a-z0-9-]{1,40}$")
 
 
@@ -66,6 +66,7 @@ class Studio:
         self.active = None
         self.lock = threading.Lock()
         self.mcnp = McnpWorker(self.root)
+        self.cad = CadWorker(self.root)
 
     # ── runs ──
     def start(self, script, project, name):
@@ -114,6 +115,43 @@ class Studio:
         report = self.mcnp.run(script, slug, self.root / "mcnp-live", seq=seq, client=client)
         report.update(name=slug)
         return report
+
+    def cad_status(self):
+        return self.cad.get_status()
+
+    def cad_progress(self):
+        return self.cad.get_progress()
+
+    def cad_to_csg(self, cad_bytes, filename, options=None):
+        work_dir = self.root / "_cad_work"
+        work_dir.mkdir(parents=True, exist_ok=True)
+        in_path = work_dir / f"upload_{int(time.time()*1000)}_{filename}"
+        in_path.write_bytes(cad_bytes)
+        try:
+            return self.cad.cad_to_csg(in_path, options)
+        finally:
+            try:
+                if in_path.exists():
+                    in_path.unlink()
+            except OSError:
+                pass
+
+    def csg_to_cad(self, project, units="cm", options=None):
+        work_dir = self.root / "_cad_work"
+        work_dir.mkdir(parents=True, exist_ok=True)
+        name = ((project.get("settings") or {}).get("name") or "model").replace(" ", "_")
+        out_path = work_dir / f"{name}_{int(time.time()*1000)}.step"
+        opts = dict(options or {})
+        opts["units"] = units
+        res = self.cad.csg_to_cad(project, out_path, opts)
+        if res and res.get("ok") and out_path.exists():
+            data = out_path.read_bytes()
+            try:
+                out_path.unlink()
+            except OSError:
+                pass
+            return {"ok": True, "step_data": data.decode("utf-8", errors="replace"), "filename": f"{name}.step", "size": len(data)}
+        return res
 
     def stop(self, rid):
         run = self.runs.get(rid)
@@ -285,6 +323,133 @@ class McnpWorker:
             return result
 
 
+class CadWorker:
+    """Worker process for CAD import (STEP/IGES to CSG) and export (CSG to STEP)."""
+
+    def __init__(self, runs_root):
+        self.runs_root = Path(runs_root)
+        self.proc = None
+        self.results = None
+        self.lock = threading.Lock()
+        self.job = 0
+        self.progress = None
+        self.env_status = None
+
+    def _reader(self, proc, results):
+        for line in proc.stdout:
+            if line.startswith("@@RESULT "):
+                try:
+                    self.progress = None
+                    results.put(json.loads(line[len("@@RESULT "):]))
+                except ValueError:
+                    pass
+            elif line.startswith("@@PROGRESS "):
+                try:
+                    self.progress = json.loads(line[len("@@PROGRESS "):])
+                except ValueError:
+                    pass
+        results.put(None)
+
+    def _start(self):
+        if self.proc and self.proc.poll() is None:
+            return None
+        env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONDONTWRITEBYTECODE="1")
+        self.runs_root.mkdir(parents=True, exist_ok=True)
+        self.log_file = open(self.runs_root / "cad-worker.log", "a", encoding="utf-8")
+        cad_py = os.environ.get("OPENMC_CAD_PYTHON", sys.executable)
+        self.proc = subprocess.Popen(
+            [cad_py, "-W", "ignore", "-m", "openmc_studio.cad_worker"],
+            cwd=str(Path(__file__).resolve().parent.parent),
+            env=env, text=True, bufsize=1,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log_file,
+            start_new_session=True
+        )
+        self.results = queue.Queue()
+        threading.Thread(target=self._reader, args=(self.proc, self.results), daemon=True).start()
+        try:
+            ready = self.results.get(timeout=30)
+            if ready and ready.get("ready"):
+                self.env_status = ready.get("env")
+                return None
+        except queue.Empty:
+            ready = None
+        self.stop()
+        return (ready or {}).get("error") or "The CAD worker didn't start (see cad-worker.log in the runs folder)."
+
+    def get_progress(self):
+        return self.progress
+
+    def get_status(self):
+        with self.lock:
+            if self.env_status:
+                return {"ready": True, "active": True, "env": self.env_status}
+            err = self._start()
+            if err:
+                return {"ready": False, "active": False, "error": err}
+            return {"ready": True, "active": True, "env": self.env_status}
+
+    def cad_to_csg(self, file_path, options=None):
+        with self.lock:
+            err = self._start()
+            if err:
+                return {"ok": False, "error": err}
+            self.job += 1
+            req = {"cmd": "cad_to_csg", "id": self.job, "file_path": str(file_path), "options": options or {}}
+            try:
+                self.proc.stdin.write(json.dumps(req) + "\n")
+                self.proc.stdin.flush()
+                res = self.results.get(timeout=300)
+            except (BrokenPipeError, OSError, queue.Empty) as e:
+                res = {"ok": False, "error": f"Worker communication failure: {e}"}
+            self.progress = None
+            return res or {"ok": False, "error": "No response from CAD worker"}
+
+    def csg_to_cad(self, project, out_path, options=None):
+        with self.lock:
+            err = self._start()
+            if err:
+                return {"ok": False, "error": err}
+            self.job += 1
+            req = {"cmd": "csg_to_cad", "id": self.job, "project": project, "out_path": str(out_path), "options": options or {}}
+            try:
+                self.proc.stdin.write(json.dumps(req) + "\n")
+                self.proc.stdin.flush()
+                res = self.results.get(timeout=300)
+            except (BrokenPipeError, OSError, queue.Empty) as e:
+                res = {"ok": False, "error": f"Worker communication failure: {e}"}
+            self.progress = None
+            return res or {"ok": False, "error": "No response from CAD worker"}
+
+    def stop(self):
+        self.progress = None
+        if self.proc:
+            try:
+                if self.proc.stdin:
+                    try:
+                        self.proc.stdin.close()
+                    except OSError:
+                        pass
+                if self.proc.stdout:
+                    try:
+                        self.proc.stdout.close()
+                    except OSError:
+                        pass
+                if sys.platform == "win32":
+                    self.proc.terminate()
+                else:
+                    os.killpg(self.proc.pid, signal.SIGTERM)
+                self.proc.wait(timeout=2)
+            except (ProcessLookupError, OSError, AttributeError, subprocess.TimeoutExpired):
+                pass
+            self.proc = None
+        if getattr(self, "log_file", None):
+            try:
+                self.log_file.close()
+            except OSError:
+                pass
+            self.log_file = None
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "OpenMCStudio/" + __version__
     studio = None  # set in serve()
@@ -351,6 +516,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, self._health())
         if path == "/api/mcnp-progress":
             return self._send(200, self.studio.mcnp.get_progress() or {})
+        if path == "/api/convert/status":
+            return self._send(200, self.studio.cad_status())
+        if path == "/api/convert/progress":
+            return self._send(200, self.studio.cad_progress() or {})
         if path == "/api/runs":
             return self._send(200, {"runs": self.studio.list_runs()})
         m = re.match(r"^/api/runs/([^/]+)/(stream|results|project|script)$", path)
@@ -402,6 +571,29 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(script, str) or not script.strip():
                 return self._error(400, "No script to export.")
             return self._send(200, self.studio.export_mcnp(script, body.get("project") or {}, str(body.get("name") or "model")))
+        if url.path == "/api/convert/cad-to-csg":
+            filename = str(body.get("filename") or "geometry.step")
+            raw_data = body.get("data")
+            if not raw_data:
+                return self._error(400, "No CAD data provided.")
+            import base64
+            if isinstance(raw_data, str) and raw_data.startswith("data:"):
+                _, b64 = raw_data.split(",", 1)
+                cad_bytes = base64.b64decode(b64)
+            elif isinstance(raw_data, str):
+                try:
+                    cad_bytes = base64.b64decode(raw_data)
+                except Exception:
+                    cad_bytes = raw_data.encode("utf-8")
+            else:
+                cad_bytes = bytes(raw_data)
+            res = self.studio.cad_to_csg(cad_bytes, filename, body.get("options"))
+            return self._send(200, res)
+        if url.path == "/api/convert/csg-to-cad":
+            project = body.get("project") or {}
+            units = str(body.get("units") or "cm")
+            res = self.studio.csg_to_cad(project, units, body.get("options"))
+            return self._send(200, res)
         m = re.match(r"^/api/runs/([^/]+)/stop$", url.path)
         if m:
             return self._send(200, {"stopped": self.studio.stop(m.group(1))})

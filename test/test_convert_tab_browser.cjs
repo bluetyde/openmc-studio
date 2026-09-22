@@ -110,6 +110,29 @@ const fs = require('fs'), path = require('path'), assert = require('assert');
     await page.keyboard.press('Escape');
     console.log('  [PASS] Export tab integration');
 
+    const scopes = await page.evaluate(() => {
+      let saves = 0; saveFile = () => { saves++; };
+      S.parts = [{...newPart('one','One','box'),group:'child'}, newPart('two','Two','sphere')];
+      S.groups = [{id:'parent',name:'Parent'},{id:'child',name:'Child',parent:'parent'}];
+      sel = {kind:'settings'};
+      const missing = exportSTL({scope:'selected'});
+      const noGroup = exportSTL({scope:'group'});
+      sel = {kind:'part',id:'deleted'};
+      const stale = exportSTL({scope:'selected'});
+      const failedSaves = saves;
+      sel = {kind:'group',id:'parent'};
+      const nested = exportSTL({scope:'group'});
+      sel = {kind:'part',id:'two'};
+      const selected = exportSTL({scope:'selected'});
+      S.parts.push({...newPart('bad','Empty cone','cone'),r:0,r2:0});
+      const invalid = exportSTL({scope:'all'});
+      return {missing,noGroup,stale,failedSaves,nested:nested.partGroups.length,
+        selected:selected.partGroups.map(p=>p.name),invalid,saves};
+    });
+    assert.equal(scopes.missing,null); assert.equal(scopes.noGroup,null); assert.equal(scopes.stale,null);
+    assert.equal(scopes.failedSaves,0); assert.equal(scopes.nested,1);
+    assert.deepEqual(scopes.selected,['Two']); assert.equal(scopes.invalid,null);
+    assert.equal(scopes.saves,2, 'Failed selection or geometry must never download all parts');
     assert.equal(errors.length, 0, `Browser errors detected: ${errors.join(', ')}`);
     console.log('All Convert tab and STL browser tests PASSED successfully!');
   } finally {

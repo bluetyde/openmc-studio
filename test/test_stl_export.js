@@ -30,7 +30,7 @@ const mockElem = {
 };
 
 const sandbox = {
-  console,
+  console, TextEncoder,
   Option: class { constructor(t, v, d, s) { this.text = t; this.value = v; this.defaultSelected = d; this.selected = s; } },
   document: { querySelector: () => mockElem, querySelectorAll: () => [], getElementById: () => mockElem, createElement: () => mockElem, addEventListener: () => {} },
   window: {},
@@ -60,7 +60,7 @@ function checkTriangle(t) {
   const boxPart = {
     id: 'p_box', shape: 'box', name: 'Test Box',
     x: 10, y: 20, z: 30, sx: 4, sy: 6, sz: 8,
-    rotX: 0, rotY: 0, rotZ: 0
+    rx: 0, ry: 0, rz: 0
   };
   const tris = sandbox.tessellateBox(boxPart);
   assert.equal(tris.length, 12, 'Box should have exactly 12 triangles (2 per face)');
@@ -90,7 +90,7 @@ function checkTriangle(t) {
   const cylPart = {
     id: 'p_cyl', shape: 'cylinder', name: 'Test Cyl',
     x: 0, y: 0, z: 0, r: 2.5, h: 10, axis: 'z',
-    rotX: 0, rotY: 0, rotZ: 0
+    rx: 0, ry: 0, rz: 0
   };
   const quality = 32;
   const tris = sandbox.tessellateCylinder(cylPart, quality);
@@ -109,7 +109,7 @@ function checkTriangle(t) {
   const coneTrunc = {
     id: 'p_cone', shape: 'cone', name: 'Truncated Cone',
     x: 0, y: 0, z: 0, r: 5, r2: 2, h: 10, axis: 'z',
-    rotX: 0, rotY: 0, rotZ: 0
+    rx: 0, ry: 0, rz: 0
   };
   const quality = 32;
   const trisTrunc = sandbox.tessellateCone(coneTrunc, quality);
@@ -120,7 +120,7 @@ function checkTriangle(t) {
   const coneSharp = {
     id: 'p_cone2', shape: 'cone', name: 'Sharp Cone',
     x: 0, y: 0, z: 0, r: 5, r2: 0, h: 10, axis: 'z',
-    rotX: 0, rotY: 0, rotZ: 0
+    rx: 0, ry: 0, rz: 0
   };
   const trisSharp = sandbox.tessellateCone(coneSharp, quality);
   // Bottom fan (32) + side wall fan (32) = 64 tris
@@ -134,7 +134,7 @@ function checkTriangle(t) {
   const hexPart = {
     id: 'p_hex', shape: 'hex_prism', name: 'Hex Prism',
     x: 0, y: 0, z: 0, r: 3, h: 12, axis: 'z',
-    rotX: 0, rotY: 0, rotZ: 0
+    rx: 0, ry: 0, rz: 0
   };
   const tris = sandbox.tessellateHexPrism(hexPart);
   // 6 side quads * 2 = 12 tris, top fan = 6 tris, bottom fan = 6 tris -> 24 tris
@@ -148,7 +148,7 @@ function checkTriangle(t) {
   const wedgePart = {
     id: 'p_wedge', shape: 'wedge', name: 'Wedge',
     x: 0, y: 0, z: 0, sx: 4, sy: 6, sz: 8,
-    rotX: 0, rotY: 0, rotZ: 0
+    rx: 0, ry: 0, rz: 0
   };
   const tris = sandbox.tessellateWedge(wedgePart);
   assert.equal(tris.length, 8, 'Wedge should have 8 triangles');
@@ -161,7 +161,7 @@ function checkTriangle(t) {
   const spherePart = {
     id: 'p_sph', shape: 'sphere', name: 'Sphere',
     x: 0, y: 0, z: 0, r: 4,
-    rotX: 0, rotY: 0, rotZ: 0
+    rx: 0, ry: 0, rz: 0
   };
   const quality = 32;
   const trisSph = sandbox.tessellateSphere(spherePart, quality);
@@ -171,7 +171,7 @@ function checkTriangle(t) {
   const ellipPart = {
     id: 'p_ell', shape: 'ellipsoid', name: 'Ellipsoid',
     x: 0, y: 0, z: 0, a: 3, b: 4, c: 5,
-    rotX: 0, rotY: 0, rotZ: 0
+    rx: 0, ry: 0, rz: 0
   };
   const trisEll = sandbox.tessellateEllipsoid(ellipPart, quality);
   assert.equal(trisEll.length, trisSph.length);
@@ -182,8 +182,8 @@ function checkTriangle(t) {
 // 7. Test ASCII Multi-Solid STL Output
 {
   const parts = [
-    { id: 'p1', shape: 'box', name: 'Core Block', x: 0, y: 0, z: 0, sx: 10, sy: 10, sz: 10, rotX: 0, rotY: 0, rotZ: 0 },
-    { id: 'p2', shape: 'sphere', name: 'Central Source', x: 0, y: 0, z: 0, r: 2, rotX: 0, rotY: 0, rotZ: 0 }
+    { id: 'p1', shape: 'box', name: 'Core Block', x: 0, y: 0, z: 0, sx: 10, sy: 10, sz: 10, rx: 0, ry: 0, rz: 0 },
+    { id: 'p2', shape: 'sphere', name: 'Central Source', x: 0, y: 0, z: 0, r: 2, rx: 0, ry: 0, rz: 0 }
   ];
   const asciiRes = sandbox.generateSTL(parts, { binary: false, format: 'ascii' });
   assert.equal(asciiRes.binary, false);
@@ -200,11 +200,11 @@ function checkTriangle(t) {
 // 8. Test TRISO Particle Multi-Shell Geometry
 {
   const trisoParts = [
-    { id: 'p_fuel', shape: 'sphere', name: 'UO2 Kernel', r: 0.025, x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 },
-    { id: 'p_buff', shape: 'sphere', name: 'Buffer Layer', r: 0.035, x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 },
-    { id: 'p_ipyc', shape: 'sphere', name: 'IPyC Layer', r: 0.039, x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 },
-    { id: 'p_sic',  shape: 'sphere', name: 'SiC Layer',  r: 0.0425, x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 },
-    { id: 'p_opyc', shape: 'sphere', name: 'OPyC Layer', r: 0.0465, x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 }
+    { id: 'p_fuel', shape: 'sphere', name: 'UO2 Kernel', r: 0.025, x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 },
+    { id: 'p_buff', shape: 'sphere', name: 'Buffer Layer', r: 0.035, x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 },
+    { id: 'p_ipyc', shape: 'sphere', name: 'IPyC Layer', r: 0.039, x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 },
+    { id: 'p_sic',  shape: 'sphere', name: 'SiC Layer',  r: 0.0425, x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 },
+    { id: 'p_opyc', shape: 'sphere', name: 'OPyC Layer', r: 0.0465, x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 }
   ];
   const stlTriso = sandbox.generateSTL(trisoParts, { binary: true, quality: 32 });
   assert.equal(stlTriso.partGroups.length, 5, 'All 5 TRISO spherical layers should be tessellated');
@@ -233,3 +233,35 @@ console.log('All STL export tests PASSED successfully!');
   assert.ok(Math.abs(volume-24)<1e-9, 'Wedge signed volume must be half its enclosing box');
   console.log('Wedge closure and signed volume PASS');
 }
+
+// UTF-8 header bytes must end on a complete character and not touch facet count.
+{
+  const title = 'A'.repeat(77) + '\u03b1\u{1f30d}';
+  const bytes = sandbox.generateBinarySTL([], title);
+  assert.equal(new TextDecoder('utf-8', {fatal:true}).decode(bytes.subarray(0,80)).replace(/\0+$/, ''), 'A'.repeat(77)+'\u03b1');
+  assert.equal(new DataView(bytes.buffer).getUint32(80,true), 0);
+}
+
+// Reject empty cones, but do not collapse small positive radii into zero.
+{
+  for (const [r,r2,h] of [[0,0,2],[-1,2,2],[1,1,0],[NaN,1,2]]) {
+    assert.throws(()=>sandbox.tessellateCone({r,r2,h}), /positive/);
+  }
+  assert.equal(sandbox.tessellateCone({r:1e-10,r2:1e-10,h:1e-9},16).length,64);
+  assert.equal(sandbox.tessellateCone({r:0,r2:1,h:2},16).length,32);
+  const tiny = sandbox.generateSTL([{...sandbox.newPart('tiny','Tiny','cone'),r:1e-10,r2:1e-10,h:1e-9}],{quality:16});
+  assert.equal(tiny.partGroups[0].triangles[0].n[2],-1, 'Tiny bottom facet must retain its outward normal');
+}
+
+// Bounds after native axis and Euler rotations, independently known cases.
+{
+  const bounds = p => {
+    const vs = sandbox.generateSTL([p], {binary:true,quality:32}).partGroups[0].triangles.flatMap(t=>[t.v1,t.v2,t.v3]);
+    return [0,1,2].flatMap(i=>[Math.min(...vs.map(v=>v[i])),Math.max(...vs.map(v=>v[i]))]);
+  };
+  const check = (a,b) => a.forEach((n,i)=>assert.ok(Math.abs(n-b[i])<1e-9, `${a} != ${b}`));
+  check(bounds({...sandbox.newPart('p','Box','box'), sx:2,sy:4,sz:6,rz:90,x:10}), [8,12,-1,1,-3,3]);
+  check(bounds({...sandbox.newPart('p','Cylinder','cylinder'),r:1,h:8,axis:'x',rz:90,y:10}), [-1,1,6,14,-1,1]);
+  check(bounds({...sandbox.newPart('p','Box','box'),sx:2,sy:4,sz:6,rx:90,ry:90,rz:90}), [-3,3,-2,2,-1,1]);
+}
+console.log('STL Unicode header, cone validation and native transforms PASS');

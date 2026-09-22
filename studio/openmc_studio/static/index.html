@@ -2771,7 +2771,7 @@ function facetNormal(v1, v2, v3) {
   const bx = v3[0] - v1[0], by = v3[1] - v1[1], bz = v3[2] - v1[2];
   const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
   const l = Math.hypot(nx, ny, nz);
-  return l > 1e-12 ? [nx / l, ny / l, nz / l] : [0, 0, 1];
+  return l > 0 ? [nx / l, ny / l, nz / l] : [0, 0, 1];
 }
 
 function transformPoint(p, M, c, scale = 1) {
@@ -2825,6 +2825,9 @@ function tessellateCylinder(p, segs = 32) {
 
 function tessellateCone(p, segs = 32) {
   const r1 = p.r, r2 = p.r2 ?? p.r, hz = p.h / 2;
+  if (![r1, r2, p.h].every(Number.isFinite) || r1 < 0 || r2 < 0 || !(r1 > 0 || r2 > 0) || p.h <= 0) {
+    throw new Error(`${p.name || 'Cone'}: use nonnegative radii, at least one positive radius, and a positive height.`);
+  }
   const tris = [];
   const bCenter = [0, 0, -hz], tCenter = [0, 0, hz];
   const botRing = [], topRing = [];
@@ -2836,13 +2839,13 @@ function tessellateCone(p, segs = 32) {
   }
   for (let i = 0; i < segs; i++) {
     const next = (i + 1) % segs;
-    if (r1 > 1e-9) tris.push({ n: [0, 0, -1], v1: bCenter, v2: botRing[next], v3: botRing[i] });
-    if (r2 > 1e-9) tris.push({ n: [0, 0, 1], v1: tCenter, v2: topRing[i], v3: topRing[next] });
+    if (r1 > 0) tris.push({ n: [0, 0, -1], v1: bCenter, v2: botRing[next], v3: botRing[i] });
+    if (r2 > 0) tris.push({ n: [0, 0, 1], v1: tCenter, v2: topRing[i], v3: topRing[next] });
     const b0 = botRing[i], b1 = botRing[next], t1 = topRing[next], t0 = topRing[i];
-    if (r1 > 1e-9 && r2 > 1e-9) {
+    if (r1 > 0 && r2 > 0) {
       tris.push({ n: facetNormal(b0, b1, t1), v1: b0, v2: b1, v3: t1 });
       tris.push({ n: facetNormal(b0, t1, t0), v1: b0, v2: t1, v3: t0 });
-    } else if (r1 > 1e-9) {
+    } else if (r1 > 0) {
       tris.push({ n: facetNormal(b0, b1, tCenter), v1: b0, v2: b1, v3: tCenter });
     } else {
       tris.push({ n: facetNormal(bCenter, t1, t0), v1: bCenter, v2: t1, v3: t0 });
@@ -2962,10 +2965,8 @@ function generateBinarySTL(triangles, title = 'OpenMC Studio Model') {
   const view = new DataView(buffer);
   const u8 = new Uint8Array(buffer);
 
-  const headerStr = (title || 'OpenMC Studio Model').slice(0, 79);
-  for (let i = 0; i < headerStr.length; i++) {
-    u8[i] = headerStr.charCodeAt(i);
-  }
+  // encodeInto stops at a complete UTF-8 character within the 80-byte header.
+  new TextEncoder().encodeInto(String(title || 'OpenMC Studio Model'), u8.subarray(0, 80));
 
   view.setUint32(80, nTris, true);
 
@@ -3057,13 +3058,16 @@ function exportSTL(opts = {}) {
   let targetParts = S.parts;
   if (scope === 'selected') {
     const s = getSel();
-    targetParts = s && sel.kind === 'part' ? [s] : S.parts;
+    targetParts = s && sel.kind === 'part' ? [s] : [];
   } else if (scope === 'group') {
     const gId = sel.kind === 'group' ? sel.id : (getSel() || {}).group;
-    targetParts = gId ? S.parts.filter(p => p.group === gId) : S.parts;
+    const groups = gId && groupById(gId) ? new Set([gId, ...groupDescendantIds(gId)]) : new Set();
+    targetParts = S.parts.filter(p => groups.has(p.group));
+  } else if (scope !== 'all') {
+    targetParts = [];
   }
   if (!targetParts.length) {
-    log('warn', 'No parts to export to STL.');
+    log('warn', 'No parts match the STL export scope. Select a part/group or choose All parts.');
     return null;
   }
   const binary = opts.binary !== false && opts.format !== 'ascii';
@@ -3073,7 +3077,9 @@ function exportSTL(opts = {}) {
   const modelName = ((S && S.settings && S.settings.name) || 'model').replace(/[^\w-]+/g, '_');
   const filename = opts.filename || `${modelName}${scope !== 'all' ? '_' + scope : ''}_${units}.stl`;
 
-  const res = generateSTL(targetParts, { binary, units, quality, scale, modelName });
+  let res;
+  try { res = generateSTL(targetParts, { binary, units, quality, scale, modelName }); }
+  catch (err) { log('error', `STL export: ${esc(err.message)} No file was saved.`); return null; }
   saveFile(filename, res.data, `(${res.triangleCount.toLocaleString()} triangles, ${units})`);
   return { ...res, filename };
 }

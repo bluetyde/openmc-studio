@@ -166,9 +166,49 @@ project**: parts, groups and tallies are replaced in one undoable step; material
 sources and settings carry over. Overlapping source solids are refused at commit,
 naming them, because imported cells would otherwise claim the same space.
 
-**MCNP.** Export and the live model.mcnp view are off for projects with imported
-CSG until the companion exporter passes its parity tests (stage 5). Nothing
-partial is exported.
+**MCNP.** Export and the live model.mcnp view work for projects with imported CSG
+since stage 5, which gated them; see below.
 
 Tests: `test/test_cad_csg_gate.cjs` (real conversions, Studio's own import and
 generation, OpenMC's answer for every point) and `test/test_cad_schema.py`.
+
+## MCNP parity and packaging (stage 5)
+
+**MCNP export of imported CSG.** The companion exporter translates Studio's model
+(imported planes become `P`/`PX`..., spheres `SO`/`S`, rotated curved surfaces
+general `GQ` cards) and validates the deck as for any model. The gate,
+`test/test_cad_mcnp_parity.cjs`, checks each real conversion three ways: the
+exporter's own validation passes with **every cell sampled**; every FreeCAD truth
+point, dense inside each solid and including the hole probes, is located in the
+MCNP deck in exactly the right cell; and Studio's own `/api/export-mcnp` exports an
+imported project. Decks carry Studio's materials, source and tallies: they are full
+Studio decks, not bare converter output.
+
+Two changes made this sound. OpenMC can't bound regions of tilted planes or
+quadrics, so the exporter's per-cell sampling used to land nowhere near a small
+rotated component in a large world, and its "geometry matches" compared nothing
+there. Studio now also intersects each imported cell with its component's
+axis-aligned box (geometrically a no-op: the solid lies within its bounds), and the
+exporter now counts points per cell and prints a warning for any cell it never
+sampled, for every model, not only imported ones.
+
+Imported geometry stays read-only in the model.mcnp view: its numbers aren't
+linked or editable.
+
+**The integration job.** `node setup/cad/run_integration.cjs` runs all 17 CAD suites
+against the real engines, the browser, OpenMC (a transport run) and the MCNP
+exporter. It exits 0 only if every suite ran and passed with nothing skipped; a
+missing tool fails it before it starts. See [setup](../setup/cad/README.md).
+
+### Supported platforms
+
+| Platform | CAD import | Status |
+|---|---|---|
+| Linux x86-64 (Ubuntu, including WSL2 on Windows) | yes | **Verified**: lock installed from an empty package cache, all 17 integration suites pass |
+| Windows, native (no WSL) | no | Not supported: the engines run where Studio's server runs, and the Windows launcher already runs it in WSL |
+| macOS on Apple silicon | no | **Not validated**: conda-forge has FreeCAD and GEOUNED for osx-arm64, but there is no tested lock. Studio itself runs; the import dialog says CAD is unavailable |
+| Linux arm64, macOS Intel | no | Not validated |
+
+The browser side is any browser Studio supports; the tests drive Microsoft Edge
+(Chromium) headless. A new platform needs its own lock file and a passing
+integration job before it goes in this table.

@@ -42,9 +42,21 @@ EXPORT_ERROR = (
 SUPPORTED_SHAPES = {"box", "sphere", "cylinder", "cone"}
 
 
+def _freecad_runtime():
+    """conda-forge installs FreeCAD's Python modules in the environment's lib folder, which
+    isn't on sys.path: without this, `import FreeCAD` fails even in the right interpreter
+    and STEP export reports FreeCAD as missing."""
+    try:
+        from openmc_studio.cad.geouned_adapter import configure_runtime
+    except ImportError:  # run as a loose script, next to the cad package
+        from cad.geouned_adapter import configure_runtime
+    configure_runtime()
+
+
 def probe_environment():
     freecad_version = None
     try:
+        _freecad_runtime()
         import FreeCAD
         import Part
         freecad_version = ".".join(FreeCAD.Version()[:3])
@@ -140,6 +152,7 @@ def run_csg_to_cad(job_id, project, out_path, options, t0):
             part_dimensions(p)  # Validate the entire request before writing anything.
         if not probe_environment()["can_export"]:
             raise ValueError(EXPORT_ERROR)
+        _freecad_runtime()
         import FreeCAD
         import Part
         emit_progress(job_id, 1, 2, "export", "Building STEP solids in millimeters...", t0)
@@ -216,8 +229,11 @@ def main():
 
 
 if __name__ == "__main__":
+    # Run from the imported module, not from __main__: importing FreeCAD clears names in
+    # __main__, which would take this worker's own imports with it mid-conversation.
     if len(sys.argv) == 3 and sys.argv[1] == "--job":
-        from .cad.job_worker import run
+        from openmc_studio.cad.job_worker import run
         run(sys.argv[2])
     else:
-        main()
+        from openmc_studio import cad_worker as worker
+        worker.main()

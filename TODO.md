@@ -216,9 +216,22 @@ and the MCNP lattice work; fixes listed under Completed).
     bounded meshes with visible failure notices, cut-cap picking and schema validation. Browser gate
     `test_cad_csg_browser.cjs` passes; `E2E_CAD_MODE=csg test_cad_import_e2e.cjs` exercises real upload,
     conversion, save/reload and an OpenMC geometry-debug run (explicit void fills, 200 histories).
-  - [ ] **Stage 5 — parity and packaging:** companion MCNP export checks, real engine/browser integration
+  - [x] **Stage 5 — parity and packaging:** companion MCNP export checks, real engine/browser integration
     CI, clean-machine setup and platform locks. CAD release checks cannot pass through dependency skips.
     Add IGES and further native shapes only after separate geometry-preservation tests.
+    Delivered: MCNP export of imported CSG, gated by `test/test_cad_mcnp_parity.cjs` (7 real conversions: deck
+    validates with every cell sampled and carries Studio's materials, source and tally; every FreeCAD truth
+    point lands in the right MCNP cell, holes included; Studio's `/api/export-mcnp` path too) - after finding
+    that the exporter's sampling never reached small rotated cells: Studio now bounds each imported cell with
+    its component box, and the exporter (companion `36bba86`) warns for any cell it never sampled. STEP export
+    really runs with the CAD environment now (FreeCAD's runtime path and its `__main__` wipe had kept it
+    reporting "FreeCAD required"). `setup/cad/run_integration.cjs`: 17 suites, exits 0 only if all ran with
+    nothing skipped, 30-minute per-suite timeout. Clean-machine check: the lock installed from an empty package
+    cache (1 min 53 s) passes all 17 suites (6.0 min); `test/test_cad_restart_e2e.cjs` checks restart. Platform
+    matrix in docs/cad-conversion.md: Linux x86-64 / WSL2 verified; native Windows unsupported; macOS and arm64
+    not validated. **Not done:** a hosted CI workflow - running the job on GitHub Actions needs a decision on
+    Actions minutes for a private repo, a token for the private companion repo and a nuclear-data cache;
+    IGES and further native shapes remain later work.
   - [x] **Git policy:** track adapter code, recipes/locks, documentation and small public fixtures. Keep CAD
     engines/environments, user uploads, caches, debug solids, logs and conversion scratch outside Git.
     Add narrow fixture exceptions for IGES/B-Rep and expected XML currently hidden by broad ignores;

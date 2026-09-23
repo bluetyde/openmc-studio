@@ -127,10 +127,19 @@ const hostPath = p => WIN ? execFileSync('wsl.exe', ['wslpath', '-a', p.split(pa
       api = async () => { apiCalled = true; return {}; };
       LOCAL.on = true;
       return exportMcnp().then(() => {
-        api = realApi; LOCAL.on = false;
-        return {v2ok:validProject(saved), v3ok:validProject(newer), v3why:projectProblem(newer),
-          v1ok:validProject({...saved, schema:undefined, csg:undefined}),
-          logText:document.querySelector('#log').innerText, apiCalled};
+        const blockedText = document.querySelector('#log').innerText, blockedCall = apiCalled;
+        // With every cell given a material, the export goes through and carries the imported geometry.
+        const m = {...clone(CUSTOM_MAT), id:newId('m'), name:'Graphite', comps:'C:1', density:1.7};
+        S.materials.push(m);
+        csgComponents().forEach(k => k.cells.forEach(c => { c.material = m.id; delete c.materialPending; }));
+        let sent = null;
+        api = async (path, opts) => { if (path === '/api/export-mcnp') sent = JSON.parse(opts.body); return {ok:true, folder:'x', notes:[]}; };
+        return exportMcnp().then(() => {
+          api = realApi; LOCAL.on = false;
+          return {v2ok:validProject(saved), v3ok:validProject(newer), v3why:projectProblem(newer),
+            v1ok:validProject({...saved, schema:undefined, csg:undefined}),
+            logText:blockedText, apiCalled:blockedCall, sentScript:sent && sent.script};
+        });
       });
     }, [gate.cases.drilled_block.report]);
     check('schema 2 loads, schema 1 still loads, a newer schema is refused with a reason', () => {
@@ -138,9 +147,12 @@ const hostPath = p => WIN ? execFileSync('wsl.exe', ['wslpath', '-a', p.split(pa
       assert.equal(guards.v3ok, false);
       assert.match(guards.v3why, /newer OpenMC Studio/);
     });
-    check('MCNP export stays off for imported CSG, with the reason, and sends nothing', () => {
-      assert.equal(guards.apiCalled, false);
-      assert.match(guards.logText, /MCNP export is off for projects with imported CAD geometry/);
+    check('MCNP export waits for Problems like any export, then sends the imported geometry (stage 5 parity)', () => {
+      assert.equal(guards.apiCalled, false, 'pending materials block the export');
+      assert.match(guards.logText, /fix \d+ problem/);
+      assert.ok(guards.sentScript, 'with materials set, the export is sent');
+      assert.match(guards.sentScript, /Imported CAD geometry/);
+      assert.match(guards.sentScript, /openmc\.(Plane|ZCylinder|Quadric|XPlane)\(/);
     });
     check('no page errors', () => assert.deepEqual(pageErrors, []));
   } finally {

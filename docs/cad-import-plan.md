@@ -7,7 +7,10 @@ implemented and gated; see [CAD conversion](cad-conversion.md#conversion-jobs-st
 Stage 2 (native STEP import) implemented and gated; see
 [CAD conversion](cad-conversion.md#importing-step-as-native-parts-stage-2). Stage 3 (CSG data model)
 implemented and gated; see [CAD conversion](cad-conversion.md#analytical-csg-components-stage-3).
-Stages 4-5 remain pending.
+Stage 4 (general-CSG workflow) implemented and gated. Stage 5 (MCNP parity, integration
+job, clean-machine install, platform matrix) implemented and gated; see
+[CAD conversion](cad-conversion.md#mcnp-parity-and-packaging-stage-5). Remaining outside the
+plan's gates: a hosted CI workflow, IGES, and further native shapes.
 Owner: OpenMC Studio maintainers. Implementation gates below determine readiness.
 
 ## Decision

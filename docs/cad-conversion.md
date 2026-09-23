@@ -5,6 +5,10 @@ units. Installing GEOUNED alone does not enable it. Earlier versions replaced
 solids with bounding boxes or interpreted untrimmed surfaces as complete
 objects; these paths now return an error without changing the project.
 
+The [stage-0 engine spike](../setup/cad/README.md) now performs real single-solid
+FreeCAD/GEOUNED conversion and checks holes, units and placement on four fixtures.
+It is a command-line development tool; it does not enable browser import.
+
 STEP export requires FreeCAD and Part in the worker's Python environment.
 Set `OPENMC_CAD_PYTHON` to that interpreter before starting Studio. Supported
 primitives are boxes, spheres, cylinders and cones. Other shapes are rejected

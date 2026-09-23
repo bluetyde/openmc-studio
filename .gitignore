@@ -52,6 +52,16 @@ System Volume Information/
 studio/tools/pnnl-15870-rev1.txt
 
 # ── FreeCAD & CAD translation artifacts ──
+/.cad-env/
+/.cad-runtime/
+/.cad-cache/
+/cad-work/
+/_cad_work/
+/cad-runs/
+/setup/cad/local.env
+/setup/cad/local.json
+*.FCStd
+*.h5m
 *.FCStd1
 *.FCStd2
 *.FCStd*~
@@ -75,3 +85,8 @@ FreeCAD/
 !test/fixtures/**/*.step
 !test/fixtures/**/*.stp
 !test/fixtures/**/*.stl
+!test/fixtures/cad/**/*.FCStd
+!test/fixtures/cad/**/*.brep
+!test/fixtures/cad/**/*.iges
+!test/fixtures/cad/**/*.igs
+!test/fixtures/cad/expected/**/*.xml

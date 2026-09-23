@@ -1,7 +1,8 @@
 # ADR: Real CAD import with FreeCAD and GEOUNED
 
-Status: Proposed implementation plan. Prepared 2026-09-22 against Studio f515d40.
-Scope: design only; no packages installed or application settings changed.
+Status: Staged implementation plan. Prepared 2026-09-22 against Studio f515d40.
+Progress 2026-09-23: stage 0 implemented and validated on four real WSL fixtures;
+see [setup and findings](../setup/cad/README.md). Later stages remain pending.
 Owner: OpenMC Studio maintainers. Implementation gates below determine readiness.
 
 ## Decision

@@ -35,7 +35,8 @@ and the MCNP lattice work; fixes listed under Completed).
 - **Name**: "OpenMabc" was floated; not decided.
 - **Mac copy**: pull both repos (openmc-studio and openmc-mcnp-project) on the Mac; the exporter changes for
   detector tallies and lattices are on GitHub `main` now.
-- **GEOUNED / CAD import**: currently disabled; no genuine decomposition adapter is implemented.
+- **GEOUNED / CAD import**: browser import remains disabled. A real single-solid conversion spike and
+  reproducible environment are implemented under `setup/cad/`; Studio integration is still pending.
   STEP export requires FreeCAD and supports selected primitives. See section 5 and
   [the implementation plan](docs/cad-import-plan.md) before enabling import.
 
@@ -154,16 +155,19 @@ and the MCNP lattice work; fixes listed under Completed).
   - Expect gaps: macrobodies, lattices, transforms and repeated structures each need mapping back, and Studio
     parts are shapes rather than raw cells, so some decks will import as geometry we can display but not edit
     as parts. Say so per cell rather than failing the whole file.
-- **FreeCAD / GEOUNED CAD import roadmap** (recorded 2026-09-23; implementation pending):
+- **FreeCAD / GEOUNED CAD import roadmap** (started 2026-09-23):
   - Full architecture, acceptance gates, environment setup and proposed ignore rules:
     [CAD import implementation plan](docs/cad-import-plan.md).
   - Two outputs: validated **native editable primitives** through FreeCAD, and **imported analytical CSG
     components** through GEOUNED. General CSG needs a versioned surface/Boolean-region model; it cannot be
     represented by guessed boxes or existing organizational groups. DAGMC remains a separate later path.
-  - [ ] **Stage 0 — prove the engines:** create an isolated WSL `openmc-cad` environment; convert a drilled
+  - [x] **Stage 0 — prove the engines:** create an isolated WSL `openmc-cad` environment; convert a drilled
     block and hollow cylinder with real GEOUNED into OpenMC XML. Verify holes, placement and units. Pin the
     tested Python/FreeCAD/OCCT/GEOUNED builds. Recheck upstream's warning recorded on 2026-09-22 about
     incorrect conversion in GEOUNED 1.6.3/1.6.4; evaluate 1.6.2 rather than installing an unqualified latest.
+    Delivered: `setup/cad/verify.py`, four real fixture cases (80,000 containment checks plus hole/volume
+    checks), input-rejection tests and `setup/cad/locks/linux-64.explicit.txt`. See
+    [stage-0 setup and findings](setup/cad/README.md); no browser import or transport readiness implied.
   - [ ] **Stage 1 — reliable jobs:** isolated workers, job IDs, progress, cancellation/timeouts, safe temporary
     paths, size limits and per-solid diagnostics. Failed or cancelled jobs must not change the project.
   - [ ] **Stage 2 — native STEP import:** recognize boxes, spheres, capped cylinders and cones; rebuild and
@@ -337,4 +341,3 @@ every speed claim below is from the manual or from reasoning, never from a timin
 - User-compiled Fortran subroutines (`TALLYX`, `SOURCE`, `SRCDX`; manual §10.2.8 & §10.3.4) cannot be generated or executed from CSG/Python models.
 - High-energy nuclear spallation physics models (CEM, LAQGSM, INCL > 150 MeV; manual §10.5) are outside OpenMC's transport scope.
 - MCNP decks are validated with MontePy parser but require an MCNP installation to execute transport.
-

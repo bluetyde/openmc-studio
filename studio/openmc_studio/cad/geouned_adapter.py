@@ -20,7 +20,7 @@ def configure_runtime():
         sys.path.insert(0, str(library))
 
 
-def convert_step(source, output):
+def convert_step(source, output, progress=None):
     configure_runtime()
     import FreeCAD
     import Part
@@ -44,10 +44,16 @@ def convert_step(source, output):
         raise ValueError(f"Unsupported surfaces: {surfaces}")
     settings = geouned.Settings(voidGen=False, compSolids=False, outPath=str(output))
     converter = geouned.CadToCsg(settings=settings)
+    if progress:
+        progress("reading STEP")
     converter.load_step_file(filename=str(source), spline_surfaces="stop")
     if len(converter.meta_list) != 1:
         raise ValueError("GEOUNED did not retain the single source solid")
+    if progress:
+        progress("decomposing solids")
     converter.start()
+    if progress:
+        progress("writing OpenMC XML")
     converter.export_csg(geometryName=str(output / "geometry"), outFormat=("openmc_xml",))
     suspicious = [p for p in output.rglob("*")
                   if p.is_file() and any("suspicious" in part.lower() for part in p.relative_to(output).parts)]

@@ -214,4 +214,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) == 3 and sys.argv[1] == "--job":
+        from .cad.job_worker import run
+        run(sys.argv[2])
+    else:
+        main()

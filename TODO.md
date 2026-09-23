@@ -38,7 +38,7 @@ and the MCNP lattice work; fixes listed under Completed).
 - **GEOUNED / CAD import**: browser import remains disabled. A real single-solid conversion spike and
   reproducible environment are implemented under `setup/cad/`; Studio integration is still pending.
   STEP export requires FreeCAD and supports selected primitives. See section 5 and
-  [the implementation plan](docs/cad-import-plan.md) before enabling import.
+  [the implementation plan](docs/design/cad-import-plan.md) before enabling import.
 
 
 ---
@@ -157,7 +157,7 @@ and the MCNP lattice work; fixes listed under Completed).
     as parts. Say so per cell rather than failing the whole file.
 - **FreeCAD / GEOUNED CAD import roadmap** (started 2026-09-23):
   - Full architecture, acceptance gates, environment setup and proposed ignore rules:
-    [CAD import implementation plan](docs/cad-import-plan.md).
+    [CAD import implementation plan](docs/design/cad-import-plan.md).
   - Two outputs: validated **native editable primitives** through FreeCAD, and **imported analytical CSG
     components** through GEOUNED. General CSG needs a versioned surface/Boolean-region model; it cannot be
     represented by guessed boxes or existing organizational groups. DAGMC remains a separate later path.

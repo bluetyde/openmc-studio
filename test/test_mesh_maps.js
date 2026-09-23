@@ -204,6 +204,13 @@ test('moving a source or changing physics makes the particle half stale, not the
   assert.match(g[0].text, /particle check is out of date/, 'run mode is physics');
   run('GEOM.tkey = geomTransportKey(); S.materials[0].density *= 2;');
   assert.match(run('problems()').filter(p => p.geom)[0].text, /out of date/, 'materials change the paths');
+  // switching a part to another existing material (review finding, 2026-09-24)
+  run('GEOM.tkey = geomTransportKey(); S.parts[0].material = S.materials.find(m => m.id !== S.parts[0].material).id;');
+  g = run('problems()').filter(p => p.geom);
+  assert.match(g[0].text, /particle check is out of date/, 'a material assignment changes the paths');
+  assert.equal(run('GEOM.key === geomKey()'), true, 'but not the point check');
+  run('GEOM.tkey = geomTransportKey(); S.settings.worldFill = S.materials[0].id;');
+  assert.match(run('problems()').filter(p => p.geom)[0].text, /out of date/, 'the world fill too');
 });
 
 (async () => {

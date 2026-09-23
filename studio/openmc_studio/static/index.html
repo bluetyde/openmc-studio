@@ -4793,12 +4793,13 @@ function geomKey() {
   return JSON.stringify([S.parts, S.groups || [], S.csg || null, S.settings.worldShape, S.settings.worldR],
     (k, v) => skip.has(k) && typeof v !== 'object' ? undefined : v);
 }
-// The particle check also depends on where particles start and how they travel: sources, materials and the
-// physics settings. Not on names, colours, tallies or the run size (the check picks its own particle count).
+// The particle check also depends on where particles start and how they travel: which material fills each part,
+// imported cell and array (geomKey leaves those out), the materials themselves, sources and physics settings.
+// Not on names, colours, tallies or the run size (the check picks its own particle count).
 function geomTransportKey() {
-  const skip = new Set(['name', 'color', 'pristine', 'lib', 'particles', 'batches', 'inactive', 'maxTracks', 'track',
-    'entropyMesh', 'entropyNx', 'entropyNy', 'entropyNz']);
-  return JSON.stringify([geomKey(), S.sources, S.materials, S.settings],
+  const skip = new Set(['name', 'color', 'pristine', 'lib', 'materialPending', 'particles', 'batches', 'inactive',
+    'maxTracks', 'track', 'entropyMesh', 'entropyNx', 'entropyNy', 'entropyNz']);
+  return JSON.stringify([S.parts, S.groups || [], S.csg || null, S.sources, S.materials, S.settings],
     (k, v) => skip.has(k) && typeof v !== 'object' ? undefined : v);
 }
 function geomCellName(r, id) {

@@ -7,7 +7,8 @@ remains the quickest real-engine check.
 
 `run_integration.cjs` is the CAD integration job: all 17 CAD suites against the real
 engines, browser, OpenMC and the MCNP exporter. It exits 0 only if every suite ran and
-passed with nothing skipped; missing tools fail it before it starts.
+passed with nothing skipped; missing tools fail it before it starts. There is no hosted CI:
+run this job before merging CAD changes. It needs no accounts or secrets, only the tools below.
 
 ## Reproduce on Linux x86-64 / WSL
 

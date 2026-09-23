@@ -10,7 +10,9 @@ implemented and gated; see [CAD conversion](cad-conversion.md#analytical-csg-com
 Stage 4 (general-CSG workflow) implemented and gated. Stage 5 (MCNP parity, integration
 job, clean-machine install, platform matrix) implemented and gated; see
 [CAD conversion](cad-conversion.md#mcnp-parity-and-packaging-stage-5). Remaining outside the
-plan's gates: a hosted CI workflow, IGES, and further native shapes.
+plan's gates: IGES and further native shapes. Continuous integration is the local job
+(`node setup/cad/run_integration.cjs`), run before merging CAD work; there is deliberately no
+hosted CI workflow (maintainer decision, 2026-09-24).
 Owner: OpenMC Studio maintainers. Implementation gates below determine readiness.
 
 ## Decision

@@ -183,6 +183,8 @@ export OPENMC_CAD_PYTHON=... OPENMC_PYTHON=... OPENMC_MCNP_PROJECT=... OPENMC_CR
 node setup/cad/run_integration.cjs
 ```
 
+There is no hosted CI for this; run the job yourself before merging changes that touch CAD import.
+
 ---
 
 ## Running from an external drive

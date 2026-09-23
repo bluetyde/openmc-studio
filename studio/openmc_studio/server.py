@@ -67,6 +67,8 @@ class Studio:
         self.lock = threading.Lock()
         self.mcnp = McnpWorker(self.root)
         self.cad = CadWorker(self.root)
+        from .cad.jobs import CadJobs
+        self.cad_jobs = CadJobs(self.root / "cad-jobs")
 
     # ── runs ──
     def start(self, script, project, name):
@@ -354,7 +356,8 @@ class CadWorker:
             start_new_session=True
         )
         self.results = queue.Queue()
-        threading.Thread(target=self._reader, args=(self.proc, self.results), daemon=True).start()
+        self.reader_thread = threading.Thread(target=self._reader, args=(self.proc, self.results), daemon=True)
+        self.reader_thread.start()
         try:
             ready = self.results.get(timeout=30)
             if ready and ready.get("ready"):
@@ -389,7 +392,11 @@ class CadWorker:
                 self.proc.stdin.flush()
                 res = self.results.get(timeout=300)
             except (BrokenPipeError, OSError, queue.Empty) as e:
-                res = {"ok": False, "error": f"Worker communication failure: {e}"}
+                res = {"id": req["id"], "ok": False, "error": f"Worker communication failure: {e}"}
+                self.stop()
+            if res and res.get("id") != req["id"]:
+                self.stop()
+                return {"ok": False, "error": "Mismatched CAD worker response"}
             self.progress = None
             return res or {"ok": False, "error": "No response from CAD worker"}
 
@@ -405,31 +412,32 @@ class CadWorker:
                 self.proc.stdin.flush()
                 res = self.results.get(timeout=300)
             except (BrokenPipeError, OSError, queue.Empty) as e:
-                res = {"ok": False, "error": f"Worker communication failure: {e}"}
+                res = {"id": req["id"], "ok": False, "error": f"Worker communication failure: {e}"}
+                self.stop()
+            if res and res.get("id") != req["id"]:
+                self.stop()
+                return {"ok": False, "error": "Mismatched CAD worker response"}
             self.progress = None
             return res or {"ok": False, "error": "No response from CAD worker"}
 
     def stop(self):
         self.progress = None
+        self.env_status = None
         if self.proc:
+            proc = self.proc
             try:
-                if self.proc.stdin:
-                    try:
-                        self.proc.stdin.close()
-                    except OSError:
-                        pass
-                if self.proc.stdout:
-                    try:
-                        self.proc.stdout.close()
-                    except OSError:
-                        pass
                 if sys.platform == "win32":
-                    self.proc.terminate()
+                    proc.kill()
                 else:
-                    os.killpg(self.proc.pid, signal.SIGTERM)
-                self.proc.wait(timeout=2)
-            except (ProcessLookupError, OSError, AttributeError, subprocess.TimeoutExpired):
+                    os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
                 pass
+            proc.wait(timeout=5)
+            if getattr(self, "reader_thread", None):
+                self.reader_thread.join(timeout=5)
+            for pipe in (proc.stdin, proc.stdout):
+                if pipe:
+                    pipe.close()
             self.proc = None
         if getattr(self, "log_file", None):
             try:
@@ -476,9 +484,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _json_body(self):
         n = int(self.headers.get("Content-Length") or 0)
-        if n > MAX_BODY:
+        if n < 0 or n > MAX_BODY:
             raise ValueError("request too large")
-        return json.loads(self.rfile.read(n) or b"{}")
+        body = json.loads(self.rfile.read(n) or b"{}")
+        if not isinstance(body, dict):
+            raise ValueError("request must be a JSON object")
+        return body
 
     # ── routes ──
     def do_GET(self):
@@ -509,6 +520,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, self.studio.cad_status())
         if path == "/api/convert/progress":
             return self._send(200, self.studio.cad_progress() or {})
+        if path == "/api/cad/capabilities":
+            return self._send(200, self.studio.cad_jobs.capabilities())
+        m = re.fullmatch(r"/api/cad/jobs/([0-9a-f]{32})(/result)?", path)
+        if m:
+            try:
+                value = self.studio.cad_jobs.result(m[1]) if m[2] else self.studio.cad_jobs.get(m[1])
+                return self._send(200, value)
+            except KeyError:
+                return self._error(404, "No such CAD job")
+            except RuntimeError as exc:
+                return self._error(409, str(exc))
         if path == "/api/runs":
             return self._send(200, {"runs": self.studio.list_runs()})
         m = re.match(r"^/api/runs/([^/]+)/(stream|results|project|script)$", path)
@@ -540,6 +562,23 @@ class Handler(BaseHTTPRequestHandler):
             body = self._json_body()
         except ValueError as e:
             return self._error(400, f"Bad request: {e}")
+        if url.path == "/api/cad/jobs":
+            import base64
+            import binascii
+            from .cad.jobs import MAX_INPUT
+            try:
+                if set(body) - {"filename", "data"}:
+                    raise ValueError("Only filename and base64 data are accepted")
+                encoded = body.get("data")
+                if not isinstance(encoded, str) or len(encoded) > 4 * ((MAX_INPUT + 2) // 3):
+                    raise ValueError("Invalid or oversized base64 CAD data")
+                data = base64.b64decode(encoded, validate=True)
+                job = self.studio.cad_jobs.submit(data, body.get("filename"))
+                return self._send(202, job, extra={"Location": f"/api/cad/jobs/{job['id']}"})
+            except (ValueError, binascii.Error) as exc:
+                return self._error(400, str(exc))
+            except RuntimeError as exc:
+                return self._error(409, str(exc))
         if url.path == "/api/run":
             script = body.get("script")
             if not isinstance(script, str) or not script.strip():
@@ -587,6 +626,20 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             return self._send(200, {"stopped": self.studio.stop(m.group(1))})
         return self._error(404, "Not found")
+
+    def do_DELETE(self):
+        if not self._host_ok() or not self._origin_ok():
+            return self._error(403, "Cross-origin request refused.")
+        url = urlparse(self.path)
+        if not self._token_ok(parse_qs(url.query)):
+            return self._error(401, "Missing or wrong token.")
+        m = re.fullmatch(r"/api/cad/jobs/([0-9a-f]{32})", url.path)
+        if not m:
+            return self._error(404, "Not found")
+        try:
+            return self._send(202, self.studio.cad_jobs.cancel(m[1]))
+        except KeyError:
+            return self._error(404, "No such CAD job")
 
     def _health(self):
         xs = os.environ.get("OPENMC_CROSS_SECTIONS", "")
@@ -659,5 +712,7 @@ def serve(port, runs_dir, token, open_browser=True):
         if studio.active and studio.active.status == "running":
             studio.stop(studio.active.id)
         studio.mcnp.stop()
+        studio.cad_jobs.close()
+        studio.cad.stop()
         httpd.server_close()
         print("OpenMC Studio stopped.", flush=True)

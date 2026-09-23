@@ -1,0 +1,257 @@
+{
+ "source_sha256": "f8b62855732955c0c1b21733d1958370aa82bfccc01df6e72c527386ceb0216c",
+ "kernel_units": "mm",
+ "studio_units": "cm",
+ "solid_count": 5,
+ "adapter": "native-1",
+ "solids": [
+  {
+   "path": [
+    "Core",
+    "Rod pair",
+    "Fuel rod"
+   ],
+   "index": 0,
+   "key": "Core / Rod pair / Fuel rod [1]",
+   "label": "Fuel rod",
+   "valid": true,
+   "surface_types": [
+    "Cylinder",
+    "Plane"
+   ],
+   "faces": 3,
+   "volume_cm3": 0.3769911184307751,
+   "bounds_cm": [
+    -0.1999999999999998,
+    10.8,
+    0.0,
+    0.20000000000000023,
+    11.2,
+    3.0
+   ],
+   "reasons": [],
+   "status": "accepted",
+   "kind": "cylinder",
+   "part": {
+    "name": "Fuel rod",
+    "shape": "cylinder",
+    "x": 2.22044604925e-16,
+    "y": 11.0,
+    "z": 1.5,
+    "rx": 0.0,
+    "ry": 0.0,
+    "rz": 0.0,
+    "r": 0.2,
+    "h": 3.0,
+    "axis": "z"
+   },
+   "evidence": {
+    "tolerance_mm": 3.0528675044947493e-06,
+    "symmetric_difference_mm3": 0.0,
+    "allowed_mm3": 0.004910523455745899,
+    "max_boundary_distance_mm": 8.114832495942686e-16,
+    "points_compared": 768,
+    "points_inside": 493,
+    "seed": 20260923
+   }
+  },
+  {
+   "path": [
+    "Core",
+    "Rod pair",
+    "Fuel rod"
+   ],
+   "index": 0,
+   "key": "Core / Rod pair / Fuel rod [2]",
+   "label": "Fuel rod",
+   "valid": true,
+   "surface_types": [
+    "Cylinder",
+    "Plane"
+   ],
+   "faces": 3,
+   "volume_cm3": 0.3769911184307751,
+   "bounds_cm": [
+    -0.19999999999999957,
+    11.8,
+    0.0,
+    0.20000000000000046,
+    12.2,
+    3.0
+   ],
+   "reasons": [],
+   "status": "accepted",
+   "kind": "cylinder",
+   "part": {
+    "name": "Fuel rod",
+    "shape": "cylinder",
+    "x": 4.4408920985e-16,
+    "y": 12.0,
+    "z": 1.5,
+    "rx": 0.0,
+    "ry": 0.0,
+    "rz": 0.0,
+    "r": 0.2,
+    "h": 3.0,
+    "axis": "z"
+   },
+   "evidence": {
+    "tolerance_mm": 3.0528675044947493e-06,
+    "symmetric_difference_mm3": 0.0,
+    "allowed_mm3": 0.004910523455745899,
+    "max_boundary_distance_mm": 8.114832495942686e-16,
+    "points_compared": 768,
+    "points_inside": 493,
+    "seed": 20260923
+   }
+  },
+  {
+   "path": [
+    "Core",
+    "Shield block"
+   ],
+   "index": 0,
+   "key": "Core / Shield block",
+   "label": "Shield block",
+   "valid": true,
+   "surface_types": [
+    "Plane"
+   ],
+   "faces": 6,
+   "volume_cm3": 0.9999999999999998,
+   "bounds_cm": [
+    -5.0,
+    0.0,
+    0.0,
+    -3.0,
+    1.0,
+    0.5
+   ],
+   "reasons": [],
+   "status": "accepted",
+   "kind": "box",
+   "part": {
+    "name": "Shield block",
+    "shape": "box",
+    "x": -4.0,
+    "y": 0.5,
+    "z": 0.25,
+    "rx": 0.0,
+    "ry": 0.0,
+    "rz": 0.0,
+    "sx": 2.0,
+    "sy": 1.0,
+    "sz": 0.5
+   },
+   "evidence": {
+    "tolerance_mm": 2.2912878474779198e-06,
+    "symmetric_difference_mm3": 0.0,
+    "allowed_mm3": 0.006415605972938174,
+    "max_boundary_distance_mm": 0.0,
+    "points_compared": 768,
+    "points_inside": 702,
+    "seed": 20260923
+   }
+  },
+  {
+   "path": [
+    "Core",
+    "Beads",
+    "Beads"
+   ],
+   "index": 0,
+   "key": "Core / Beads / Beads [1]",
+   "label": "Beads",
+   "valid": true,
+   "surface_types": [
+    "Sphere"
+   ],
+   "faces": 1,
+   "volume_cm3": 0.0041887902047863905,
+   "bounds_cm": [
+    -0.1,
+    -3.1,
+    -0.1,
+    0.1,
+    -2.9,
+    0.1
+   ],
+   "reasons": [],
+   "status": "accepted",
+   "kind": "sphere",
+   "part": {
+    "name": "Beads",
+    "shape": "sphere",
+    "x": 0.0,
+    "y": -3.0,
+    "z": 0.0,
+    "rx": 0.0,
+    "ry": 0.0,
+    "rz": 0.0,
+    "r": 0.1
+   },
+   "evidence": {
+    "tolerance_mm": 1e-06,
+    "symmetric_difference_mm3": 0.0,
+    "allowed_mm3": 5.0265482457436686e-05,
+    "max_boundary_distance_mm": 5.661048867003676e-16,
+    "points_compared": 768,
+    "points_inside": 304,
+    "seed": 20260923
+   }
+  },
+  {
+   "path": [
+    "Core",
+    "Beads",
+    "Beads"
+   ],
+   "index": 0,
+   "key": "Core / Beads / Beads [2]",
+   "label": "Beads",
+   "valid": true,
+   "surface_types": [
+    "Sphere"
+   ],
+   "faces": 1,
+   "volume_cm3": 0.004188790204786391,
+   "bounds_cm": [
+    0.4,
+    -3.1,
+    -0.1,
+    0.6,
+    -2.9,
+    0.1
+   ],
+   "reasons": [],
+   "status": "accepted",
+   "kind": "sphere",
+   "part": {
+    "name": "Beads",
+    "shape": "sphere",
+    "x": 0.5,
+    "y": -3.0,
+    "z": 0.0,
+    "rx": 0.0,
+    "ry": 0.0,
+    "rz": 0.0,
+    "r": 0.1
+   },
+   "evidence": {
+    "tolerance_mm": 1e-06,
+    "symmetric_difference_mm3": 0.0,
+    "allowed_mm3": 5.0265482457436686e-05,
+    "max_boundary_distance_mm": 5.79553433516819e-16,
+    "points_compared": 768,
+    "points_inside": 304,
+    "seed": 20260923
+   }
+  }
+ ],
+ "overlaps": [],
+ "counts": {
+  "accepted": 5,
+  "rejected": 0,
+  "failed": 0
+ }
+}

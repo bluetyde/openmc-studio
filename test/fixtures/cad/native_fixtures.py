@@ -279,3 +279,45 @@ def teeth(out):
     except NotEquivalent as exc:
         results["sphere vs box, equal bounds"] = f"rejected: {str(exc)[:60]}"
     return results
+
+
+def browser_reports(fixtures_dir):
+    """Real engine output for the browser import test (test_cad_import_browser.cjs).
+
+    Writes mixed.step - accepted, rejected and overlapping solids in one assembly -
+    and the 'native' reports for it and for the assembly fixture into
+    test/fixtures/cad/expected/, so the browser test replays what FreeCAD produced
+    rather than hand-written JSON. Regenerate after changing the recognizer."""
+    _runtime()
+    import FreeCAD as App
+    import Import
+    import Part
+    from openmc_studio.cad.report import native
+
+    V = App.Vector
+    fx = Path(fixtures_dir)
+    App.ParamGet("User parameter:BaseApp/Preferences/Document").SetBool("DuplicateLabels", True)
+    doc = App.newDocument("mixed")
+    items = {
+        "Shield block": Part.makeBox(20, 10, 5),
+        "Liner": Part.makeBox(5, 10, 5, V(18, 0, 0)),                     # overlaps the shield by 2 x 10 x 5 mm
+        "Fuel rod": Part.makeCylinder(2, 30, V(40, 0, 0)),
+        "Drilled plate": Part.makeBox(10, 10, 2, V(0, 30, 0)).cut(Part.makeCylinder(1, 10, V(5, 35, -4))),
+        "Collar": Part.makeCylinder(6, 4, V(0, -30, 0)).cut(Part.makeCylinder(4, 4, V(0, -30, 0))),
+    }
+    objs = []
+    for label, shape in items.items():
+        o = doc.addObject("Part::Feature", label.replace(" ", ""))
+        o.Shape = shape
+        o.Label = label
+        objs.append(o)
+    doc.recompute()
+    Import.export(objs, str(fx / "mixed.step"))
+    App.closeDocument(doc.Name)
+    corpus = Path(fixtures_dir) / "_assembly_tmp"
+    main(corpus)
+    for name, src in (("mixed", fx / "mixed.step"), ("assembly", corpus / "assembly.step")):
+        report = native(src)
+        (fx / "expected" / f"native_report_{name}.json").write_text(json.dumps(report, indent=1) + "\n", newline="\n")
+    import shutil
+    shutil.rmtree(corpus)

@@ -10,3 +10,7 @@
 
 *.h5 binary
 *.xz binary
+
+# CAD fixtures are engine or writer output kept byte for byte (their hashes are recorded);
+# FreeCAD writes trailing spaces, so whitespace checks do not apply to them.
+test/fixtures/cad/**/*.step text eol=lf -whitespace

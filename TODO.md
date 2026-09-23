@@ -35,8 +35,9 @@ and the MCNP lattice work; fixes listed under Completed).
 - **Name**: "OpenMabc" was floated; not decided.
 - **Mac copy**: pull both repos (openmc-studio and openmc-mcnp-project) on the Mac; the exporter changes for
   detector tallies and lattices are on GitHub `main` now.
-- **GEOUNED**: commit be160fe's title says "add GEOUNED integration", but only the backlog entry below
-  exists; nothing is integrated yet.
+- **GEOUNED / CAD import**: currently disabled; no genuine decomposition adapter is implemented.
+  STEP export requires FreeCAD and supports selected primitives. See section 5 and
+  [the implementation plan](docs/cad-import-plan.md) before enabling import.
 
 
 ---
@@ -153,11 +154,38 @@ and the MCNP lattice work; fixes listed under Completed).
   - Expect gaps: macrobodies, lattices, transforms and repeated structures each need mapping back, and Studio
     parts are shapes rather than raw cells, so some decks will import as geometry we can display but not edit
     as parts. Say so per cell rather than failing the whole file.
-- **GEOUNED CAD-to-OpenMC Translation**:
-  - Integration with **GEOUNED** (open-source tool developed by UNED utilizing FreeCAD and OpenCASCADE):
-    - **CAD to CSG**: Convert standard engineering CAD models (STEP / IGES) into native OpenMC constructive solid geometry (CSG) surfaces and cells with analytical representations.
-    - **CSG to CAD**: Round-trip export of OpenMC Studio CSG models back into STEP format for modification in commercial CAD software (SolidWorks, Inventor, FreeCAD).
-    - Automatic solid decomposition and void region generation for complex nuclear components.
+- **FreeCAD / GEOUNED CAD import roadmap** (recorded 2026-09-23; implementation pending):
+  - Full architecture, acceptance gates, environment setup and proposed ignore rules:
+    [CAD import implementation plan](docs/cad-import-plan.md).
+  - Two outputs: validated **native editable primitives** through FreeCAD, and **imported analytical CSG
+    components** through GEOUNED. General CSG needs a versioned surface/Boolean-region model; it cannot be
+    represented by guessed boxes or existing organizational groups. DAGMC remains a separate later path.
+  - [ ] **Stage 0 — prove the engines:** create an isolated WSL `openmc-cad` environment; convert a drilled
+    block and hollow cylinder with real GEOUNED into OpenMC XML. Verify holes, placement and units. Pin the
+    tested Python/FreeCAD/OCCT/GEOUNED builds. Recheck upstream's warning recorded on 2026-09-22 about
+    incorrect conversion in GEOUNED 1.6.3/1.6.4; evaluate 1.6.2 rather than installing an unqualified latest.
+  - [ ] **Stage 1 — reliable jobs:** isolated workers, job IDs, progress, cancellation/timeouts, safe temporary
+    paths, size limits and per-solid diagnostics. Failed or cancelled jobs must not change the project.
+  - [ ] **Stage 2 — native STEP import:** recognize boxes, spheres, capped cylinders and cones; rebuild and
+    compare solids, preserve units/rotations, assign unique IDs and require explicit material mapping.
+    Preview omissions before any partial import; commit as one undoable action. Test save/reload.
+  - [ ] **Stage 3 — analytical CSG model:** call GEOUNED's real conversion API, parse OpenMC XML as data,
+    add versioned surfaces/region trees and preserve source-to-cell identity. Resolve world/void ownership
+    and overlaps; never execute generated Python or silently discard unsupported surfaces.
+  - [ ] **Stage 4 — Studio integration:** analytical slices, validated 3D preview/picking, materials, cell
+    tallies, portable project storage and OpenMC generation. General CSG geometry starts read-only.
+    Display meshes are not transport geometry; renderer budget limits must never hide geometry silently.
+  - [ ] **Stage 5 — parity and packaging:** companion MCNP export checks, real engine/browser integration
+    CI, clean-machine setup and platform locks. CAD release checks cannot pass through dependency skips.
+    Add IGES and further native shapes only after separate geometry-preservation tests.
+  - [ ] **Git policy:** track adapter code, recipes/locks, documentation and small public fixtures. Keep CAD
+    engines/environments, user uploads, caches, debug solids, logs and conversion scratch outside Git.
+    Add narrow fixture exceptions for IGES/B-Rep and expected XML currently hidden by broad ignores;
+    verify ignored and tracked paths with `git check-ignore`. The exact proposed rules are in the plan.
+  - **Release gate:** unsupported geometry is reported, never approximated silently; verify boundaries,
+    holes, volumes, rotations and mm/cm/inch units against CAD, plus repeated imports and actual OpenMC
+    geometry. A matching volume or self-roundtrip alone is insufficient. Full CSG-to-STEP roundtrip and
+    MCNP parity must be validated separately from primitive export.
 - **DAGMC Direct Accelerated Geometry**:
   - Direct import and visualization of faceted DAGMC `.h5m` surface mesh models.
 - **OpenMC Python & XML Importer**:

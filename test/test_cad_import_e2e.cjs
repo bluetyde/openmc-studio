@@ -20,10 +20,12 @@ const fs = require('fs'), path = require('path'), assert = require('assert'), cr
 const CAD = process.env.OPENMC_CAD_PYTHON;
 const PY = process.env.STUDIO_PYTHON || 'python3';
 const PORT = Number(process.env.E2E_PORT || 8766);
+const CSG = process.env.E2E_CAD_MODE === 'csg';
+const XS = process.env.OPENMC_CROSS_SECTIONS || '';
 const TOKEN = crypto.randomBytes(16).toString('hex');
 const WIN = process.platform === 'win32';
 const REPO = path.resolve(__dirname, '..');
-const FIXTURE = path.join(__dirname, 'fixtures', 'cad', 'mixed.step');
+const FIXTURE = path.join(__dirname, 'fixtures', 'cad', CSG ? 'clean_assembly.step' : 'mixed.step');
 const EXPECTED = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'cad', 'expected', 'native_report_mixed.json'), 'utf8'));
 
 const shell = script => WIN ? spawn('wsl.exe', ['-e', 'bash', '-lc', script]) : spawn('bash', ['-lc', script]);
@@ -36,12 +38,13 @@ async function ping() {
 
 (async () => {
   if (!CAD) throw new Error('OPENMC_CAD_PYTHON must name the pinned CAD interpreter; this gate never skips');
+  if (CSG && !XS) throw new Error('CSG transport gate requires OPENMC_CROSS_SECTIONS on the server host');
   if (await ping()) throw new Error(`Port ${PORT} is already serving something; set E2E_PORT to a free port`);
   // Forward slashes: wsl.exe hands arguments to a shell that would eat backslashes.
   const repo = WIN ? execFileSync('wsl.exe', ['wslpath', '-a', REPO.split(path.sep).join('/')]).toString().trim() : REPO;
-  const runs = `/tmp/openmc-studio-cad-e2e-${PORT}`;   // outside the checkout, as CAD jobs require
+  const runs = `/tmp/openmc-studio-cad-e2e-${PORT}-${crypto.randomBytes(6).toString('hex')}`;
   // exec: the recorded PID is the server itself, so we stop exactly what we started.
-  const server = shell(`export OPENMC_CAD_PYTHON=${q(CAD)} OPENMC_STUDIO_TOKEN=${q(TOKEN)}; rm -rf ${q(runs)}; mkdir -p ${q(runs)}; ` +
+  const server = shell(`export OPENMC_CAD_PYTHON=${q(CAD)} OPENMC_CROSS_SECTIONS=${q(XS)} OPENMC_STUDIO_TOKEN=${q(TOKEN)} PATH=${q(path.posix.dirname(PY))}:"$PATH"; mkdir -p ${q(runs)}; ` +
     `cd ${q(repo + '/studio')} && echo $$ > ${q(runs + '/server.pid')} && exec ${q(PY)} -m openmc_studio --port ${PORT} --runs ${q(runs)} --no-browser`);
   let out = '';
   server.stdout.on('data', d => { out += d; });
@@ -59,6 +62,59 @@ async function ping() {
     await page.goto(`http://127.0.0.1:${PORT}/?token=${TOKEN}`);
     await page.waitForFunction(() => typeof LOCAL !== 'undefined' && LOCAL.on === true, null, {timeout:60000});
 
+    if (CSG) {
+      await page.locator('#rtabs button[data-tab="Convert"]').click();
+      await page.locator('#rbody button:has-text("Import CAD…")').click();
+      await page.waitForSelector('#cad-select-file-btn', {timeout:120000});
+      await page.locator('#cadFileInput').setInputFiles(FIXTURE);
+      await page.locator('#cad-import-run').click();
+      await page.waitForSelector('#cad-inventory-rows', {timeout:120000});
+      await page.locator('input[name="cad-mode"][value="csg"]').check();
+      await page.locator('#cad-import-run').click();
+      await page.waitForSelector('#cad-preview-rows', {timeout:300000});
+      assert.equal(await page.locator('.cadrow[data-status="accepted"]').count(),4);
+      assert.match(await page.locator('#cad-new-project').innerText(),/replaces/);
+      await page.locator('#cad-import-run').click();
+      assert.equal(await page.evaluate(()=>csgComponents().length),4);
+      assert.equal(await page.evaluate(()=>problems().filter(p=>p.sev==='error' && /needs a material/.test(p.text)).length),4);
+      const ids=await page.evaluate(()=>csgComponents().map(k=>k.id));
+      for(const id of ids) {
+        await page.evaluate(id=>select('component',id),id);
+        await page.locator('#props button:has-text("Keep as Void")').click();
+      }
+      await page.evaluate(id=>{ select('component',id); addTally('cell'); },ids[0]);
+      const before=await page.evaluate(()=>{const s=normalizeProject(JSON.parse(JSON.stringify(S)));return {csg:s.csg,imports:s.imports,tallies:s.tallies};});
+      const [download]=await Promise.all([page.waitForEvent('download'),page.evaluate(()=>saveProject())]);
+      const saved=await download.path();
+      await page.evaluate(()=>{delete S.csg;S.tallies=[];renderAll();});
+      await page.locator('#openFile').setInputFiles(saved);
+      await page.waitForFunction(()=>csgComponents().length===4);
+      assert.deepEqual(await page.evaluate(()=>({csg:S.csg,imports:S.imports,tallies:S.tallies})),before);
+      const geometry=await page.evaluate(()=>{
+        view.mode='3d'; CAM.dist=0; renderAll(); drawViewport();
+        return {ready:V3.ok,error:V3.err,problems:csgPreviewPlan().problems};
+      });
+      assert.ok(geometry.ready,geometry.error);assert.deepEqual(geometry.problems,[]);
+      // Exercise the real run endpoint and OpenMC geometry-debug transport. Void
+      // material is an explicit choice here; this checks boundaries, not physics.
+      const run=await page.evaluate(async()=>{
+        S.settings.particles=100;S.settings.batches=2;S.settings.fissionNeutrons=false;
+        S.sources.forEach(s=>{s.x=1;s.y=.5;s.z=.25;});
+        const script=generate(problems()).replace(/statepoint = model.run\([^\n]*\)/, 'statepoint = model.run(geometry_debug=True, threads=1)');
+        return api('/api/run',{method:'POST',body:JSON.stringify({script,project:S,name:'CAD geometry gate'})});
+      });
+      let finished;
+      for(let i=0;i<180;i++) {
+        finished=await page.evaluate(async id=>(await api('/api/runs')).runs.find(r=>r.id===id),run.id);
+        if(finished && finished.status!=='running') break;
+        await new Promise(r=>setTimeout(r,500));
+      }
+      const runLog=shellSync(`cat ${q(runs+'/'+run.id+'/run.log')}`);
+      assert.equal(finished.status,'done',JSON.stringify(finished)+'\n'+runLog.slice(-4000));
+      assert.match(runLog,/geometry debugging|overlap checks/i);
+      assert.deepEqual(pageErrors,[]);
+      console.log('test_cad_csg_e2e: PASS (real upload, conversion, browser, save/reload, OpenMC geometry-debug run)');
+    } else {
     // Import: the dialog probes the real engine first, then inspects and converts.
     await page.locator('#rtabs button[data-tab="Convert"]').click();
     await page.locator('#rbody button:has-text("Import CAD…")').click();
@@ -109,6 +165,7 @@ async function ping() {
     assert.deepEqual(JSON.parse(after), JSON.parse(before), 'save and reopen round-trip the import exactly');
     assert.deepEqual(pageErrors, []);
     console.log('test_cad_import_e2e: PASS (real browser, server and FreeCAD engine)');
+    }
   } catch (e) {
     failed = true;
     console.log(e.stack);

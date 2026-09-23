@@ -107,7 +107,7 @@ const inventoryOf = rep => ({...rep, solids:rep.solids.map(({part, evidence, kin
       const sent = await page.evaluate(() => FAKE.calls.find(c => c.method === 'POST' && c.body.mode === 'inspect').body);
       assert.equal(Buffer.from(sent.data, 'base64').toString('latin1'), MIXED_STEP.toString('latin1'), 'the uploaded bytes are the file');
       assert.equal(sent.filename, 'mixed.step');
-      assert.equal(await page.locator('input[name="cad-mode"][value="csg"]').isDisabled(), true, 'CSG import is shown but not offered yet');
+      assert.equal(await page.locator('input[name="cad-mode"][value="csg"]').isDisabled(), false, 'stage 4 offers analytical CSG');
       await page.locator('#cad-import-run').click();                 // Convert
       await page.waitForSelector('#cad-preview-rows');
       assert.equal(await page.locator('#cad-preview-rows .cadrow[data-status="accepted"]').count(), 3);

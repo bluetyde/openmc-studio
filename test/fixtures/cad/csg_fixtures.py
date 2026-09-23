@@ -99,3 +99,48 @@ def main(out):
     python_files = sorted(str(q.relative_to(out)) for q in out.rglob("*.py"))
     (out / "gate.json").write_text(json.dumps({"cases": result, "python_files": python_files}))
     return {k: v["report"]["counts"] for k, v in result.items()}
+
+
+def browser_reports(fixtures_dir):
+    """Real 'csg' reports (with preview meshes) for the browser tests and screenshots.
+
+    Writes clean_assembly.step and triso_layers.step (a TRISO particle as five nested
+    solids at the dimensions of examples/triso-particle: kernel 0.25 mm, buffer to
+    0.35, IPyC to 0.39, SiC to 0.425, OPyC to 0.46) next to this module, and their
+    csg reports to expected/csg_report_*.json. Regenerate after changing csg.py."""
+    from openmc_studio.cad.geouned_adapter import configure_runtime
+    configure_runtime()
+    import FreeCAD as App
+    import Import
+    import Part
+    from openmc_studio.cad.csg import convert
+
+    V = App.Vector
+    fx = Path(fixtures_dir)
+    App.ParamGet("User parameter:BaseApp/Preferences/Document").SetBool("DuplicateLabels", True)
+    builds = {
+        "clean_assembly": [("Shield block", Part.makeBox(20, 10, 5)),
+                           ("Fuel rod", Part.makeCylinder(2, 30, V(40, 0, 0))),
+                           ("Drilled plate", Part.makeBox(10, 10, 2, V(0, 30, 0)).cut(Part.makeCylinder(1, 10, V(5, 35, -4)))),
+                           ("Collar", Part.makeCylinder(6, 4, V(0, -30, 0)).cut(Part.makeCylinder(4, 4, V(0, -30, 0))))],
+        "triso_layers": [("UCO kernel", Part.makeSphere(0.25))] + [
+            (label, Part.makeSphere(r_out).cut(Part.makeSphere(r_in)))
+            for label, r_in, r_out in (("Porous carbon buffer", 0.25, 0.35), ("Inner pyrocarbon (IPyC)", 0.35, 0.39),
+                                       ("Silicon carbide (SiC)", 0.39, 0.425), ("Outer pyrocarbon (OPyC)", 0.425, 0.46))],
+    }
+    work = fx / "_csg_tmp"
+    shutil.rmtree(work, ignore_errors=True)
+    for name, items in builds.items():
+        doc = App.newDocument(name)
+        objs = []
+        for label, shape in items:
+            o = doc.addObject("Part::Feature", "".join(ch for ch in label if ch.isalnum()))
+            o.Shape = shape
+            o.Label = label
+            objs.append(o)
+        doc.recompute()
+        Import.export(objs, str(fx / f"{name}.step"))
+        App.closeDocument(doc.Name)
+        report = convert(fx / f"{name}.step", work / name)
+        (fx / "expected" / f"csg_report_{name}.json").write_text(json.dumps(report) + "\n", newline="\n")
+    shutil.rmtree(work, ignore_errors=True)

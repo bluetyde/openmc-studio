@@ -87,6 +87,26 @@ def validate(shape, component):
             "cad_volume_cm3": shape.Volume / 1000, "max_cells_at_a_point": worst_overlap}
 
 
+MESH_DEFLECTION = 0.01    # relative to each face's size: scale-independent (0.25 mm and 25 cm spheres alike)
+MESH_TRIANGLES = 200_000  # per solid; a finer mesh is refused, not truncated
+
+
+def display_mesh(shape, conversion):
+    """A triangle mesh of the SOURCE solid for the 3D preview, in cm. A display asset,
+    never transport geometry: tagged with the conversion it belongs to so the
+    browser can refuse a mesh that doesn't match its component. MeshPart's relative
+    deflection is used because absolute deflection stalls OCCT on sub-mm spheres."""
+    import MeshPart
+    mesh = MeshPart.meshFromShape(Shape=shape, LinearDeflection=MESH_DEFLECTION, AngularDeflection=0.35, Relative=True)
+    if mesh.CountFacets > MESH_TRIANGLES:
+        raise ValueError(f"its preview mesh needs {mesh.CountFacets} triangles (limit {MESH_TRIANGLES})")
+    points = [float(f"{c / 10:.7g}") for p in mesh.Points for c in (p.x, p.y, p.z)]
+    triangles = [i for f in mesh.Facets for i in f.PointIndices]
+    return {"positions_cm": points, "triangles": triangles, "count": mesh.CountFacets,
+            "deflection": {"relative": MESH_DEFLECTION, "angular_rad": 0.35}, "conversion": conversion,
+            "note": "display only; the analytical regions are the geometry"}
+
+
 def convert(source, workdir, progress=None):
     """The report for the 'csg' job. workdir: a fresh private directory."""
     import FreeCAD as App  # noqa: F401 - initialized before Part
@@ -114,6 +134,7 @@ def convert(source, workdir, progress=None):
                 cell["name"] = label if len(component["cells"]) == 1 else f"{label} ({k + 1})"
             component.update(name=label, bounds_cm=row["bounds_cm"])
             evidence = validate(s.shape, component)
+            component["display"] = display_mesh(s.shape, f"{info['source_sha256']}|{row['key']}")
             row.update(status="accepted", kind="csg", component=component, evidence=evidence)
         except (AdapterError, NotEquivalent) as exc:
             row.update(status="rejected", reasons=[str(exc)])

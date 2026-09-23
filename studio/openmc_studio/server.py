@@ -10,6 +10,7 @@ import os
 import queue
 import re
 import secrets
+import shutil
 import signal
 import subprocess
 import sys
@@ -113,6 +114,32 @@ class Studio:
         report = self.mcnp.run(script, slug, folder, seq=None)
         report.update(folder=str(folder), name=slug)
         return report
+
+    def check_geometry(self, script, world, points, particles):
+        """Check geometry button: geometry_check.py on this model in a scratch folder (removed when it passes)."""
+        folder = self.root / "geometry-checks" / (time.strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(3))
+        folder.mkdir(parents=True, exist_ok=False)
+        (folder / "model.py").write_text(script, encoding="utf-8")
+        env = os.environ.copy()
+        env["PATH"] = os.path.dirname(sys.executable) + os.pathsep + env.get("PATH", "")
+        opts = {"world": world, "points": points, "particles": particles, "seed": 1}
+        try:
+            r = subprocess.run([sys.executable, str(Path(__file__).with_name("geometry_check.py")), str(folder), json.dumps(opts)],
+                               cwd=folder, env=env, capture_output=True, text=True, timeout=900)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"The geometry check took over 15 minutes and was stopped. Its files are in {folder}.")
+        lines = [l for l in (r.stdout or "").splitlines() if l.strip()]
+        try:
+            result = json.loads(lines[-1])
+        except (IndexError, ValueError):
+            tail = "\n".join(((r.stdout or "") + (r.stderr or "")).strip().splitlines()[-8:])
+            raise RuntimeError(f"The geometry check could not run model.py:\n{tail}")
+        clean = not result["points"].get("error") and not result["points"].get("gaps") and not result["points"].get("overlaps")
+        if clean and not (result.get("transport") or {}).get("lost") and not (result.get("transport") or {}).get("overlap"):
+            shutil.rmtree(folder, ignore_errors=True)
+        else:
+            result["folder"] = str(folder)
+        return result
 
     def mcnp_live(self, script, name, seq, client=""):
         """Live model.mcnp tab: same worker, one reused folder; stale requests are skipped."""
@@ -605,6 +632,23 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(400, "No script.")
             return self._send(200, self.studio.mcnp_live(script, str(body.get("name") or "model"), int(body.get("seq") or 0),
                                                          str(body.get("client") or "")[:64]))
+        if url.path == "/api/check-geometry":
+            script, world = body.get("script"), body.get("world")
+            if not isinstance(script, str) or not script.strip():
+                return self._error(400, "No script to check.")
+            if not (isinstance(world, dict) and world.get("shape") in ("box", "sphere")
+                    and isinstance(world.get("R"), (int, float)) and world["R"] > 0):
+                return self._error(400, "world must be {shape: box|sphere, R: cm > 0}.")
+            try:
+                points = max(1000, min(int(body.get("points") or 100000), 400000))
+                particles = max(0, min(int(body.get("particles") or 0), 100000))
+            except (TypeError, ValueError):
+                return self._error(400, "points and particles must be whole numbers.")
+            try:
+                return self._send(200, self.studio.check_geometry(script, {"shape": world["shape"], "R": float(world["R"])},
+                                                                  points, particles))
+            except RuntimeError as exc:
+                return self._error(500, str(exc))
         if url.path == "/api/export-mcnp":
             script = body.get("script")
             if not isinstance(script, str) or not script.strip():

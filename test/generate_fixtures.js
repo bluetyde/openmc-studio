@@ -120,6 +120,14 @@ write('two_sources', {materials: [water],
   groups: [], tallies: [cellTally('t_tank', ['tank'])],
   settings: settings({worldR: 40})});
 
+// 5c2. A real 3D flux map (a 10 x 10 x 10 box mesh, not a slab) over a water tank with an off-centre source:
+//      the map must build, run and peak at the source, and its MCNP twin carries an FMESH with three bin counts.
+write('flux_3d', {materials: [water],
+  parts: [part('tank', 'box', 0, 0, 0, {sx: 40, sy: 40, sz: 40}, 'm_water')],
+  sources: [pointSource(6, -6, 2)], groups: [],
+  tallies: [meshTally('t_map', [-20, -20, -20], [20, 20, 20], [10, 10, 10])],
+  settings: settings({worldR: 30})});
+
 // 5d. A multiplying model run as a fixed source: fission is treated as capture (create_fission_neutrons = False,
 //     MCNP NONU), so the chains die out instead of stopping OpenMC with "secondary particle bank growing without
 //     bound". Without the switch this model does not finish.

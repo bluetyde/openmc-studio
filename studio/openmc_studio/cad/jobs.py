@@ -2,6 +2,18 @@
 
 One subprocess at a time, immutable input, private working directory, and atomic
 job-correlated files. No pipe reads on the supervisor/cancellation path.
+
+The contract with the worker (``openmc_studio.cad.job_worker``) is file based and
+lives entirely inside the job's private ``work`` directory:
+
+- the server writes ``source.step`` (read-only) and ``request.json``;
+- the worker writes ``progress.json`` and finally ``result.json`` atomically, each
+  carrying the job ID, and ``result.json`` either ``{"ok": true, ...}`` or
+  ``{"ok": false, "error": ...}``;
+- anything else the worker writes counts toward the job's disk budget.
+
+A result is accepted only if it names this job, arrives before cancellation, and
+fits the size limits. Nothing a client sends ever becomes a filesystem path.
 """
 from collections import deque
 from dataclasses import dataclass, field
@@ -21,31 +33,67 @@ JOB_ID = re.compile(r"^[0-9a-f]{32}$")
 TERMINAL = {"succeeded", "failed", "cancelled", "timed_out"}
 MAX_INPUT = 16 * 1024 * 1024
 MAX_XML = 8 * 1024 * 1024
+MAX_RESULT = 128 * 1024
+LOG_TAIL = 2048
+
+# The adapter contract: what a job may ask the worker to do. Stages add modes here
+# and in job_worker together; the HTTP layer only ever passes one of these names.
+# needs_source: the job must carry an uploaded STEP file.
+MODES = {
+    "probe": {"needs_source": False},     # build a small solid and convert it end to end
+    "csg-xml": {"needs_source": True},    # GEOUNED single-solid conversion to OpenMC XML
+}
+
+
+def disk_usage(path):
+    """Bytes under path. Files the worker renames or deletes mid-scan are skipped:
+    the worker's own atomic writes (x.tmp -> x) must never fail a healthy job."""
+    total = 0
+    for p in Path(path).rglob("*"):
+        try:
+            if p.is_file():
+                total += p.stat().st_size
+        except FileNotFoundError:
+            continue
+    return total
+
+
+def _tail(path, limit=LOG_TAIL):
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - limit))
+            return f.read().decode("utf-8", "replace")
+    except OSError:
+        return ""
 
 
 @dataclass
 class Job:
     id: str
     name: str
+    mode: str
     path: Path
     state: str = "queued"
     created: float = field(default_factory=time.time)
     ended: float | None = None
     progress: str = "queued"
     error: str | None = None
+    diagnostics: str | None = None
     cancel: threading.Event = field(default_factory=threading.Event)
     result: dict | None = None
 
     def public(self):
-        return {"id": self.id, "name": self.name, "state": self.state,
+        return {"id": self.id, "name": self.name, "mode": self.mode, "state": self.state,
                 "created": self.created, "ended": self.ended, "progress": self.progress,
-                "error": self.error, "can_import_into_studio": False}
+                "error": self.error, "diagnostics": self.diagnostics,
+                "can_import_into_studio": False}
 
 
 class CadJobs:
     def __init__(self, root, python=None, *, timeout=180, retention=3600,
                  max_pending=8, max_jobs=128, max_log=2 * 1024 * 1024,
-                 max_disk=64 * 1024 * 1024, command=None):
+                 max_disk=64 * 1024 * 1024, command=None, poll=0.05):
         self.root = Path(root).expanduser().resolve()
         repo = Path(__file__).resolve().parents[3]
         if self.root.is_relative_to(repo):
@@ -54,6 +102,7 @@ class CadJobs:
         self.timeout, self.retention = timeout, retention
         self.max_pending, self.max_jobs = max_pending, max_jobs
         self.max_log, self.max_disk = max_log, max_disk
+        self.poll = poll
         # command is injected only by lifecycle tests, never from HTTP requests.
         self.command = command
         self.jobs, self.pending = {}, deque()
@@ -61,16 +110,23 @@ class CadJobs:
         self.thread = None
         self.closed = False
         self.lease = None
+        self.running = None  # the job whose worker is alive, if any
+        self.verified = None  # public summary of the last successful probe
 
     def capabilities(self):
         configured = bool(self.python and Path(self.python).is_file())
-        return {"available": sys.platform.startswith("linux") and configured and not self.closed,
-                "configured": configured, "engine_verified": False,
-                "can_import_into_studio": False, "mode": "experimental-single-solid-xml",
+        available = sys.platform.startswith("linux") and configured and not self.closed
+        verified = self.verified
+        return {"available": available, "configured": configured,
+                # Only a completed probe conversion counts; importable modules do not.
+                "engine_verified": bool(verified), "probe": verified,
+                "modes": sorted(MODES), "can_import_into_studio": False,
+                "mode": "experimental-single-solid-xml",
                 "platform": "linux-wsl", "max_input_bytes": MAX_INPUT,
                 "timeout_seconds": self.timeout, "retention_seconds": self.retention,
-                "reason": "Set OPENMC_CAD_PYTHON to a tested Linux CAD interpreter; "
-                          "job success is conversion only, not Studio import or transport validation."}
+                "reason": None if available else
+                    "Set OPENMC_CAD_PYTHON to a tested Linux CAD interpreter; "
+                    "job success is conversion only, not Studio import or transport validation."}
 
     def _start(self):
         if self.thread:
@@ -89,13 +145,20 @@ class CadJobs:
         self.thread = threading.Thread(target=self._loop, name="cad-jobs", daemon=True)
         self.thread.start()
 
-    def submit(self, data, filename):
-        if not isinstance(data, bytes) or not data or len(data) > MAX_INPUT:
-            raise ValueError("Provide a nonempty STEP file no larger than 16 MiB")
-        if not isinstance(filename, str) or Path(filename).suffix.lower() not in {".step", ".stp"}:
-            raise ValueError("Only STEP/STP files are accepted")
-        # A label only; no client-supplied value ever becomes a filesystem path.
-        name = re.sub(r"[^\w .()-]", "_", filename.replace("\\", "/").rsplit("/", 1)[-1])[:120]
+    def submit(self, data, filename, mode="csg-xml"):
+        if mode not in MODES:
+            raise ValueError(f"Unknown CAD job mode; expected one of {', '.join(sorted(MODES))}")
+        if MODES[mode]["needs_source"]:
+            if not isinstance(data, bytes) or not data or len(data) > MAX_INPUT:
+                raise ValueError("Provide a nonempty STEP file no larger than 16 MiB")
+            if not isinstance(filename, str) or Path(filename.replace("\\", "/")).suffix.lower() not in {".step", ".stp"}:
+                raise ValueError("Only STEP/STP files are accepted")
+            # A label only; no client-supplied value ever becomes a filesystem path.
+            name = re.sub(r"[^\w .()-]", "_", filename.replace("\\", "/").rsplit("/", 1)[-1])[:120]
+        else:
+            if data or filename:
+                raise ValueError(f"A '{mode}' job takes no file")
+            name = mode
         with self.condition:
             if self.closed:
                 raise RuntimeError("CAD jobs are shutting down")
@@ -110,10 +173,12 @@ class CadJobs:
             try:
                 work = path / "work"
                 work.mkdir()
-                source = work / "source.step"
-                source.write_bytes(data)
-                source.chmod(0o400)
-                job = Job(job_id, name, path)
+                if data:
+                    source = work / "source.step"
+                    source.write_bytes(data)
+                    source.chmod(0o400)
+                (work / "request.json").write_text(json.dumps({"id": job_id, "mode": mode}), encoding="utf-8")
+                job = Job(job_id, name, mode, path)
                 self.jobs[job_id] = job
                 self.pending.append(job_id)
                 self.condition.notify_all()
@@ -128,6 +193,10 @@ class CadJobs:
             if not job:
                 raise KeyError(job_id)
             return job.public()
+
+    def list(self):
+        with self.condition:
+            return [j.public() for j in sorted(self.jobs.values(), key=lambda j: j.created)]
 
     def result(self, job_id):
         with self.condition:
@@ -149,6 +218,21 @@ class CadJobs:
                 self.condition.notify_all()
             return job.public()
 
+    def wait(self, job_id, timeout=None):
+        """Block until the job is terminal (tests and CLI tools; HTTP never waits)."""
+        deadline = None if timeout is None else time.monotonic() + timeout
+        with self.condition:
+            while True:
+                job = self.jobs.get(job_id)
+                if not job:
+                    raise KeyError(job_id)
+                if job.state in TERMINAL:
+                    return job.public()
+                remaining = None if deadline is None else deadline - time.monotonic()
+                if remaining is not None and remaining <= 0:
+                    raise TimeoutError(job_id)
+                self.condition.wait(timeout=remaining if remaining is not None else 1)
+
     def _prune(self):
         now = time.time()
         for job_id, job in list(self.jobs.items()):
@@ -159,17 +243,22 @@ class CadJobs:
         for path in self.root.iterdir():
             if JOB_ID.fullmatch(path.name) and path.name not in self.jobs and path.is_dir():
                 if now - path.stat().st_mtime >= self.retention:
-                    shutil.rmtree(path)
+                    shutil.rmtree(path, ignore_errors=True)
 
-    def _finish(self, job, state, error=None, result=None):
+    def _finish(self, job, state, error=None, result=None, diagnostics=None):
         with self.condition:
             # Cancellation wins even when it races with an already-written result.
             if job.cancel.is_set():
-                state, error, result = "cancelled", None, None
+                state, error, result, diagnostics = "cancelled", None, None, None
             if state in {"cancelled", "timed_out"}:
                 shutil.rmtree(job.path / "work", ignore_errors=True)
             job.state, job.error, job.result = state, error, result
+            job.diagnostics = diagnostics
             job.progress, job.ended = state, time.time()
+            if state == "succeeded" and job.mode == "probe":
+                self.verified = {"job": job.id, "at": job.ended,
+                                 "versions": (result or {}).get("versions"),
+                                 "adapter": (result or {}).get("adapter")}
             (job.path / "status.json").write_text(json.dumps(job.public()), encoding="utf-8")
             self.condition.notify_all()
 
@@ -198,14 +287,33 @@ class CadJobs:
             pass
         proc.wait(timeout=5)
 
+    def _read_result(self, job, work):
+        """The worker's own verdict, if it left one that names this job; else None."""
+        path = work / "result.json"
+        try:
+            size = path.stat().st_size
+        except FileNotFoundError:
+            return None
+        if size > MAX_RESULT:
+            raise ValueError("Oversized CAD report")
+        result = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(result, dict) or result.get("id") != job.id:
+            raise ValueError("Mismatched CAD result job ID")
+        return result
+
     def _run(self, job):
         proc = None
         reader = None
         stopped = False
         work = job.path / "work"
+        log = work / "worker.log"
         try:
             with self.condition:
+                if job.cancel.is_set():  # cancelled between leaving the queue and starting
+                    self._finish(job, "cancelled")
+                    return
                 job.state, job.progress = "running", "starting"
+                self.running = job.id
             env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONDONTWRITEBYTECODE="1")
             env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
             argv = self.command(job) if self.command else [
@@ -215,12 +323,13 @@ class CadJobs:
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                     start_new_session=True)
             overflow = threading.Event()
+
             def drain():
                 written = 0
-                with (work / "worker.log").open("wb") as log:
+                with log.open("wb") as out:
                     while chunk := proc.stdout.read(4096):
                         remaining = max(0, self.max_log - written)
-                        log.write(chunk[:remaining])
+                        out.write(chunk[:remaining])
                         written += len(chunk)
                         if written > self.max_log:
                             overflow.set()
@@ -234,18 +343,21 @@ class CadJobs:
                 if time.monotonic() >= deadline:
                     failure = ("timed_out", "CAD conversion exceeded its time limit")
                     break
-                size = sum(p.stat().st_size for p in work.rglob("*") if p.is_file())
-                if overflow.is_set() or size > self.max_disk:
+                if overflow.is_set() or disk_usage(work) > self.max_disk:
                     failure = ("failed", "CAD output exceeded its size limit")
                     break
                 progress = work / "progress.json"
-                if progress.exists() and progress.stat().st_size < 4096:
-                    event = json.loads(progress.read_text())
+                try:
+                    small = progress.stat().st_size < 4096
+                except FileNotFoundError:
+                    small = False
+                if small:
+                    event = json.loads(progress.read_text(encoding="utf-8"))
                     if event.get("id") != job.id:
                         raise ValueError("Mismatched CAD progress job ID")
                     with self.condition:
                         job.progress = str(event.get("stage", "converting"))[:120]
-                job.cancel.wait(0.05)
+                job.cancel.wait(self.poll)
             code = proc.poll()
             self._kill(proc)
             stopped = True
@@ -257,23 +369,26 @@ class CadJobs:
                 self._finish(job, "cancelled")
                 return
             if failure:
-                self._finish(job, *failure)
+                self._finish(job, *failure, diagnostics=_tail(log) or None)
                 return
-            if overflow.is_set() or sum(p.stat().st_size for p in work.rglob("*") if p.is_file()) > self.max_disk:
+            if overflow.is_set() or disk_usage(work) > self.max_disk:
                 raise ValueError("CAD output exceeded its size limit")
+            result = self._read_result(job, work)
+            if result is not None and result.get("ok") is False:
+                # The worker explained its own failure; surface that, not an exit code.
+                raise ValueError(str(result.get("error") or "CAD conversion failed")[:500])
             if code != 0:
-                raise ValueError(f"CAD worker exited with code {code}; inspect worker.log")
-            result_path = work / "result.json"
-            if result_path.stat().st_size > 128 * 1024:
-                raise ValueError("Oversized CAD report")
-            result = json.loads(result_path.read_text())
-            if result.get("id") != job.id or result.get("ok") is not True:
-                raise ValueError("Missing, failed or mismatched CAD result")
-            xml_path = work / "conversion" / "geometry.xml"
-            if not 0 < xml_path.stat().st_size <= MAX_XML:
-                raise ValueError("Missing or oversized CAD XML")
-            result.pop("xml", None)
-            result["xml_data"] = xml_path.read_text(encoding="utf-8")
+                raise ValueError(f"CAD worker exited with code {code}")
+            if result is None or result.get("ok") is not True:
+                raise ValueError("Missing or failed CAD result")
+            if result.get("mode") != job.mode:
+                raise ValueError("CAD result is for a different job mode")
+            if job.mode == "csg-xml":
+                xml_path = work / "conversion" / "geometry.xml"
+                if not xml_path.is_file() or not 0 < xml_path.stat().st_size <= MAX_XML:
+                    raise ValueError("Missing or oversized CAD XML")
+                result["xml_data"] = xml_path.read_text(encoding="utf-8")
+            result.pop("xml", None)  # a worker-side path; never returned to clients
             result["can_import_into_studio"] = False
             result["validation"] = "engine-conversion-only"
             self._finish(job, "succeeded", result=result)
@@ -285,10 +400,13 @@ class CadJobs:
                 reader.join(timeout=5)
             if proc and proc.stdout:
                 proc.stdout.close()
-            self._finish(job, "failed", str(exc)[:500])
+            self._finish(job, "failed", str(exc)[:500], diagnostics=_tail(log) or None)
         finally:
             if proc and not stopped:
                 self._kill(proc)
+            with self.condition:
+                if self.running == job.id:
+                    self.running = None
 
     def close(self):
         with self.condition:
@@ -297,10 +415,38 @@ class CadJobs:
                 if job.state not in TERMINAL:
                     job.cancel.set()
             self.condition.notify_all()
-        if self.thread:
-            self.thread.join(timeout=15)
-            if self.thread.is_alive():
-                raise RuntimeError("CAD jobs did not shut down")
-        if self.lease:
-            self.lease.close()
-            self.lease = None
+        try:
+            if self.thread:
+                self.thread.join(timeout=15)
+                if self.thread.is_alive():
+                    raise RuntimeError("CAD jobs did not shut down")
+        finally:
+            if self.lease:
+                self.lease.close()
+                self.lease = None
+
+
+class DisabledCadJobs:
+    """Stands in when CAD jobs can't be set up at all (for example a runs folder
+    inside the checkout). CAD is optional: Studio keeps running and says why."""
+
+    def __init__(self, reason):
+        self.reason = reason
+
+    def capabilities(self):
+        return {"available": False, "configured": False, "engine_verified": False, "probe": None,
+                "modes": sorted(MODES), "can_import_into_studio": False, "reason": self.reason}
+
+    def submit(self, data, filename, mode="csg-xml"):
+        raise RuntimeError(self.reason)
+
+    def list(self):
+        return []
+
+    def get(self, job_id):
+        raise KeyError(job_id)
+
+    result = cancel = get
+
+    def close(self):
+        pass

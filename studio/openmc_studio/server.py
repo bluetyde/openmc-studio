@@ -67,8 +67,11 @@ class Studio:
         self.lock = threading.Lock()
         self.mcnp = McnpWorker(self.root)
         self.cad = CadWorker(self.root)
-        from .cad.jobs import CadJobs
-        self.cad_jobs = CadJobs(self.root / "cad-jobs")
+        from .cad.jobs import CadJobs, DisabledCadJobs
+        try:
+            self.cad_jobs = CadJobs(self.root / "cad-jobs")
+        except ValueError as exc:  # e.g. a runs folder inside the checkout; CAD is optional
+            self.cad_jobs = DisabledCadJobs(f"CAD jobs are off: {exc}")
 
     # ── runs ──
     def start(self, script, project, name):
@@ -522,6 +525,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, self.studio.cad_progress() or {})
         if path == "/api/cad/capabilities":
             return self._send(200, self.studio.cad_jobs.capabilities())
+        if path == "/api/cad/jobs":
+            return self._send(200, {"jobs": self.studio.cad_jobs.list()})
         m = re.fullmatch(r"/api/cad/jobs/([0-9a-f]{32})(/result)?", path)
         if m:
             try:
@@ -567,13 +572,19 @@ class Handler(BaseHTTPRequestHandler):
             import binascii
             from .cad.jobs import MAX_INPUT
             try:
-                if set(body) - {"filename", "data"}:
-                    raise ValueError("Only filename and base64 data are accepted")
+                if set(body) - {"filename", "data", "mode"}:
+                    raise ValueError("Only mode, filename and base64 data are accepted")
+                mode = body.get("mode", "csg-xml")
+                if not isinstance(mode, str):
+                    raise ValueError("mode must be a string")
                 encoded = body.get("data")
-                if not isinstance(encoded, str) or len(encoded) > 4 * ((MAX_INPUT + 2) // 3):
+                if encoded is None:
+                    data = None
+                elif not isinstance(encoded, str) or len(encoded) > 4 * ((MAX_INPUT + 2) // 3):
                     raise ValueError("Invalid or oversized base64 CAD data")
-                data = base64.b64decode(encoded, validate=True)
-                job = self.studio.cad_jobs.submit(data, body.get("filename"))
+                else:
+                    data = base64.b64decode(encoded, validate=True)
+                job = self.studio.cad_jobs.submit(data, body.get("filename"), mode)
                 return self._send(202, job, extra={"Location": f"/api/cad/jobs/{job['id']}"})
             except (ValueError, binascii.Error) as exc:
                 return self._error(400, str(exc))
@@ -711,8 +722,11 @@ def serve(port, runs_dir, token, open_browser=True):
     finally:
         if studio.active and studio.active.status == "running":
             studio.stop(studio.active.id)
-        studio.mcnp.stop()
-        studio.cad_jobs.close()
-        studio.cad.stop()
-        httpd.server_close()
+        # Each shutdown step runs even if an earlier one fails, so a stuck CAD job
+        # can't leave the MCNP worker, the legacy CAD worker or the socket behind.
+        for step in (studio.mcnp.stop, studio.cad_jobs.close, studio.cad.stop, httpd.server_close):
+            try:
+                step()
+            except Exception as exc:  # noqa: BLE001 - report and keep shutting down
+                print(f"Shutdown step {step.__qualname__} failed: {exc}", flush=True)
         print("OpenMC Studio stopped.", flush=True)

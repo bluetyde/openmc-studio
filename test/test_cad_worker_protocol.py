@@ -1,16 +1,28 @@
-"""CAD integrity: reject approximate imports and validate exact export requests."""
-import math
+"""CAD integrity: reject approximate imports and validate exact export requests.
+
+Run it with the CAD Python too (the integration job does): there the real-FreeCAD
+export case runs instead of skipping.
+"""
 import sys
-import tempfile
-import time
-import unittest
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'studio'))
-from openmc_studio import cad_worker as cad
-from openmc_studio.server import CadWorker, Studio
+# Probe FreeCAD before anything else: importing it clears names in __main__, so every
+# other import comes after this line.
+from openmc_studio import cad_worker as cad  # noqa: E402
+CAN_EXPORT = cad.probe_environment()['can_export']
+
+import math  # noqa: E402
+import sys  # noqa: E402,F811
+import tempfile  # noqa: E402
+import time  # noqa: E402
+import unittest  # noqa: E402
+from pathlib import Path  # noqa: E402,F811
+from types import SimpleNamespace  # noqa: E402
+from unittest.mock import patch  # noqa: E402
+
+from openmc_studio import cad_worker as cad  # noqa: E402,F811
+from openmc_studio.server import CadWorker, Studio  # noqa: E402
 
 
 class Shape:
@@ -85,7 +97,7 @@ class TestCadIntegrity(unittest.TestCase):
             self.assertFalse(studio.cad_to_csg(b'bad', '../../escape.step')['ok'])
             self.assertFalse((Path(temp)/'_cad_work').exists())
 
-    @unittest.skipUnless(cad.probe_environment()['can_export'], 'FreeCAD is not installed in this Python')
+    @unittest.skipUnless(CAN_EXPORT, 'FreeCAD is not installed in this Python')
     def test_real_freecad_step_bounds_and_volume(self):
         import Part
         with tempfile.TemporaryDirectory() as temp:

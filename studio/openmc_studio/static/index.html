@@ -1989,9 +1989,15 @@ function buildScript(probs, mark, opts = {}) {
     owner = {kind:'component', id:k.id};
     const vars = {};
     k.surfaces.forEach(sf => { vars[sf.id] = name('csg', `${k.name} s${sf.id}`); push(`${vars[sf.id]} = ${csgSurface(sf)}`); });
+    // Each cell also gets the component's (slightly padded) axis-aligned box. The solid is
+    // inside its bounds, so this changes nothing, but OpenMC can't bound tilted planes or
+    // quadrics on its own: without the box a region's bounding box is infinite, and a small
+    // tilted component in a big world gets no points in the exporter's geometry check.
+    const b = k.bounds, pad = Math.max(1e-9, 1e-6 * Math.hypot(b[3] - b[0], b[4] - b[1], b[5] - b[2]));
+    const box = ['x', 'y', 'z'].map((ax, i) => `+${plane(ax, b[i] - pad)} & -${plane(ax, b[i + 3] + pad)}`).join(' & ');
     const regions = k.cells.map(c => {
       owner = {kind:'component', id:k.id, cell:c.id};
-      const v = name('cell', c.name), region = csgRegionExpr(c.region, vars);
+      const v = name('cell', c.name), region = `(${csgRegionExpr(c.region, vars)} & ${box})`;
       cv[c.id] = v;
       csgCells.push(v);
       push(`${v} = openmc.Cell(name=${pyStr(c.name)}, fill=${fill(c.material)}, region=${region} & world)`);
@@ -5514,10 +5520,8 @@ function renderMcnp(P) {
   else setMcnpStatus('warn', 'Outdated · model has changed');
 }
 function geometryPart(script) { const i = script.indexOf('# ── Sources'); return i < 0 ? script : script.slice(0, i); }
-const CSG_MCNP_REASON = 'MCNP export is off for projects with imported CAD geometry until the companion exporter passes its parity tests (a later stage of the CAD import plan). Nothing partial is exported.';
 function liveMcnpTick(P) {
   if (!LOCAL.on || !mcnpVisible()) return;
-  if (csgComponents().length) { clearTimeout(LIVE.timer); setMcnpStatus('warn', CSG_MCNP_REASON); return; }
   const script = mcnpScript(P);
   if (LIVE.failure && script === LIVE.attemptedScript) return;
   if (script === LIVE.sentScript) return;
@@ -5670,7 +5674,6 @@ $('#mcnpCode').addEventListener('click', e => codeClick(e, 'mcnp'));
 /* MCNP export button: validated deck into a new ~/OpenMC-runs/mcnp-exports folder */
 async function exportMcnp() {
   if (!LOCAL.on) { log('warn', 'MCNP export needs the local Studio server (start Studio from its launcher).'); return; }
-  if (csgComponents().length) { setOutTab('log'); log('warn', `Not exported: ${CSG_MCNP_REASON}`); return; }
   const P = problems(), errs = P.filter(p => p.sev === 'error');
   setOutTab('log');
   if (errs.length) { log('error', `Not exported: fix ${errs.length} problem${errs.length === 1 ? '' : 's'} first (see Problems).`); return; }

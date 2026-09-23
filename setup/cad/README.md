@@ -1,8 +1,13 @@
-# CAD engine spike (stage 0)
+# CAD engine environment
 
-This is a developer verification tool, not Studio CAD import. It exercises actual
-FreeCAD and GEOUNED conversion for one solid at a time. The browser import action
-remains unavailable until the job, geometry-schema and rendering gates pass.
+The pinned FreeCAD/GEOUNED environment behind Convert > Import CAD…, its checks,
+and the integration job. Setup for users is in [INSTRUCTIONS.md](../../INSTRUCTIONS.md#6-optional-cad-import-step-files);
+this page is the developer view. `verify.py` started as the stage-0 engine spike and
+remains the quickest real-engine check.
+
+`run_integration.cjs` is the CAD integration job: all 17 CAD suites against the real
+engines, browser, OpenMC and the MCNP exporter. It exits 0 only if every suite ran and
+passed with nothing skipped; missing tools fail it before it starts.
 
 ## Reproduce on Linux x86-64 / WSL
 
@@ -27,7 +32,10 @@ The explicit lock records the full installed package URLs, builds and MD5
 checksums. `environment.yml` records the original solve inputs; it is not an exact
 lock. Keep the existing OpenMC/MCNP environment unchanged. Do not install these
 engines in the repository or vendor their code. Native Windows and macOS are not
-validated by this lock. Clean-machine lock installation remains a packaging gate.
+validated by this lock. Clean-machine installation is checked by creating the
+environment from the lock with an empty package cache (`CONDA_PKGS_DIRS` pointing at a
+new folder), so every package comes from its recorded URL and checksum, and then running
+the real-engine suites against it.
 
 FreeCAD's conda-forge Python modules are in the environment's `lib` directory.
 The adapter adds this directory before importing FreeCAD and initializes FreeCAD

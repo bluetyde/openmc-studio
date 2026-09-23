@@ -150,6 +150,39 @@ python test/test_thermal_scattering.py                     # finds the repositor
 Run `git pull` in `openmc-mcnp-project` first. An old checkout fails these two tests, with
 `No module named 'deck_format'` and `Missing c_H_in_H2O_solid in SAB_MCNP_MAP`, and nothing else looks wrong.
 
+## 6. Optional: CAD import (STEP files)
+
+Convert > Import CAD… reads STEP files through FreeCAD and GEOUNED, which live in a **separate** conda
+environment so they never disturb the OpenMC one. Supported only on **Linux x86-64**, which on Windows
+means inside WSL2, where Studio's server already runs (see the platform table in
+[docs/cad-conversion.md](docs/cad-conversion.md#supported-platforms)).
+
+```bash
+conda create -n openmc-cad --file setup/cad/locks/linux-64.explicit.txt   # exact, checksummed builds
+conda activate openmc-cad
+python setup/cad/verify.py --output "$(mktemp -d -u)"                      # real conversions; must pass
+conda deactivate
+```
+
+The lock pins FreeCAD 26.3, OpenCASCADE 8.0.1 and GEOUNED 1.6.2 (upstream warns against 1.6.3 and 1.6.4).
+Don't `conda update` this environment; recreate it from the lock instead. Then tell Studio where it is,
+before starting the server:
+
+```bash
+export OPENMC_CAD_PYTHON="$(conda run -n openmc-cad which python)"
+```
+
+The first time you open the import dialog, Studio converts a small test solid to prove the engine works; only
+then does it offer import. Without `OPENMC_CAD_PYTHON` the dialog says why it's unavailable.
+
+To check everything CAD-related end to end (engines, browser, OpenMC transport and MCNP export), run the
+integration job. It passes only if every suite runs; a missing tool is a failure, never a skip:
+
+```bash
+export OPENMC_CAD_PYTHON=... OPENMC_PYTHON=... OPENMC_MCNP_PROJECT=... OPENMC_CROSS_SECTIONS=... NODE_PATH=...
+node setup/cad/run_integration.cjs
+```
+
 ---
 
 ## Running from an external drive

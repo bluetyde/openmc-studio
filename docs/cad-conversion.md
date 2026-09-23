@@ -120,3 +120,51 @@ Tests: `test/test_cad_native_engine.py` (real engine, fails without it),
 `test/test_cad_import_browser.cjs` (browser workflow on real engine reports) and
 `test/test_cad_import_e2e.cjs` (real browser, server and engine; see its header
 for the environment variables).
+
+## Analytical CSG components (stage 3)
+
+The data model and model generation for solids that aren't simple primitives -
+drilled blocks, hollow cylinders and spheres, anything GEOUNED can express with
+planes, spheres, cylinders, cones and general quadrics. **Not yet in the import
+dialog or the viewport**: the dialog shows the option disabled until stage 4 adds
+display, picking and the rest of the workflow.
+
+**Conversion (`csg` job).** Each solid is exported on its own and converted by
+GEOUNED separately, so every Studio component is exactly one source solid (with
+one or more cells). The XML is read as data: no DTDs or entities, bounded size,
+an explicit region grammar, a fixed table of surface types. Tori are refused (the
+viewport and exporters can't show them yet). GEOUNED's `boundary="vacuum"` on
+internal surfaces is dropped: Studio's world owns the boundary. Nothing generated
+is ever executed; the conversion folders are checked to contain no Python.
+
+**Validation.** The component Studio would store is checked with Studio's own
+region evaluator against FreeCAD's containment of the source solid: thousands of
+grid and seeded points away from a tolerance band (sized for GEOUNED's 8-digit
+plane coefficients), no point in two cells, and the sampled volume within six
+standard errors. A component that fails is rejected with the point where it
+disagreed.
+
+**Project schema 2.** Components live in `S.csg.components`, each with its own
+surface table (types and exact coefficients, centimetres), region trees and cells
+(each with a material, pending until chosen). Projects without imported CSG stay
+schema 1 and are unchanged. A file from a newer Studio is refused with a reason,
+never opened with geometry dropped. Studio builds from before this stage don't
+know about `csg` and would drop it if they saved the file: open such projects only
+with this version or later.
+
+**model.py.** Imported surfaces are written with full double precision and
+imported regions exactly as converted; they are not cut by the parts' priority
+order. The World cell subtracts them. A part whose bounds reach into a component
+is a Problems error, because that overlap can't be checked exactly yet.
+
+**Import semantics.** The first general-CSG release imports into a **new
+project**: parts, groups and tallies are replaced in one undoable step; materials,
+sources and settings carry over. Overlapping source solids are refused at commit,
+naming them, because imported cells would otherwise claim the same space.
+
+**MCNP.** Export and the live model.mcnp view are off for projects with imported
+CSG until the companion exporter passes its parity tests (stage 5). Nothing
+partial is exported.
+
+Tests: `test/test_cad_csg_gate.cjs` (real conversions, Studio's own import and
+generation, OpenMC's answer for every point) and `test/test_cad_schema.py`.

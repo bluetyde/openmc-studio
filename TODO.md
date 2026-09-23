@@ -193,9 +193,22 @@ and the MCNP lattice work; fixes listed under Completed).
     `test/test_cad_import_browser.cjs` (9 workflow checks on real engine reports) and `test/test_cad_import_e2e.cjs`
     (real browser + server + FreeCAD: import, save, reopen). Not done here, by design: wedge/hex-prism/ellipsoid
     recognition (needs its own independent fixtures), a conversion cache with a clear-cache action (stage 5).
-  - [ ] **Stage 3 — analytical CSG model:** call GEOUNED's real conversion API, parse OpenMC XML as data,
+  - [x] **Stage 3 — analytical CSG model:** call GEOUNED's real conversion API, parse OpenMC XML as data,
     add versioned surfaces/region trees and preserve source-to-cell identity. Resolve world/void ownership
     and overlaps; never execute generated Python or silently discard unsupported surfaces.
+    Delivered: `cad/schema.py` (bounded XML reader refusing DTDs/entities, OpenMC region grammar with depth/size
+    limits, 12 surface types, tori refused, boundaries stripped so Studio's world owns them), `cad/csg.py` (the
+    `csg` job: each solid converted on its own for an exact one-solid-one-component mapping, then validated with
+    Studio's own region evaluator against FreeCAD: band-aware points, cells partition the solid, volume), project
+    **schema 2** (`S.csg.components`, newer schemas refused with a reason), exact `model.py` generation (full
+    double precision, no priority cutting, world subtracts components), `commitCsgImport` into a new project in
+    one undo step, overlapping solids refused at commit, pending materials per cell, MCNP export and the live
+    deck off for these projects with the reason. Gate: `test/test_cad_csg_gate.cjs` (real conversions → Studio's
+    own import and generation → OpenMC: every one of ~3000 points per case in exactly the right cell, holes in
+    the World, for drilled blocks, annuli, rotated variants, a hollow sphere, a TRISO coating shell and a
+    four-solid assembly; no Python generated) and `test/test_cad_schema.py` (grammar, XML hardening, and
+    Studio's surface equations equal OpenMC's sign for sign). The CSG option in the import dialog and the
+    viewport display of components are stage 4.
   - [ ] **Stage 4 — Studio integration:** analytical slices, validated 3D preview/picking, materials, cell
     tallies, portable project storage and OpenMC generation. General CSG geometry starts read-only.
     Display meshes are not transport geometry; renderer budget limits must never hide geometry silently.

@@ -33,7 +33,7 @@ JOB_ID = re.compile(r"^[0-9a-f]{32}$")
 TERMINAL = {"succeeded", "failed", "cancelled", "timed_out"}
 MAX_INPUT = 16 * 1024 * 1024
 MAX_XML = 8 * 1024 * 1024
-MAX_RESULT = 128 * 1024
+MAX_RESULT = 4 * 1024 * 1024  # a native report lists up to 500 solids with their evidence
 LOG_TAIL = 2048
 
 # The adapter contract: what a job may ask the worker to do. Stages add modes here
@@ -42,6 +42,8 @@ LOG_TAIL = 2048
 MODES = {
     "probe": {"needs_source": False},     # build a small solid and convert it end to end
     "csg-xml": {"needs_source": True},    # GEOUNED single-solid conversion to OpenMC XML
+    "inspect": {"needs_source": True},    # per-solid inventory: names, validity, surfaces, bounds
+    "native": {"needs_source": True},     # recognize and prove Studio primitives, solid by solid
 }
 
 

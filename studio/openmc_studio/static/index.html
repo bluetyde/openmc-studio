@@ -4785,12 +4785,20 @@ async function localInit() {
   renderResults(); refreshRuns(); renderRibbon(); schedule();
 }
 /* ───────── Geometry check: overlaps and gaps, found by the server with OpenMC's own model ───────── */
-const GEOM = {busy:false, key:null, res:null, mark:null};
+const GEOM = {busy:false, key:null, tkey:null, res:null, mark:null};
 const GEOM_POINTS = 100000, GEOM_PARTICLES = 1000;
-// What the check depends on. Any change here makes an earlier result stale, and its Problems go away.
+// What the point check depends on: the shapes and the world. Any change makes its result stale.
 function geomKey() {
   const skip = new Set(['material', 'materialPending', 'name', 'color', 'fill']);
   return JSON.stringify([S.parts, S.groups || [], S.csg || null, S.settings.worldShape, S.settings.worldR],
+    (k, v) => skip.has(k) && typeof v !== 'object' ? undefined : v);
+}
+// The particle check also depends on where particles start and how they travel: sources, materials and the
+// physics settings. Not on names, colours, tallies or the run size (the check picks its own particle count).
+function geomTransportKey() {
+  const skip = new Set(['name', 'color', 'pristine', 'lib', 'particles', 'batches', 'inactive', 'maxTracks', 'track',
+    'entropyMesh', 'entropyNx', 'entropyNy', 'entropyNz']);
+  return JSON.stringify([geomKey(), S.sources, S.materials, S.settings],
     (k, v) => skip.has(k) && typeof v !== 'object' ? undefined : v);
 }
 function geomCellName(r, id) {
@@ -4807,10 +4815,9 @@ function geomSel(r, id) {
   return o && ['part', 'component', 'group', 'world'].includes(o.kind) ? {kind:o.kind, id:o.kind === 'world' ? undefined : o.id} : null;
 }
 const geomPt = p => `(${p.map(v => +toShown(v).toPrecision(4)).join(', ')}) ${lenUnit()}`;
-function geomProblems(P) {
-  const r = GEOM.res;
-  if (!r || GEOM.key !== geomKey()) return;
-  const pts = r.points || {}, tr = r.transport || {}, name = id => geomCellName(r, id);
+// What a result says, as Problems entries. withTransport = false leaves out the particle half.
+function geomFindings(r, withTransport) {
+  const P = [], pts = r.points || {}, tr = withTransport ? (r.transport || {}) : {}, name = id => geomCellName(r, id);
   const push = (sev, text, sel, at) => P.push({sev, text, sel, at, geom:true});
   if (pts.error) push('warn', `The geometry check couldn't sample points: ${pts.error}`);
   (pts.overlap_pairs || []).slice(0, 6).forEach(([a, b]) => {
@@ -4823,11 +4830,21 @@ function geomProblems(P) {
     push('error', `${pts.gaps.toLocaleString()} of ${pts.points.toLocaleString()} sampled points are in no cell, the first at ${geomPt(ex.p)}. A particle reaching one is lost. Click to see the spot.`, null, ex.p);
   }
   if (tr.ran && tr.overlap) push('error', `OpenMC's geometry debugging found ${tr.overlap.cells.map(name).join(' and ')} overlapping while tracking particles.`, geomSel(r, tr.overlap.cells[0]));
-  if (tr.ran && tr.lost) push('warn', `OpenMC lost ${tr.lost} of ${tr.particles.toLocaleString()} particles in the geometry check. First message: ${tr.lost_examples[0]}`);
+  // A lost particle means a hole in the geometry somewhere, even where the random points missed it.
+  if (tr.ran && tr.lost) push('error', `OpenMC lost ${tr.lost} of ${tr.particles.toLocaleString()} particles in the geometry check, so the geometry has a hole the particles found. First message: ${tr.lost_examples[0]}`);
   if (tr.ran && tr.error) push('warn', `The geometry check's particle run failed: ${tr.error}`);
-  if (!pts.error && !pts.gaps && !pts.overlaps && !(tr.ran && (tr.lost || tr.overlap || tr.error)))
-    push('info', `Geometry check passed: ${(pts.points || 0).toLocaleString()} points each in exactly one cell` +
-      (tr.ran ? `, and ${tr.particles.toLocaleString()} particles tracked with OpenMC's geometry debugging, none lost.` : `. No particles were run: ${tr.reason || 'not asked for'}`));
+  if (!pts.error && !pts.gaps && !pts.overlaps && !(tr.ran && (tr.lost || tr.overlap || tr.error))) {
+    const particles = !withTransport ? '. The particle check is out of date (sources or physics changed since); check again to redo it.'
+      : tr.ran ? `, and ${tr.particles.toLocaleString()} particles tracked with OpenMC's geometry debugging, none lost.`
+      : `. No particles were run: ${tr.reason || 'not asked for'}`;
+    push('info', `Geometry check passed: ${(pts.points || 0).toLocaleString()} points each in exactly one cell${particles}`);
+  }
+  return P;
+}
+function geomProblems(P) {
+  const r = GEOM.res;
+  if (!r || GEOM.key !== geomKey()) return;
+  P.push(...geomFindings(r, GEOM.tkey === geomTransportKey()));
 }
 async function checkGeometry() {
   if (!LOCAL.on) { log('warn', 'The geometry check runs OpenMC, so it needs Studio started from its launcher.'); return; }
@@ -4835,7 +4852,7 @@ async function checkGeometry() {
   const P = problems(), errs = P.filter(p => p.sev === 'error' && !p.geom);
   setOutTab('log');
   if (errs.length) { log('error', `Not checked: fix ${errs.length} problem${errs.length === 1 ? '' : 's'} first (see Problems).`); return; }
-  const key = geomKey(), st = S.settings;
+  const key = geomKey(), tkey = geomTransportKey(), st = S.settings;
   GEOM.busy = true; renderRibbon();
   log('info', `Checking the geometry: ${GEOM_POINTS.toLocaleString()} random points through every cell, then ${GEOM_PARTICLES.toLocaleString()} particles with OpenMC's geometry debugging…`);
   let r;
@@ -4846,8 +4863,14 @@ async function checkGeometry() {
     log('error', `The geometry check failed: ${esc(e.message)}`);
     return;
   } finally { GEOM.busy = false; renderRibbon(); }
-  Object.assign(GEOM, {key, res:r, mark:null});
-  const bad = geomProblemsNow().filter(p => p.sev !== 'info');
+  Object.assign(GEOM, {key, tkey, res:r, mark:null});
+  // The result is for the model as it was sent. If it was edited meanwhile, say so rather than pass or fail it.
+  if (key !== geomKey() || tkey !== geomTransportKey()) {
+    log('warn', `The model changed while the geometry check ran (${r.seconds} s), so its result is out of date. Press Check geometry again.`);
+    schedule();
+    return;
+  }
+  const bad = geomFindings(r, true).filter(p => p.sev !== 'info');
   log(bad.length ? 'error' : 'ok', bad.length
     ? `Geometry check found ${bad.length} problem${bad.length === 1 ? '' : 's'} in ${r.seconds} s. They are listed in Problems; click one to see where.` +
       (r.folder ? ` The checked model is in <code>${esc(r.folder)}</code>.` : '')
@@ -4855,7 +4878,6 @@ async function checkGeometry() {
   if (bad.length) setOutTab('problems');
   schedule();
 }
-function geomProblemsNow() { const P = []; geomProblems(P); return P; }
 // Clicking a geometry problem with a location: put the slice through it and mark it.
 function showGeomSpot(p) {
   GEOM.mark = p;

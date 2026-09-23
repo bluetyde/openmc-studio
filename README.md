@@ -321,6 +321,27 @@ Either way it is a one-time step per computer, and it survives moving or renamin
 still matches — run it again if the path changes. A copy on an internal disk loads faster than one on an
 external drive; a copy beside the repository travels with it.
 
+## Companion repository
+
+[openmc-mcnp-project](https://github.com/bluetyde/openmc-mcnp-project) is a separate
+dependency for MCNP export and live MCNP validation. Studio's geometry editor,
+visualization, and OpenMC workflow do not require that repository. OpenMC runs
+still require an installed OpenMC environment and suitable nuclear data.
+
+For MCNP features, install the companion and its dependencies as described in
+[INSTRUCTIONS.md](INSTRUCTIONS.md). Set `OPENMC_MCNP_PROJECT` to its checkout when
+it is outside the automatically searched locations. Studio's MCNP worker uses
+the companion's remediation and validation modules together with NuCoMP MCNPy;
+the companion is not bundled with Studio.
+
+## License
+
+OpenMC Studio's original code is available under the [MIT License](LICENSE).
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) preserves notices for OpenMC and
+NuCoMP MCNPy/MetaPy and explains the scope. Dependencies, third-party assets,
+nuclear data, and the separate companion repository retain their own terms;
+Studio's license does not relicense them.
+
 ## Notes
 
 - **Studio security:** the server only accepts connections from this computer and

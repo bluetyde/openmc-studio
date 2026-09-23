@@ -209,13 +209,17 @@ and the MCNP lattice work; fixes listed under Completed).
     four-solid assembly; no Python generated) and `test/test_cad_schema.py` (grammar, XML hardening, and
     Studio's surface equations equal OpenMC's sign for sign). The CSG option in the import dialog and the
     viewport display of components are stage 4.
-  - [ ] **Stage 4 — Studio integration:** analytical slices, validated 3D preview/picking, materials, cell
+  - [x] **Stage 4 — Studio integration:** analytical slices, validated 3D preview/picking, materials, cell
     tallies, portable project storage and OpenMC generation. General CSG geometry starts read-only.
     Display meshes are not transport geometry; renderer budget limits must never hide geometry silently.
+    Delivered from Claude's draft with Codex validation: CSG dialog, component properties and cell tallies,
+    bounded meshes with visible failure notices, cut-cap picking and schema validation. Browser gate
+    `test_cad_csg_browser.cjs` passes; `E2E_CAD_MODE=csg test_cad_import_e2e.cjs` exercises real upload,
+    conversion, save/reload and an OpenMC geometry-debug run (explicit void fills, 200 histories).
   - [ ] **Stage 5 — parity and packaging:** companion MCNP export checks, real engine/browser integration
     CI, clean-machine setup and platform locks. CAD release checks cannot pass through dependency skips.
     Add IGES and further native shapes only after separate geometry-preservation tests.
-  - [ ] **Git policy:** track adapter code, recipes/locks, documentation and small public fixtures. Keep CAD
+  - [x] **Git policy:** track adapter code, recipes/locks, documentation and small public fixtures. Keep CAD
     engines/environments, user uploads, caches, debug solids, logs and conversion scratch outside Git.
     Add narrow fixture exceptions for IGES/B-Rep and expected XML currently hidden by broad ignores;
     verify ignored and tracked paths with `git check-ignore`. The exact proposed rules are in the plan.

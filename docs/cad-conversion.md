@@ -2,7 +2,11 @@
 
 STEP files can be imported as **native parts** (boxes, spheres, capped cylinders
 and cones) when every solid is proven to match; see below. General analytical CSG
-import (holes, shells, other solids) is a later stage. Earlier versions replaced
+import supports validated analytical holes, shells and other supported solids.
+Choose **Analytical CSG components** in the import dialog. It replaces geometry
+in one undoable step, preserves surfaces and Boolean regions in schema-2 projects,
+and requires material decisions before running. Geometry remains read-only.
+Earlier versions replaced
 solids with bounding boxes or interpreted untrimmed surfaces as complete objects;
 those paths are gone and never come back as fallbacks.
 

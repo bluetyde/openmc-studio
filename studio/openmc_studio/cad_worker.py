@@ -128,6 +128,8 @@ def make_cad_solid(p, FreeCAD, Part):
 
 
 def run_csg_to_cad(job_id, project, out_path, options, t0):
+    if (project.get("csg") or {}).get("components"):
+        return {"id": job_id, "ok": False, "error": "STEP export of imported CAD components is not supported yet. Nothing was exported."}
     try:
         parts = project.get("parts", [])
         if not parts:

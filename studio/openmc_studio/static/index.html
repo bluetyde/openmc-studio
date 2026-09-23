@@ -1066,8 +1066,29 @@ function validProject(o) {
     (!o.csg || (Array.isArray(o.csg.components) && o.csg.components.every(validComponent)));
 }
 function validComponent(k) {
-  return !!k && typeof k.id === 'string' && Array.isArray(k.surfaces) && Array.isArray(k.cells) && k.cells.length > 0 &&
-    k.cells.every(c => c && typeof c.id === 'string' && c.region && typeof c.region === 'object');
+  if (!k || typeof k.id !== 'string' || !Array.isArray(k.surfaces) || k.surfaces.length > 10000 ||
+      !Array.isArray(k.cells) || !k.cells.length || k.cells.length > 1000 ||
+      !Array.isArray(k.bounds) || k.bounds.length !== 6 || !k.bounds.every(Number.isFinite) ||
+      [0,1,2].some(i=>k.bounds[i]>k.bounds[i+3])) return false;
+  const keys={'plane':'a b c d','x-plane':'x0','y-plane':'y0','z-plane':'z0','sphere':'x0 y0 z0 r',
+    'x-cylinder':'y0 z0 r','y-cylinder':'x0 z0 r','z-cylinder':'x0 y0 r',
+    'x-cone':'x0 y0 z0 r2','y-cone':'x0 y0 z0 r2','z-cone':'x0 y0 z0 r2','quadric':'a b c d e f g h j k'};
+  const ids=new Set(), cells=new Set(); let nodes=0;
+  for(const s of k.surfaces) {
+    if(!s || !Number.isInteger(s.id) || s.id<=0 || ids.has(s.id) || !Object.hasOwn(keys,s.type) ||
+       !s.coeffs || !keys[s.type].split(' ').every(key=>Number.isFinite(s.coeffs[key]))) return false;
+    ids.add(s.id);
+  }
+  const valid=(n,depth=0)=>{
+    if(!n || typeof n!=='object' || ++nodes>100000 || depth>64) return false;
+    if(Object.hasOwn(n,'half')) return ['-','+'].includes(n.half) && ids.has(n.s);
+    if(n.op==='not') return valid(n.arg,depth+1);
+    return ['and','or'].includes(n.op) && Array.isArray(n.args) && n.args.length>0 && n.args.every(a=>valid(a,depth+1));
+  };
+  return k.cells.every(c=>{
+    if(!c || typeof c.id!=='string' || cells.has(c.id)) return false;
+    cells.add(c.id);return valid(c.region);
+  });
 }
 // Why a file can't be opened, in words (validProject only says whether).
 function projectProblem(o) {
@@ -1408,7 +1429,7 @@ function problems() {
     if (hit) add('error', `${hit.name} reaches into the imported ${k.name}. Parts can't overlap imported CAD geometry yet (Studio can't check that overlap exactly), so move the part clear of it.`, 'part', hit.id);
     const R = S.settings.worldR, far = S.settings.worldShape === 'box' ? Math.max(...k.bounds.map(Math.abs))
       : Math.hypot(...[0, 1, 2].map(i => Math.max(Math.abs(k.bounds[i]), Math.abs(k.bounds[i + 3]))));
-    if (far > R + 1e-9) add('warn', `The imported ${k.name} may extend past the world boundary; the outer part would be cut off.`, 'component', k.id);
+    if (far > R + 1e-9) add('error', `The imported ${k.name} may extend past the world boundary. Grow the world before running.`, 'component', k.id);
   });
   if (!S.sources.length) add('error', 'Add a source. OpenMC needs at least one.');
   S.sources.forEach(s => {
@@ -2669,7 +2690,7 @@ function addTally(kind) {
   const R = S.settings.worldR, flat = {xy:'z', xz:'y', yz:'x'}[view.plane];
   const named = {mesh:'Mesh tally', surface:'Surface tally'}[kind] || 'Cell tally';
   const pick = sel.kind === 'part' && sel.id ? [sel.id]
-    : sel.kind === 'component' && getSel() ? getSel().cells.map(c => c.id) : [];
+    : kind === 'cell' && sel.kind === 'component' && getSel() ? getSel().cells.map(c => c.id) : [];
   const t = {id:newId('t'), name:uniqueName(S.tallies, named), kind,
     cells: kind === 'cell' ? pick : [], surfaces: kind === 'surface' ? pick : [],
     scores: kind === 'surface' ? ['current'] : ['flux'], ebins:'',
@@ -3259,6 +3280,7 @@ function generateSTL(parts, opts = {}) {
 }
 
 function exportSTL(opts = {}) {
+  if (csgComponents().length) { log('warn', 'STL export of imported CAD components is not supported yet. Nothing was exported.'); return; }
   const scope = opts.scope || 'all';
   let targetParts = S.parts;
   if (scope === 'selected') {
@@ -4000,7 +4022,7 @@ function renderTree() {
   };
   const empty = t => `<div class="tempty">${t}</div>`;
   const matName = id => id === 'void' ? 'void' : ((matById(id) || {}).name || 'missing');
-  const usedMats = new Set(S.parts.map(p => p.material).concat(S.settings.worldFill));
+  const usedMats = usedMaterialIds();
   let h = '';
   const matLibBtn = `<button type="button" class="tlib" id="treeMatLibBtn" title="PNNL Materials Library" aria-label="Browse PNNL Materials Library"><svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v11A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-11zM2.5 2a.5.5 0 0 0-.5.5v11a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-11a.5.5 0 0 0-.5-.5h-3zm6.5.5A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5v-11zm1.5-.5a.5.5 0 0 0-.5.5v11a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-11a.5.5 0 0 0-.5-.5h-3z"/></svg></button>`;
   h += group('materials', 'Materials', S.materials.length, 'Add custom material',
@@ -7302,6 +7324,11 @@ function csgPreviewPlan() {
   csgComponents().forEach(k => {
     const d = k.display, imp = (S.imports || []).find(x => x.id === k.import) || {};
     if (!d || !Array.isArray(d.positions_cm) || !Array.isArray(d.triangles)) { problems.push(`${k.name}: no preview mesh`); return; }
+    if (!d.positions_cm.length || d.positions_cm.length % 3 || !d.triangles.length || d.triangles.length % 3 ||
+        d.count !== d.triangles.length / 3 || !d.positions_cm.every(Number.isFinite) ||
+        !d.triangles.every(i => Number.isInteger(i) && i >= 0 && i < d.positions_cm.length / 3)) {
+      problems.push(`${k.name}: invalid preview mesh`); return;
+    }
     if (d.conversion !== `${imp.sha256}|${k.source && k.source.key}`) { problems.push(`${k.name}: its preview mesh belongs to another conversion`); return; }
     const P = d.positions_cm, b = k.bounds, tol = 0.02 * Math.hypot(b[3] - b[0], b[4] - b[1], b[5] - b[2]) + 1e-9;
     for (let i = 0; i < P.length; i += 3) {
@@ -7318,16 +7345,20 @@ function csgPreviewPlan() {
 function csgMeshBuffer(gl, k) {
   const d = k.display, key = `${d.conversion}|${d.count}|${d.positions_cm.length}`;
   let m = V3.meshBufs.get(k.id);
-  if (m && m.key === key) return m;
+  if (m && m.key === key && m.display === d) return m;
   if (m) { gl.deleteBuffer(m.vbo); gl.deleteBuffer(m.ibo); }
   const vbo = gl.createBuffer(), ibo = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, vbo); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(d.positions_cm), gl.STATIC_DRAW);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(d.triangles), gl.STATIC_DRAW);
-  m = {key, vbo, ibo, n:d.triangles.length};
+  m = {key, display:d, vbo, ibo, n:d.triangles.length};
   V3.meshBufs.set(k.id, m);
   return m;
 }
 function drawCsgMeshes(gl, B, plan, depthMode, u) {
+  const retained = new Set(plan.draw.map(k => k.id));
+  for (const [id, m] of V3.meshBufs) if (!retained.has(id)) {
+    gl.deleteBuffer(m.vbo); gl.deleteBuffer(m.ibo); V3.meshBufs.delete(id);
+  }
   if (!plan.draw.length) return;
   const L = V3.meshLoc;
   gl.useProgram(V3.meshProg);
@@ -7411,6 +7442,11 @@ function pickComponent3(px, py) {
       t0 = Math.max(t0, Math.min(a, c)); t1 = Math.min(t1, Math.max(a, c));
     }
     if (t0 > t1) return;
+    // The visible cut cap is analytical, and may hide another component's mesh.
+    if (cut && Math.abs(rd[ax]) > 1e-15) {
+      const t = (view.slice - ro[ax]) / rd[ax], p = ro.map((v, i) => v + rd[i] * t);
+      if (t > 0 && (!best || t < best.t) && k.cells.some(c => csgIn(c.region, csgTable(k), ...p))) best = {id:k.id, t};
+    }
     const P = k.display.positions_cm, T = k.display.triangles;
     for (let i = 0; i < T.length; i += 3) {
       const a = T[i] * 3, bb = T[i + 1] * 3, cc = T[i + 2] * 3;

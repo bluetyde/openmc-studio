@@ -100,7 +100,7 @@ def display_mesh(shape, conversion):
     mesh = MeshPart.meshFromShape(Shape=shape, LinearDeflection=MESH_DEFLECTION, AngularDeflection=0.35, Relative=True)
     if mesh.CountFacets > MESH_TRIANGLES:
         raise ValueError(f"its preview mesh needs {mesh.CountFacets} triangles (limit {MESH_TRIANGLES})")
-    points = [float(f"{c / 10:.7g}") for p in mesh.Points for c in (p.x, p.y, p.z)]
+    points = [float(c / 10) for p in mesh.Points for c in (p.x, p.y, p.z)]
     triangles = [i for f in mesh.Facets for i in f.PointIndices]
     return {"positions_cm": points, "triangles": triangles, "count": mesh.CountFacets,
             "deflection": {"relative": MESH_DEFLECTION, "angular_rad": 0.35}, "conversion": conversion,

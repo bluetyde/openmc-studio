@@ -23,6 +23,12 @@ class Shape:
 
 
 class TestCadIntegrity(unittest.TestCase):
+    def test_step_export_cannot_drop_imported_components(self):
+        result = cad.run_csg_to_cad(1, {'parts': [], 'csg': {'components': [{'id':'k1'}]}},
+                                    'unused.step', {}, time.time())
+        self.assertFalse(result['ok'])
+        self.assertIn('Nothing was exported', result['error'])
+
     def test_import_never_fabricates_solids_even_with_geouned(self):
         with patch.object(cad, 'probe_environment', return_value={'freecad':'yes', 'geouned':'yes'}):
             result = cad.run_cad_to_csg(1, 'anything.step', {}, time.time())

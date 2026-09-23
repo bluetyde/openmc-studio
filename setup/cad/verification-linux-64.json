@@ -1,0 +1,167 @@
+{
+  "ok": true,
+  "cases": [
+    {
+      "adapter": "stage0-1",
+      "versions": {
+        "python": "3.11.16",
+        "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+        "freecad": "26.3.0",
+        "occt": "8.0.1",
+        "geouned": "1.6.2",
+        "openmc": "0.15.3"
+      },
+      "source_sha256": "5de0f7a8ddb60c500a4a9f9fbe5a694f7a966f406bb2d6d0edb5e2f1cbc1e8d9",
+      "source_units": "mm",
+      "xml_units": "cm",
+      "source_solids": 1,
+      "surface_types": [
+        "Cylinder",
+        "Plane"
+      ],
+      "volume_cm3": 22.4292036732051,
+      "bounds_cm": [
+        -2,
+        -1.5,
+        -1,
+        2,
+        1.5,
+        1
+      ],
+      "xml_sha256": "8fc55d596ff61fe7ba8ca7bbe9c591342863a44b097bbee5fa222d7d7dc0cd0f",
+      "can_import_into_studio": false,
+      "case": "drilled_block",
+      "ok": true,
+      "point_checks": 20000,
+      "explicit_probes": 5,
+      "seed": 20260923,
+      "analytic_volume_cm3": 22.4292036732051,
+      "sampled_volume_cm3": 22.390368,
+      "volume_sigma_cm3": 0.08964090077876728,
+      "xml_cells": 1,
+      "xml_surfaces": 7
+    },
+    {
+      "adapter": "stage0-1",
+      "versions": {
+        "python": "3.11.16",
+        "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+        "freecad": "26.3.0",
+        "occt": "8.0.1",
+        "geouned": "1.6.2",
+        "openmc": "0.15.3"
+      },
+      "source_sha256": "3332f664a32f462f8bc4950e30f571fc9e7d00e1d17a4b380097c964a4bc05d7",
+      "source_units": "mm",
+      "xml_units": "cm",
+      "source_solids": 1,
+      "surface_types": [
+        "Cylinder",
+        "Plane"
+      ],
+      "volume_cm3": 8.953539062730911,
+      "bounds_cm": [
+        -1.2,
+        -1.2,
+        -1.5,
+        1.2,
+        1.2,
+        1.5
+      ],
+      "xml_sha256": "f3f5b6af379e531066051fb7197afd60f006bf65404c05dce120b2f7114dc3c1",
+      "can_import_into_studio": false,
+      "case": "annular_cylinder",
+      "ok": true,
+      "point_checks": 20000,
+      "explicit_probes": 5,
+      "seed": 20260923,
+      "analytic_volume_cm3": 8.95353906273091,
+      "sampled_volume_cm3": 8.890751999999999,
+      "volume_sigma_cm3": 0.07525931043349254,
+      "xml_cells": 1,
+      "xml_surfaces": 4
+    },
+    {
+      "adapter": "stage0-1",
+      "versions": {
+        "python": "3.11.16",
+        "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+        "freecad": "26.3.0",
+        "occt": "8.0.1",
+        "geouned": "1.6.2",
+        "openmc": "0.15.3"
+      },
+      "source_sha256": "53421dd9300ad90f0e988336c5f1e98fdefaad0b616c6a6ef87b6c1dbb74b260",
+      "source_units": "mm",
+      "xml_units": "cm",
+      "source_solids": 1,
+      "surface_types": [
+        "Cylinder",
+        "Plane"
+      ],
+      "volume_cm3": 22.429203673204356,
+      "bounds_cm": [
+        1.0284907260179101,
+        -4.681378789910161,
+        3.2441362880170734,
+        6.371509273982518,
+        0.0813787899102,
+        6.955863711983769
+      ],
+      "xml_sha256": "44a5605d9a2e02eca14a90ba12ee2c8a2995876f53de66c35f75928a84ad1fdb",
+      "can_import_into_studio": false,
+      "case": "drilled_block_rotated",
+      "ok": true,
+      "point_checks": 20000,
+      "explicit_probes": 5,
+      "seed": 20260923,
+      "analytic_volume_cm3": 22.4292036732051,
+      "sampled_volume_cm3": 22.258377471432073,
+      "volume_sigma_cm3": 0.30819700003266426,
+      "xml_cells": 1,
+      "xml_surfaces": 7
+    },
+    {
+      "adapter": "stage0-1",
+      "versions": {
+        "python": "3.11.16",
+        "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+        "freecad": "26.3.0",
+        "occt": "8.0.1",
+        "geouned": "1.6.2",
+        "openmc": "0.15.3"
+      },
+      "source_sha256": "4c07d42a01b26a75c7960333039cef7e368cb1129043fb7412344f3e11fe89f1",
+      "source_units": "mm",
+      "xml_units": "cm",
+      "source_solids": 1,
+      "surface_types": [
+        "Cylinder",
+        "Plane"
+      ],
+      "volume_cm3": 8.953539062730714,
+      "bounds_cm": [
+        2.0354627313820948,
+        -3.608475526585393,
+        3.2610290822182564,
+        5.364537268619083,
+        -0.9915244734143833,
+        6.9389709177817425
+      ],
+      "xml_sha256": "15c0abbba8aa78c5067a0649ed5ddbae45a8b5d5d4dc41ff4bf5d68db2a8f8ec",
+      "can_import_into_studio": false,
+      "case": "annular_cylinder_rotated",
+      "ok": true,
+      "point_checks": 20000,
+      "explicit_probes": 5,
+      "seed": 20260923,
+      "analytic_volume_cm3": 8.95353906273091,
+      "sampled_volume_cm3": 8.907326991522119,
+      "volume_sigma_cm3": 0.11490223122640088,
+      "xml_cells": 1,
+      "xml_surfaces": 4
+    }
+  ],
+  "can_import_into_studio": false,
+  "verified_on": "2026-09-23"
+}

@@ -1,0 +1,11 @@
+# Candidate recipe; use the validated linux-64 explicit lock for reproduction.
+name: openmc-cad
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11.16
+  - freecad=2026.09.16
+  - occt=8.0.1
+  - geouned=1.6.2
+  - openmc=0.15.3

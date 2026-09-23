@@ -168,9 +168,18 @@ and the MCNP lattice work; fixes listed under Completed).
     Delivered: `setup/cad/verify.py`, four real fixture cases (80,000 containment checks plus hole/volume
     checks), input-rejection tests and `setup/cad/locks/linux-64.explicit.txt`. See
     [stage-0 setup and findings](setup/cad/README.md); no browser import or transport readiness implied.
-  - [ ] **Stage 1 — reliable jobs:** isolated workers, job IDs, progress, cancellation/timeouts, safe temporary
-    paths, size limits and per-solid diagnostics. Failed or cancelled jobs must not change the project.
-  - [ ] **Stage 2 — native STEP import:** recognize boxes, spheres, capped cylinders and cones; rebuild and
+  - [x] **Stage 1 — reliable jobs:** isolated workers, job IDs, progress, cancellation/timeouts, safe temporary
+    paths, size limits and diagnostics. Failed or cancelled jobs must not change the project.
+    Delivered: `studio/openmc_studio/cad/jobs.py` (one disposable worker process group per job, serialized,
+    job-ID-correlated progress/results, atomic files, bounded input/log/disk/report/XML, retention, lock
+    against a second Studio), `POST/GET/DELETE /api/cad/jobs` and `GET /api/cad/capabilities`, a real
+    `probe` job that must convert a drilled block before `engine_verified` is true, and an explicit job-mode
+    allowlist as the adapter contract. Tests: `test/test_cad_jobs.py` (28, lifecycle), `test/test_cad_jobs_http.py`
+    (12, real HTTP server) and `test/test_cad_jobs_engine.py` (4, real FreeCAD/GEOUNED; fails, never skips,
+    without the engine). Diagnostics are per job (worker's own error plus a bounded log tail); **per-solid**
+    diagnostics move to stage 2, which adds the multi-solid STEP inventory they depend on.
+  - [ ] **Stage 2 — native STEP import:** inventory every solid in a STEP file with per-solid diagnostics
+    (validity, closure, surface types, bounds, source names); recognize boxes, spheres, capped cylinders and cones; rebuild and
     compare solids, preserve units/rotations, assign unique IDs and require explicit material mapping.
     Preview omissions before any partial import; commit as one undoable action. Test save/reload.
   - [ ] **Stage 3 — analytical CSG model:** call GEOUNED's real conversion API, parse OpenMC XML as data,

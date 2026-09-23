@@ -28,3 +28,47 @@ an error, not a replacement file.
 `python test/test_cad_worker_protocol.py` checks rejection, unit conversion,
 transforms and worker behavior. Its real FreeCAD test runs only in an interpreter
 with FreeCAD and Part installed; an explicit skip is not an export validation.
+
+## Conversion jobs (stage 1)
+
+Conversions run as background jobs so an HTTP request never waits minutes for a
+CAD engine. This is infrastructure only: a finished job does **not** import
+anything into a project (`can_import_into_studio` is always `false` until the
+import stages land). Linux/WSL only.
+
+| Route | Purpose |
+|---|---|
+| `GET /api/cad/capabilities` | Whether jobs can run here, which modes exist, and whether the engine is *verified* |
+| `POST /api/cad/jobs` | `{"mode": "csg-xml", "filename": "part.step", "data": "<base64>"}` or `{"mode": "probe"}`; returns **202** and a `Location` |
+| `GET /api/cad/jobs` | Jobs in this session |
+| `GET /api/cad/jobs/<id>` | State (`queued`, `running`, `cancelling`, `succeeded`, `failed`, `cancelled`, `timed_out`), progress, error and a short log tail |
+| `GET /api/cad/jobs/<id>/result` | The conversion report and OpenMC XML; **409** until the job has succeeded |
+| `DELETE /api/cad/jobs/<id>` | Cancel; the worker's whole process group is killed and its scratch deleted |
+
+All routes need the Studio token; POST and DELETE also refuse foreign origins.
+
+**`engine_verified` means a conversion actually ran.** It becomes true only after
+a `probe` job builds a drilled block in FreeCAD, converts it with GEOUNED and
+finds the hole where it should be. Importable Python modules alone never count.
+
+What a job guarantees:
+
+- One worker at a time, each in its own process group; cancelling or timing out
+  kills every descendant, and a crash never affects the next job.
+- Inputs are written once, read-only, to a server-generated directory outside
+  the checkout (`<runs>/cad-jobs/<id>`). The uploaded filename is kept only as a
+  label and never becomes a path.
+- Progress and results must name the job they belong to; anything else fails the
+  job. A result written after cancellation is discarded.
+- Limits: 16 MiB input, 180 s per job, 2 MiB log, 64 MiB of scratch, 128 KiB
+  report, 8 MiB XML, 8 queued jobs. Exceeding one fails the job with that reason.
+- Finished jobs are kept for an hour, then deleted with their files.
+- If the runs folder is inside the checkout, CAD jobs switch off with a reason;
+  Studio itself keeps running.
+
+Set `OPENMC_CAD_PYTHON` to the pinned CAD interpreter (see
+[setup](../setup/cad/README.md)) before starting Studio.
+
+Tests: `test/test_cad_jobs.py` and `test/test_cad_jobs_http.py` need no CAD engine;
+`test/test_cad_jobs_engine.py` runs real conversions and fails, rather than
+skips, when `OPENMC_CAD_PYTHON` is not set.

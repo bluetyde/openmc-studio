@@ -2,7 +2,9 @@
 
 Status: Staged implementation plan. Prepared 2026-09-22 against Studio f515d40.
 Progress 2026-09-23: stage 0 implemented and validated on four real WSL fixtures;
-see [setup and findings](../setup/cad/README.md). Later stages remain pending.
+see [setup and findings](../setup/cad/README.md). Stage 1 (job infrastructure)
+implemented and gated; see [CAD conversion](cad-conversion.md#conversion-jobs-stage-1).
+Stages 2-5 remain pending.
 Owner: OpenMC Studio maintainers. Implementation gates below determine readiness.
 
 ## Decision

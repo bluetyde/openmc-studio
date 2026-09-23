@@ -5,7 +5,9 @@ Progress 2026-09-23: stage 0 implemented and validated on four real WSL fixtures
 see [setup and findings](../setup/cad/README.md). Stage 1 (job infrastructure)
 implemented and gated; see [CAD conversion](cad-conversion.md#conversion-jobs-stage-1).
 Stage 2 (native STEP import) implemented and gated; see
-[CAD conversion](cad-conversion.md#importing-step-as-native-parts-stage-2). Stages 3-5 remain pending.
+[CAD conversion](cad-conversion.md#importing-step-as-native-parts-stage-2). Stage 3 (CSG data model)
+implemented and gated; see [CAD conversion](cad-conversion.md#analytical-csg-components-stage-3).
+Stages 4-5 remain pending.
 Owner: OpenMC Studio maintainers. Implementation gates below determine readiness.
 
 ## Decision

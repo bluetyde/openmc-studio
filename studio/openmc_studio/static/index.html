@@ -896,9 +896,18 @@ function sampleModel() {
 }
 
 const STORE_KEY = 'openmc-studio-v1';
+// Project schema: 1 = parts only (files without a "schema" field), 2 = adds imported
+// analytical CSG components (S.csg). A file from a newer Studio is refused, never
+// opened with its geometry silently dropped.
+const SCHEMA_VERSION = 2;
+const projectSchema = o => (o && Number.isInteger(o.schema) ? o.schema : 1);
 function normalizeProject(o) { // fill fields added in later versions
   o.settings = {...DEFAULT_SETTINGS, ...o.settings};
   o.imports = Array.isArray(o.imports) ? o.imports : [];
+  if (o.csg) o.csg.components.forEach(k => k.cells.forEach(c => {
+    if (c.materialPending !== true) delete c.materialPending;
+    if (typeof c.material !== 'string') c.material = 'void';
+  }));
   (o.parts || []).forEach(p => { if (p.materialPending !== true) delete p.materialPending; });
   o.settings.photonCutoff = Number.isFinite(o.settings.photonCutoff) ? o.settings.photonCutoff : 1000;
   o.settings.temperatureDefault = Number.isFinite(o.settings.temperatureDefault) ? o.settings.temperatureDefault : 293.6;
@@ -1052,7 +1061,18 @@ function compactGroups(m) {
 }
 function validProject(o) {
   return !!o && Array.isArray(o.materials) && Array.isArray(o.parts) && Array.isArray(o.sources) &&
-    Array.isArray(o.tallies) && !!o.settings && typeof o.settings === 'object';
+    Array.isArray(o.tallies) && !!o.settings && typeof o.settings === 'object' && projectSchema(o) <= SCHEMA_VERSION &&
+    (!o.csg || (Array.isArray(o.csg.components) && o.csg.components.every(validComponent)));
+}
+function validComponent(k) {
+  return !!k && typeof k.id === 'string' && Array.isArray(k.surfaces) && Array.isArray(k.cells) && k.cells.length > 0 &&
+    k.cells.every(c => c && typeof c.id === 'string' && c.region && typeof c.region === 'object');
+}
+// Why a file can't be opened, in words (validProject only says whether).
+function projectProblem(o) {
+  if (projectSchema(o) > SCHEMA_VERSION) return `it was saved by a newer OpenMC Studio (project schema ${projectSchema(o)}; this one reads up to ${SCHEMA_VERSION}). Nothing was opened, so none of its geometry was lost`;
+  if (o && o.csg && !(Array.isArray(o.csg.components) && o.csg.components.every(validComponent))) return 'its imported CSG components are damaged';
+  return 'missing materials, parts, sources, tallies or settings';
 }
 function loadStored() {
   try {
@@ -1377,6 +1397,17 @@ function problems() {
       groupById(imp.group) ? 'group' : null, imp.group);
   });
 
+  csgComponents().forEach(k => {
+    k.cells.forEach(c => {
+      if (c.materialPending) add('error', `${c.name} (imported) needs a material. CAD files carry none: pick one, or Void if it really is empty space.`);
+      else if (c.material !== 'void' && !matById(c.material)) add('error', `${c.name} (imported): its material was deleted. Pick a material or Void.`);
+    });
+    const hit = S.parts.find(p => boundsOverlap(partBounds(p), k.bounds));
+    if (hit) add('error', `${hit.name} reaches into the imported ${k.name}. Parts can't overlap imported CAD geometry yet (Studio can't check that overlap exactly), so move the part clear of it.`, 'part', hit.id);
+    const R = S.settings.worldR, far = S.settings.worldShape === 'box' ? Math.max(...k.bounds.map(Math.abs))
+      : Math.hypot(...[0, 1, 2].map(i => Math.max(Math.abs(k.bounds[i]), Math.abs(k.bounds[i + 3]))));
+    if (far > R + 1e-9) add('warn', `The imported ${k.name} may extend past the world boundary; the outer part would be cut off.`);
+  });
   if (!S.sources.length) add('error', 'Add a source. OpenMC needs at least one.');
   S.sources.forEach(s => {
     const T = s.name;
@@ -1576,8 +1607,10 @@ function latticeHost(g, pl) {
   return {...pl, host: hostId};
 }
 // Materials model.py writes: part fills, the world fill, array fills, detector materials and material filters.
+function csgComponents() { return (S.csg && S.csg.components) || []; }
 function usedMaterialIds() {
   const used = new Set(S.parts.map(p => p.material).concat(S.settings.worldFill));
+  csgComponents().forEach(k => k.cells.forEach(c => used.add(c.material)));
   (S.groups || []).forEach(g => { if (g.lattice && g.lattice.fill && g.lattice.fill !== 'auto') used.add(g.lattice.fill); });
   (S.tallies || []).forEach(t => {
     if (t.detector && t.detector !== 'none') { const det = resolveDetector(t); if (det.respMatId) used.add(det.respMatId); }
@@ -1921,10 +1954,35 @@ function buildScript(probs, mark, opts = {}) {
     const region = `${shapeVar[p.id]} & world` + (earlier.length ? ` & ~(${earlier.join(' | ')})` : '');
     push(`${v} = openmc.Cell(name=${pyStr(p.name)}, fill=${fill(p.material)}, region=${region})`);
   });
+  // Imported analytical CSG: each component's own surfaces and regions, written exactly
+  // (full double precision) and NOT run through the parts' overlap-priority cutting -
+  // their regions already describe the solid. Problems refuses overlaps with parts.
+  const csgRegions = [], csgCells = [];
+  if (csgComponents().length) {
+    push('', '# Imported CAD geometry (analytical CSG from the import). Read-only in the editor;',
+      '# each component is one source solid, split into one or more cells.');
+  }
+  csgComponents().forEach(k => {
+    owner = {kind:'component', id:k.id};
+    const vars = {};
+    k.surfaces.forEach(sf => { vars[sf.id] = name('csg', `${k.name} s${sf.id}`); push(`${vars[sf.id]} = ${csgSurface(sf)}`); });
+    const regions = k.cells.map(c => {
+      owner = {kind:'component', id:k.id, cell:c.id};
+      const v = name('cell', c.name), region = csgRegionExpr(c.region, vars);
+      cv[c.id] = v;
+      csgCells.push(v);
+      push(`${v} = openmc.Cell(name=${pyStr(c.name)}, fill=${fill(c.material)}, region=${region} & world)`);
+      return region;
+    });
+    owner = {kind:'component', id:k.id};
+    const rv = name('region', k.name);
+    push(`${rv} = ${regions.length === 1 ? regions[0] : '(' + regions.join(' | ') + ')'}`);
+    csgRegions.push(rv);
+  });
   cv.world = 'cell_world';
   owner = {kind:'world'};
   const allStandalone = standaloneParts.map(q => shapeVar[q.id]);
-  const allSubtractions = [...allStandalone, ...latBoxes];
+  const allSubtractions = [...allStandalone, ...latBoxes, ...csgRegions];
   push(`cell_world = openmc.Cell(name="World", fill=${fill(st.worldFill)}, region=world${allSubtractions.length ? ` & ~(${allSubtractions.join(' | ')})` : ''})`);
   owner = null;
   const latCellMap = {};
@@ -1957,7 +2015,7 @@ function buildScript(probs, mark, opts = {}) {
     owner = null;
     push('}');
   }
-  const geomCells = [...standaloneParts.map(p => cv[p.id]), ...latCellVars, 'cell_world'];
+  const geomCells = [...standaloneParts.map(p => cv[p.id]), ...latCellVars, ...csgCells, 'cell_world'];
   push(`geometry = openmc.Geometry([${geomCells.join(', ')}])`, '');
 
   push('# ── Sources ────────────────────────────────────────────────');
@@ -2190,6 +2248,82 @@ function buildScript(probs, mark, opts = {}) {
   return {text: L.join('\n') + '\n', owners: OWN, map: MAP, surfaces: SURF, materials: mats, cells};
 }
 function generate(probs) { return buildScript(probs, false).text; }
+
+// Exact number for imported coefficients: the shortest string that round-trips the
+// double (quadric coefficients carry 15 digits; num() would keep 12).
+const exactNum = v => { const t = String(v); return /[.e]/.test(t) ? t : t + '.0'; };
+const CSG_CTORS = {
+  'plane': ['Plane', ['a', 'b', 'c', 'd']], 'x-plane': ['XPlane', ['x0']], 'y-plane': ['YPlane', ['y0']],
+  'z-plane': ['ZPlane', ['z0']], 'sphere': ['Sphere', ['x0', 'y0', 'z0', 'r']],
+  'x-cylinder': ['XCylinder', ['y0', 'z0', 'r']], 'y-cylinder': ['YCylinder', ['x0', 'z0', 'r']],
+  'z-cylinder': ['ZCylinder', ['x0', 'y0', 'r']], 'x-cone': ['XCone', ['x0', 'y0', 'z0', 'r2']],
+  'y-cone': ['YCone', ['x0', 'y0', 'z0', 'r2']], 'z-cone': ['ZCone', ['x0', 'y0', 'z0', 'r2']],
+  'quadric': ['Quadric', ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'j', 'k']],
+};
+function csgSurface(sf) {
+  const ctor = CSG_CTORS[sf.type];
+  if (!ctor) throw new Error(`Unsupported imported surface type ${sf.type}`);
+  return `openmc.${ctor[0]}(${ctor[1].map(k => `${k}=${exactNum(sf.coeffs[k])}`).join(', ')})`;
+}
+function csgRegionExpr(node, vars) {
+  if (node.half) return (node.half === '-' ? '-' : '+') + vars[node.s];
+  if (node.op === 'not') return `~(${csgRegionExpr(node.arg, vars)})`;
+  const parts = node.args.map(a => csgRegionExpr(a, vars));
+  return parts.length === 1 ? parts[0] : '(' + parts.join(node.op === 'or' ? ' | ' : ' & ') + ')';
+}
+// Axis-aligned bounds overlap (cm), inclusive of touching faces only at a tolerance.
+const boundsOverlap = (a, b) => [0, 1, 2].every(i => a[i] < b[i + 3] - 1e-9 && b[i] < a[i + 3] - 1e-9);
+function partBounds(p) {
+  const h = partHalfExtents(p);
+  return [p.x - h[0], p.y - h[1], p.z - h[2], p.x + h[0], p.y + h[1], p.z + h[2]];
+}
+
+// Commit a 'csg' import report. The plan's first general-CSG release imports into a
+// NEW project (merging with existing geometry is a later gate): parts, groups and
+// tallies of the current project are replaced in one undoable step; materials,
+// sources and settings carry over. Every solid is accounted for, as with native import.
+function commitCsgImport(report, fileName, choice = {}) {
+  const accepted = report.solids.filter(r => r.status === 'accepted');
+  const omitted = report.solids.filter(r => r.status !== 'accepted');
+  if (!accepted.length) throw new Error('No solid in this file could be converted.');
+  // Imported cells bypass the parts' priority cutting, so overlapping solids would be two
+  // cells claiming the same space: refuse, and say which, rather than guess an order.
+  if ((report.overlaps || []).length) throw new Error(`These solids overlap, which imported CSG can't resolve yet: ${report.overlaps.map(o => `${o.a} and ${o.b}`).join('; ')}. Fix the CAD model, or import these solids as native parts.`);
+  if (omitted.length && !choice.allowPartial) throw new Error(`${omitted.length} solid(s) couldn't be converted; tick the box to import the rest and record what was left out.`);
+  if (choice.material && choice.material !== 'pending' && choice.material !== 'void' && !matById(choice.material)) throw new Error('Unknown material for the import.');
+  const material = choice.material && choice.material !== 'pending' ? choice.material : null;
+  HISTORY.boundary = true;
+  const ids = new Set([...S.materials, ...S.sources].map(o => o.id));
+  const fresh = prefix => { let id; do { id = newId(prefix); } while (ids.has(id)); ids.add(id); return id; };
+  const importId = fresh('i');
+  const components = accepted.map(r => {
+    const c = r.component;
+    return {id:fresh('k'), name:c.name, import:importId, source:{key:r.key, path:r.path}, units:'cm',
+      ir:c.ir_version, bounds:c.bounds_cm, surfaces:clone(c.surfaces),
+      cells:c.cells.map(cell => ({id:fresh('c'), name:cell.name, region:clone(cell.region),
+        material:material || 'void', ...(material ? {} : {materialPending:true})}))};
+  });
+  S = normalizeProject({...S, schema:SCHEMA_VERSION, parts:[], groups:[], tallies:[],
+    settings:{...S.settings, name:choice.name || String(fileName).replace(/\.[^.]+$/, '')},
+    csg:{components},
+    imports:[{id:importId, file:String(fileName), sha256:report.source_sha256, at:new Date().toISOString(),
+      mode:'csg', adapter:report.adapter, ir:report.ir_version, versions:report.versions || null,
+      units:'cm (converter output, checked against the CAD solid)',
+      accepted:accepted.map(r => r.key), omitted:omitted.map(r => ({key:r.key, status:r.status, reasons:r.reasons || []})),
+      overlaps:report.overlaps || []}]});
+  if (choice.growWorld !== false) {
+    const need = Math.max(...components.map(k => Math.max(...k.bounds.map(Math.abs)))) * 1.1;
+    const box = S.settings.worldShape === 'box';
+    const want = box ? need : need * Math.sqrt(3);
+    if (want > S.settings.worldR) { const step = Math.pow(10, Math.floor(Math.log10(want))) / 2; S.settings.worldR = Math.ceil(want / step) * step; }
+  }
+  sel = {kind:'settings'};
+  renderAll();
+  log('ok', `Imported ${components.length} CSG component${components.length === 1 ? '' : 's'} from ${esc(fileName)} into a new project` +
+    (omitted.length ? `; ${omitted.length} solid${omitted.length === 1 ? ' was' : 's were'} left out and recorded` : '') +
+    '. Undo returns to the previous project.');
+  return components;
+}
 // What the MCNP export translates: the same model (the exporter writes RectLattices as LAT=1 and HexLattices as
 // LAT=2). Options stay here so one can force cell-by-cell arrays for MCNP again ({flatHex:true} or {flat:true}).
 const MCNP_OPTS = {};
@@ -3500,7 +3634,7 @@ function openProject(file) {
   r.onload = () => {
     try {
       const o = JSON.parse(r.result);
-      if (!validProject(o)) throw new Error('missing materials, parts, sources, tallies or settings');
+      if (!validProject(o)) throw new Error(projectProblem(o));
       normalizeProject(o);
       S = o; sel = {kind:'settings'};
       clearResults();
@@ -5249,8 +5383,10 @@ function renderMcnp(P) {
   else setMcnpStatus('warn', 'Outdated · model has changed');
 }
 function geometryPart(script) { const i = script.indexOf('# ── Sources'); return i < 0 ? script : script.slice(0, i); }
+const CSG_MCNP_REASON = 'MCNP export is off for projects with imported CAD geometry until the companion exporter passes its parity tests (a later stage of the CAD import plan). Nothing partial is exported.';
 function liveMcnpTick(P) {
   if (!LOCAL.on || !mcnpVisible()) return;
+  if (csgComponents().length) { clearTimeout(LIVE.timer); setMcnpStatus('warn', CSG_MCNP_REASON); return; }
   const script = mcnpScript(P);
   if (LIVE.failure && script === LIVE.attemptedScript) return;
   if (script === LIVE.sentScript) return;
@@ -5403,6 +5539,7 @@ $('#mcnpCode').addEventListener('click', e => codeClick(e, 'mcnp'));
 /* MCNP export button: validated deck into a new ~/OpenMC-runs/mcnp-exports folder */
 async function exportMcnp() {
   if (!LOCAL.on) { log('warn', 'MCNP export needs the local Studio server (start Studio from its launcher).'); return; }
+  if (csgComponents().length) { setOutTab('log'); log('warn', `Not exported: ${CSG_MCNP_REASON}`); return; }
   const P = problems(), errs = P.filter(p => p.sev === 'error');
   setOutTab('log');
   if (errs.length) { log('error', `Not exported: fix ${errs.length} problem${errs.length === 1 ? '' : 's'} first (see Problems).`); return; }

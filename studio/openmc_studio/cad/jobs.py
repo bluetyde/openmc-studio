@@ -44,6 +44,7 @@ MODES = {
     "csg-xml": {"needs_source": True},    # GEOUNED single-solid conversion to OpenMC XML
     "inspect": {"needs_source": True},    # per-solid inventory: names, validity, surfaces, bounds
     "native": {"needs_source": True},     # recognize and prove Studio primitives, solid by solid
+    "csg": {"needs_source": True},        # every solid through GEOUNED into validated CSG components
 }
 
 

@@ -69,7 +69,15 @@ def native(progress):
     return run_native("source.step", progress=progress)
 
 
-MODES = {"probe": probe, "csg-xml": csg_xml, "inspect": inspect, "native": native}
+def csg(progress):
+    from .geouned_adapter import configure_runtime
+    configure_runtime()
+    import FreeCAD  # noqa: F401
+    from .csg import convert
+    return convert("source.step", "conversion", progress=progress)
+
+
+MODES = {"probe": probe, "csg-xml": csg_xml, "inspect": inspect, "native": native, "csg": csg}
 
 
 def run(job_id):

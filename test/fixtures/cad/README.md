@@ -19,5 +19,10 @@ output is committed in `external/` with its expectations in `expected/external.j
 the browser test; regenerate them with `browser_reports()` after changing the
 recognizer (the end-to-end test fails if the live engine disagrees with them).
 
+Stage 3 adds `csg_fixtures.py`: real `csg` conversions of the stage-0 shapes, a
+hollow sphere, a TRISO coating shell, a torus (refused), `mixed.step` (refused at
+commit for its overlap) and a clean four-solid assembly, with FreeCAD ground truth
+for thousands of points per case plus the stage-0 hole probes.
+
 These generated fixtures use this repository's MIT license. Do not add private
 or company CAD here.

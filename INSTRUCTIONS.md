@@ -130,7 +130,13 @@ your network can reach it. Runs are written to `~/OpenMC-runs` unless `--runs` s
 node test/generate_fixtures.js       # writes test/generated/*.py from the built-in models
 python test/test_generated_models.py # builds and runs them (needs the nuclear data)
 node test/test_frontend_model.js     # no data or OpenMC needed
+node test/test_mesh_maps.js          # flux map controls and geometry-check Problems; no data needed
+python test/test_geometry_check.py   # the overlap and gap check finds broken models (particle half needs the data)
 ```
+
+In Studio itself, **Physics > Check geometry** checks the model before a run: it samples 100,000 points for
+overlaps and gaps and tracks 1,000 particles with OpenMC's geometry debugging. It takes a few seconds and
+reports anything it finds in Problems.
 
 The MCNP export has its own tests in the companion repository, `openmc-mcnp-project`. Point Studio at it
 with `OPENMC_MCNP_PROJECT=/path/to/openmc-mcnp-project` once: Studio remembers the path (in

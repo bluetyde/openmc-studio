@@ -314,7 +314,7 @@ input[type=checkbox]{accent-color:var(--accent)}
           </div>
           <label class="chk" id="cutWrap" hidden title="Cut the model open at the slice plane"><input type="checkbox" id="cutaway" checked> Cutaway</label>
           <span class="layers" id="layers" hidden>
-            <label class="chk"><input type="checkbox" id="showMesh" checked> Flux map</label>
+            <label class="chk"><input type="checkbox" id="showMesh" checked> <span id="meshLabel">Flux map</span></label>
             <select id="meshPick" aria-label="Mesh tally to show"></select>
             <label class="chk"><input type="checkbox" id="showTracks" checked> Tracks</label>
             <button class="tbtn" type="button" id="replayBtn" hidden>Replay neutron</button>
@@ -1482,7 +1482,11 @@ function problems() {
     } else {
       if (![t.nx, t.ny, t.nz].every(n => Number.isInteger(n) && n >= 1)) add('error', `${t.name}: mesh bins must be whole numbers of 1 or more.`, 'tally', t.id);
       if (!(t.lx < t.ux && t.ly < t.uy && t.lz < t.uz)) add('error', `${t.name}: each lower corner value must be below the upper one.`, 'tally', t.id);
-      else if (t.nx * t.ny * t.nz > 1e6) add('warn', `${t.name} has over a million voxels. Expect a large statepoint file.`, 'tally', t.id);
+      else if (t.nx * t.ny * t.nz > 1e6) {
+        const e = meshErrorEstimate(t);
+        add('warn', `${t.name} has ${(t.nx * t.ny * t.nz).toLocaleString()} voxels, over a million. Expect a large statepoint file` +
+          (e ? ` and about ${pctText(e.rel)} error per voxel (${e.basis}).` : '.'), 'tally', t.id);
+      }
     }
     if (t.detector && t.detector !== 'none') {
       const det = resolveDetector(t), micro = t.responseScale === 'micro';
@@ -1515,6 +1519,7 @@ function problems() {
   if (tr.out.some(([b, g, p]) => b < 1 || b > st.batches || g < 1 || p < 1 || p > st.particles)) add('warn', 'A tracked particle is outside the batch or particle count, so it never runs.', 'settings');
   if (tr.out.length && st.maxTracks > 0) add('info', `Track these is set, so Write first (${st.maxTracks}) is ignored. OpenMC can do one or the other.`, 'settings');
   if (!eig && tr.out.some(([, g]) => g !== 1)) add('warn', 'Fixed-source runs have one generation per batch. Use generation 1.', 'settings');
+  geomProblems(P);
 
   const rank = {error:0, warn:1, info:2};
   return P.sort((a, b) => rank[a.sev] - rank[b.sev]);
@@ -2706,6 +2711,128 @@ function addTally(kind) {
   select('tally', t.id);
 }
 
+/* ───────── Mesh maps: slabs and 3D boxes (regular meshes, values in cm) ───────── */
+// A regular mesh with one bin along an axis is a slab facing that axis. The Map control only rewrites
+// the bins and corners; nothing else is stored except each slab's last position (t.slabs), so going 3D
+// and back returns the same slab.
+const MESH_AX = ['x', 'y', 'z'];
+const SLAB_FLAT = {xy:'z', xz:'y', yz:'x'};
+const FLAT_SLAB = {z:'xy', y:'xz', x:'yz'};
+const meshCentre = (t, a) => (t['l' + a] + t['u' + a]) / 2;
+const meshExtent = (t, a) => t['u' + a] - t['l' + a];
+// 'xy' | 'xz' | 'yz' for a slab, '3d' for a box, 'other' for a line or a single voxel.
+function meshMapMode(t) {
+  const flat = MESH_AX.filter(a => t['n' + a] === 1);
+  return flat.length === 0 ? '3d' : flat.length === 1 ? FLAT_SLAB[flat[0]] : 'other';
+}
+function setMeshMap(t, mode) {
+  const cur = meshMapMode(t);
+  if (mode === cur || !(mode === '3d' || mode in SLAB_FLAT)) return;
+  t.slabs = t.slabs || {};
+  if (cur in SLAB_FLAT) { const a = SLAB_FLAT[cur]; t.slabs[a] = [t['l' + a], t['u' + a]]; }
+  // Through 3D first: every flat axis takes the bins and extent of the largest other axis.
+  const big = MESH_AX.filter(a => t['n' + a] > 1).sort((p, q) => meshExtent(t, q) - meshExtent(t, p))[0];
+  const R = S.settings.worldR;
+  MESH_AX.filter(a => t['n' + a] === 1).forEach(a => {
+    if (big) { t['n' + a] = t['n' + big]; t['l' + a] = t['l' + big]; t['u' + a] = t['u' + big]; }
+    else { t['n' + a] = 50; t['l' + a] = -R; t['u' + a] = R; }
+  });
+  if (mode === '3d') return;
+  const a = SLAB_FLAT[mode];
+  let [lo, hi] = t.slabs[a] || [];
+  if (!(fin(lo) && fin(hi) && hi > lo)) {
+    const c = a === SLAB_FLAT[view.plane] ? view.slice : meshCentre(t, a);
+    lo = c - 1; hi = c + 1;
+  }
+  t['n' + a] = 1; t['l' + a] = lo; t['u' + a] = hi;
+}
+function setSlabThickness(t, cm) {
+  const a = SLAB_FLAT[meshMapMode(t)];
+  if (!a || !(cm > 0)) return;
+  const c = meshCentre(t, a);
+  t['l' + a] = c - cm / 2; t['u' + a] = c + cm / 2;
+}
+// Only a slab facing the view can sit on the current slice.
+function centreSlabOnSlice(t) {
+  const a = SLAB_FLAT[meshMapMode(t)];
+  if (!a || a !== SLAB_FLAT[view.plane]) return false;
+  const h = meshExtent(t, a) / 2;
+  t['l' + a] = view.slice - h; t['u' + a] = view.slice + h;
+  return true;
+}
+// 3D box resolution: N voxels along the longest side, the other sides in proportion (near-cubic voxels).
+function setMeshResolution(t, N) {
+  if (!(Number.isInteger(N) && N > 0)) return;
+  const ext = MESH_AX.map(a => meshExtent(t, a)), big = Math.max(...ext);
+  if (!(big > 0)) return;
+  MESH_AX.forEach((a, i) => { t['n' + a] = Math.max(1, Math.round(N * ext[i] / big)); });
+}
+// Copies a slab twice so there is one map per plane, all through the same point and inside the same box.
+function addOtherPlanes(t) {
+  const mode = meshMapMode(t);
+  if (!(mode in SLAB_FLAT)) return [];
+  const a0 = SLAB_FLAT[mode], inPlane = MESH_AX.filter(a => a !== a0);
+  const big = inPlane.slice().sort((p, q) => meshExtent(t, q) - meshExtent(t, p))[0];
+  const thick = meshExtent(t, a0), base = t.name.replace(/ \((XY|XZ|YZ)\)$/, '');
+  const box = {}, centre = {};
+  inPlane.forEach(a => { box[a] = [t['n' + a], t['l' + a], t['u' + a]]; centre[a] = meshCentre(t, a); });
+  box[a0] = [t['n' + big], t['l' + big], t['u' + big]]; centre[a0] = meshCentre(t, a0);
+  if (!/ \((XY|XZ|YZ)\)$/.test(t.name)) t.name = uniqueName(S.tallies.filter(x => x !== t), `${base} (${mode.toUpperCase()})`);
+  const made = [];
+  ['xy', 'xz', 'yz'].filter(m => m !== mode).forEach(m => {
+    const f = SLAB_FLAT[m], c = clone(t);
+    c.id = newId('t'); delete c.slabs;
+    MESH_AX.forEach(a => { [c['n' + a], c['l' + a], c['u' + a]] = box[a]; });
+    c['n' + f] = 1; c['l' + f] = centre[f] - thick / 2; c['u' + f] = centre[f] + thick / 2;
+    c.name = uniqueName(S.tallies, `${base} (${m.toUpperCase()})`);
+    S.tallies.splice(S.tallies.indexOf(t) + 1 + made.length, 0, c);
+    made.push(c);
+  });
+  return made;
+}
+// Histories that score: active batches only in eigenvalue mode.
+function activeHistories(particles, batches, inactive, eig) {
+  const h = particles * Math.max(1, batches - (eig ? inactive || 0 : 0));
+  return h > 0 && fin(h) ? h : null;
+}
+// Expected relative error per voxel. Scaled from the last run's map of the same name when there is one
+// (error goes as 1/sqrt(scores per voxel)); otherwise sqrt(voxels / histories), a rough first guess.
+function meshErrorEstimate(t) {
+  const st = S.settings, vox = t.nx * t.ny * t.nz;
+  const H = activeHistories(st.particles, st.batches, st.inactive, st.runMode === 'eigenvalue');
+  if (!H || !(vox > 0)) return null;
+  const R = LOCAL.results, last = R && R.tallies.find(x => x.kind === 'mesh' && x.name === t.name && x.mesh_type !== 'cylindrical');
+  const s = (R && R.summary) || {};
+  if (last && last.rel_err) {
+    const errs = (last.rel_err[last.scores[0]] || []).filter(x => x > 0).sort((p, q) => p - q);
+    const H0 = activeHistories(s.particles, s.batches, s.inactive || s.n_inactive, s.run_mode === 'eigenvalue');
+    const V0 = last.dims.reduce((p, q) => p * q, 1);
+    if (errs.length && H0) return {rel:errs[errs.length >> 1] * Math.sqrt((vox / V0) * (H0 / H)), basis:'scaled from the last run'};
+  }
+  return {rel:Math.sqrt(vox / H), basis:'rough guess before a run'};
+}
+const pctText = r => r >= 10 ? 'over 1000%' : r >= 0.1 ? `${Math.round(r * 100)}%` : `${+(r * 100).toPrecision(2)}%`;
+// Typing in Bins or the corners doesn't rebuild the panel, so refresh the size line and the Map choice here.
+function syncMeshInfo() {
+  const t = sel.kind === 'tally' && getSel();
+  if (!t || t.kind !== 'mesh' || t.meshGeom === 'cylindrical') return;
+  const info = document.getElementById('meshInfo');
+  if (info) info.textContent = meshInfoText(t);
+  const s = document.getElementById('meshMapSel');
+  const mode = meshMapMode(t);
+  // Only the select: rebuilding the panel here would take the focus away from the field being typed in.
+  if (s && s.value !== mode && [...s.options].some(op => op.value === mode)) s.value = mode;
+}
+function meshInfoText(t) {
+  const n = MESH_AX.map(a => t['n' + a]);
+  if (!n.every(v => Number.isInteger(v) && v > 0)) return 'Bins must be whole numbers above 0.';
+  const vox = n[0] * n[1] * n[2];
+  const size = MESH_AX.map(a => +toShown(meshExtent(t, a) / t['n' + a]).toPrecision(3)).join(' × ');
+  const e = meshErrorEstimate(t);
+  return `${vox.toLocaleString()} voxels, each ${size} ${lenUnit()}` +
+    (e ? ` · expected error per voxel about ${pctText(e.rel)} (${e.basis})` : '');
+}
+
 function addDetectorTally(key) {
   const p = DETECTOR_PRESETS.find(x => x.id === key);
   if (!p) return;
@@ -3820,7 +3947,8 @@ const RIBBON = {
     {label:'Run', btns:[
       ['dice', 'Eigenvalue', () => toggleSetting('runMode'), null, () => S.settings.runMode === 'eigenvalue'],
       ['source', 'Photons', () => toggleSetting('photon'), null, () => !!S.settings.photon],
-      ['cellTally', 'Fission neutrons', () => toggleSetting('fissionNeutrons'), () => S.settings.runMode !== 'eigenvalue', () => S.settings.fissionNeutrons !== false]]},
+      ['cellTally', 'Fission neutrons', () => toggleSetting('fissionNeutrons'), () => S.settings.runMode !== 'eigenvalue', () => S.settings.fissionNeutrons !== false],
+      ['world', 'Check geometry', checkGeometry, () => LOCAL.on && !GEOM.busy]]},
     {label:'Edit', btns:[['del', 'Delete', removeSelected, () => ['source', 'tally'].includes(sel.kind) && !!getSel()],
       ['reset', 'Clear tallies', () => clearPhysics('tallies'), () => S.tallies.length > 0],
       ['reset', 'Clear sources', () => clearPhysics('sources'), () => S.sources.length > 0],
@@ -4078,6 +4206,47 @@ function renderTree() {
 /* ───────── Properties ───────── */
 const F = (type, key, label, o = {}) => ({type, key, label, ...o});
 const note = html => ({type:'note', html});
+// Map, Thickness / Resolution, the two slab buttons and the size-and-noise line of a regular mesh tally.
+function meshMapFields(o, isRegular) {
+  const mode = meshMapMode(o), slab = mode in SLAB_FLAT;
+  const edit = fn => { HISTORY.boundary = true; fn(); renderProps(); schedule(); };
+  const numCtl = (id, value, isInt, apply) => ctl => {
+    const i = document.createElement('input');
+    i.type = 'number'; i.id = id; i.step = isInt ? '1' : 'any'; i.min = isInt ? '1' : '0';
+    i.value = fin(value) ? value : '';
+    i.addEventListener('change', () => { const v = isInt ? Number(i.value) : parseFloat(i.value); if (isInt ? Number.isInteger(v) && v > 0 : v > 0) edit(() => apply(v)); });
+    ctl.appendChild(i);
+  };
+  const fields = [
+    {type:'custom', label:'Map', show:isRegular, build:ctl => {
+      const s = document.createElement('select'); s.id = 'meshMapSel';
+      [['xy', 'XY slab'], ['xz', 'XZ slab'], ['yz', 'YZ slab'], ['3d', '3D box']].forEach(([v, t]) => s.add(new Option(t, v, false, v === mode)));
+      if (mode === 'other') s.add(new Option('Line (two axes with one bin)', 'other', false, true));
+      s.addEventListener('change', () => edit(() => setMeshMap(o, s.value)));
+      ctl.appendChild(s);
+    }, hint:'Which way the map faces. A slab is one voxel thick along the axis it faces; a 3D box has bins along every axis.'},
+  ];
+  if (slab) {
+    const a = SLAB_FLAT[mode];
+    fields.push({type:'custom', label:`Thickness (${lenUnit()})`, show:isRegular,
+      build:numCtl('meshThick', toShown(meshExtent(o, a)), false, v => setSlabThickness(o, fromShown(v))),
+      hint:`Extent along ${a}, centred on ${a} = ${showLen(meshCentre(o, a))}. A thin slab is sharper, a thick one less noisy.`});
+    fields.push({type:'buttons', show:isRegular, btns:[
+      ['Centre on the current slice', () => edit(() => {
+        if (!centreSlabOnSlice(o)) log('info', `This map faces ${a}. Switch the view to ${mode.toUpperCase()} and pick the slice there, then centre it.`);
+      })],
+      ['Add the other two planes', () => edit(() => {
+        const made = addOtherPlanes(o);
+        log('ok', `Added ${made.map(t => esc(t.name)).join(' and ')}: one map per plane, through the same point.`);
+      })]]});
+  } else if (mode === '3d') {
+    fields.push({type:'custom', label:'Resolution', show:isRegular,
+      build:numCtl('meshRes', Math.max(o.nx, o.ny, o.nz), true, v => setMeshResolution(o, v)),
+      hint:'Voxels along the longest side; the other sides follow so voxels stay nearly cubic. Edit Bins for uneven counts.'});
+  }
+  fields.push({type:'note', show:isRegular, html:`<span id="meshInfo">${esc(meshInfoText(o))}</span>`});
+  return fields;
+}
 function specFor(kind, o) {
   const st = S.settings;
   if (kind === 'material') {
@@ -4244,6 +4413,7 @@ function specFor(kind, o) {
         F('vec', null, 'Bins (XYZ)', {keys:['nx', 'ny', 'nz'], int:true, show:() => mesh() && o.meshGeom !== 'cylindrical'}),
         F('vec', null, 'Lower corner', {keys:['lx', 'ly', 'lz'], unit:'cm', show:() => mesh() && o.meshGeom !== 'cylindrical'}),
         F('vec', null, 'Upper corner', {keys:['ux', 'uy', 'uz'], unit:'cm', show:() => mesh() && o.meshGeom !== 'cylindrical'}),
+        ...meshMapFields(o, () => mesh() && o.meshGeom !== 'cylindrical'),
         F('vec', null, 'Bins (r, phi, z)', {keys:['nr', 'nphi', 'nz'], int:true, show:() => mesh() && o.meshGeom === 'cylindrical'}),
         F('vec', null, 'Radius [min, max]', {keys:['rmin', 'rmax'], unit:'cm', show:() => mesh() && o.meshGeom === 'cylindrical'}),
         F('vec', null, 'Z axial [min, max]', {keys:['zmin', 'zmax'], unit:'cm', show:() => mesh() && o.meshGeom === 'cylindrical'}),
@@ -4347,6 +4517,16 @@ function fieldEl(f, obj) {
   row.className = 'prow';
   row.dataset.label = (f.label || '').toLowerCase();
   if (f.type === 'note') { row.classList.add('note'); row.innerHTML = `<p>${f.html}</p>`; return row; }
+  if (f.type === 'custom') {
+    const lab = document.createElement('label'); lab.textContent = f.label;
+    const ctl = document.createElement('div'); ctl.className = 'pctl';
+    row.append(lab, ctl);
+    f.build(ctl);
+    const first = ctl.querySelector('input, select');
+    if (first && first.id) lab.htmlFor = first.id;
+    if (f.hint) row.insertAdjacentHTML('beforeend', `<p class="hint">${esc(f.hint)}</p>`);
+    return row;
+  }
   if (f.type === 'mcnp') { row.classList.add('note'); row.dataset.label = 'mcnp'; row.innerHTML = `<pre class="mcnp">${esc(f.text())}</pre>`; return row; }
   if (f.type === 'buttons') {
     row.classList.add('note'); row.dataset.label = f.btns.map(b => b[0]).join(' ').toLowerCase();
@@ -4604,6 +4784,86 @@ async function localInit() {
   $('#runChip').dataset.local = `OpenMC ${h.openmc}`;
   renderResults(); refreshRuns(); renderRibbon(); schedule();
 }
+/* ───────── Geometry check: overlaps and gaps, found by the server with OpenMC's own model ───────── */
+const GEOM = {busy:false, key:null, res:null, mark:null};
+const GEOM_POINTS = 100000, GEOM_PARTICLES = 1000;
+// What the check depends on. Any change here makes an earlier result stale, and its Problems go away.
+function geomKey() {
+  const skip = new Set(['material', 'materialPending', 'name', 'color', 'fill']);
+  return JSON.stringify([S.parts, S.groups || [], S.csg || null, S.settings.worldShape, S.settings.worldR],
+    (k, v) => skip.has(k) && typeof v !== 'object' ? undefined : v);
+}
+function geomCellName(r, id) {
+  const o = (r.cells || {})[String(id)];
+  if (!o) return `cell ${id}`;
+  if (o.kind === 'part') return (partById(o.id) || {}).name || `cell ${id}`;
+  if (o.kind === 'component') return ((S.csg && S.csg.components || []).find(k => k.id === o.id) || {}).name || `cell ${id}`;
+  if (o.kind === 'group') return `${((S.groups || []).find(g => g.id === o.id) || {}).name || 'an array'} (array)`;
+  if (o.kind === 'world') return 'the world outside the parts';
+  return `cell ${id}`;
+}
+function geomSel(r, id) {
+  const o = (r.cells || {})[String(id)];
+  return o && ['part', 'component', 'group', 'world'].includes(o.kind) ? {kind:o.kind, id:o.kind === 'world' ? undefined : o.id} : null;
+}
+const geomPt = p => `(${p.map(v => +toShown(v).toPrecision(4)).join(', ')}) ${lenUnit()}`;
+function geomProblems(P) {
+  const r = GEOM.res;
+  if (!r || GEOM.key !== geomKey()) return;
+  const pts = r.points || {}, tr = r.transport || {}, name = id => geomCellName(r, id);
+  const push = (sev, text, sel, at) => P.push({sev, text, sel, at, geom:true});
+  if (pts.error) push('warn', `The geometry check couldn't sample points: ${pts.error}`);
+  (pts.overlap_pairs || []).slice(0, 6).forEach(([a, b]) => {
+    const ex = (pts.overlap_examples || []).find(e => e.cells.includes(a) && e.cells.includes(b));
+    push('error', `${name(a)} and ${name(b)} overlap${ex ? `, for example at ${geomPt(ex.p)}` : ''}. OpenMC would put a particle there in whichever it finds first, so results would be wrong. Click to see the spot.`,
+      geomSel(r, a), ex && ex.p);
+  });
+  if (pts.gaps) {
+    const ex = pts.gap_examples[0];
+    push('error', `${pts.gaps.toLocaleString()} of ${pts.points.toLocaleString()} sampled points are in no cell, the first at ${geomPt(ex.p)}. A particle reaching one is lost. Click to see the spot.`, null, ex.p);
+  }
+  if (tr.ran && tr.overlap) push('error', `OpenMC's geometry debugging found ${tr.overlap.cells.map(name).join(' and ')} overlapping while tracking particles.`, geomSel(r, tr.overlap.cells[0]));
+  if (tr.ran && tr.lost) push('warn', `OpenMC lost ${tr.lost} of ${tr.particles.toLocaleString()} particles in the geometry check. First message: ${tr.lost_examples[0]}`);
+  if (tr.ran && tr.error) push('warn', `The geometry check's particle run failed: ${tr.error}`);
+  if (!pts.error && !pts.gaps && !pts.overlaps && !(tr.ran && (tr.lost || tr.overlap || tr.error)))
+    push('info', `Geometry check passed: ${(pts.points || 0).toLocaleString()} points each in exactly one cell` +
+      (tr.ran ? `, and ${tr.particles.toLocaleString()} particles tracked with OpenMC's geometry debugging, none lost.` : `. No particles were run: ${tr.reason || 'not asked for'}`));
+}
+async function checkGeometry() {
+  if (!LOCAL.on) { log('warn', 'The geometry check runs OpenMC, so it needs Studio started from its launcher.'); return; }
+  if (GEOM.busy) return;
+  const P = problems(), errs = P.filter(p => p.sev === 'error' && !p.geom);
+  setOutTab('log');
+  if (errs.length) { log('error', `Not checked: fix ${errs.length} problem${errs.length === 1 ? '' : 's'} first (see Problems).`); return; }
+  const key = geomKey(), st = S.settings;
+  GEOM.busy = true; renderRibbon();
+  log('info', `Checking the geometry: ${GEOM_POINTS.toLocaleString()} random points through every cell, then ${GEOM_PARTICLES.toLocaleString()} particles with OpenMC's geometry debugging…`);
+  let r;
+  try {
+    r = await api('/api/check-geometry', {method:'POST', body:JSON.stringify({script:generate(P), world:{shape:st.worldShape, R:st.worldR},
+      points:GEOM_POINTS, particles:GEOM_PARTICLES})});
+  } catch (e) {
+    log('error', `The geometry check failed: ${esc(e.message)}`);
+    return;
+  } finally { GEOM.busy = false; renderRibbon(); }
+  Object.assign(GEOM, {key, res:r, mark:null});
+  const bad = geomProblemsNow().filter(p => p.sev !== 'info');
+  log(bad.length ? 'error' : 'ok', bad.length
+    ? `Geometry check found ${bad.length} problem${bad.length === 1 ? '' : 's'} in ${r.seconds} s. They are listed in Problems; click one to see where.` +
+      (r.folder ? ` The checked model is in <code>${esc(r.folder)}</code>.` : '')
+    : `Geometry check passed in ${r.seconds} s: no overlaps or gaps${r.transport && r.transport.ran ? ', no lost particles' : ''}.`);
+  if (bad.length) setOutTab('problems');
+  schedule();
+}
+function geomProblemsNow() { const P = []; geomProblems(P); return P; }
+// Clicking a geometry problem with a location: put the slice through it and mark it.
+function showGeomSpot(p) {
+  GEOM.mark = p;
+  view.mode = 'slice';
+  view.slice = p[{xy:2, xz:1, yz:0}[view.plane]];
+  syncViewControls();
+  schedule();
+}
 function setRunning(on) {
   const b = $('#runBtn');
   b.classList.toggle('stop', on);
@@ -4774,7 +5034,8 @@ function renderResults() {
   h += '<p class="envline">Relative error: <span class="rel-ok">under 10% generally reliable</span>, <span class="rel-q">10–50% questionable</span>, <span class="rel-bad">over 50% not meaningful</span>.</p>';
   box.innerHTML = h;
   const meshes = R.tallies.filter(t => t.kind === 'mesh');
-  $('#meshPick').innerHTML = meshes.map((t, i) => `<option value="${i}">${esc(t.name)}</option>`).join('');
+  $('#meshPick').innerHTML = meshes.map((t, i) => `<option value="${i}">${esc(t.name)} · ${esc(meshLayerLabel(t))}</option>`).join('');
+  $('#meshLabel').textContent = meshes.length === 1 ? `Flux map · ${meshLayerLabel(meshes[0])}` : 'Flux map';
   $('#meshPick').hidden = meshes.length < 2;
   $('#showMesh').parentElement.hidden = !meshes.length;
   $('#showTracks').parentElement.hidden = !R.tracks.length;
@@ -5774,6 +6035,34 @@ function meshLayer(t) {
   if (!(mx > 0)) return null;
   const lmn = Math.log10(mn);
   return {ax, n, at, mn, mx, lmn, span:Math.max(Math.log10(mx) - lmn, 1e-9)};
+}
+// What a mesh result is, for the layer list: "XZ slab · y = 0 ± 1 cm" or "3D box · 50³ voxels".
+function meshLayerLabel(t) {
+  if (t.mesh_type === 'cylindrical') return `cylindrical · ${t.dims.join(' × ')} bins`;
+  const d = t.dims, flat = [0, 1, 2].filter(i => d[i] === 1);
+  if (flat.length === 1) {
+    const i = flat[0], c = (t.lower[i] + t.upper[i]) / 2, h = (t.upper[i] - t.lower[i]) / 2;
+    return `${FLAT_SLAB['xyz'[i]].toUpperCase()} slab · ${'xyz'[i]} = ${fmtNum(toShown(c))} ± ${showLen(h)}`;
+  }
+  if (!flat.length) return `3D box · ${d[0] === d[1] && d[1] === d[2] ? `${d[0]}³` : d.join(' × ')} voxels`;
+  return `${d.join(' × ')} bins`;
+}
+// Said in the viewport when the map on show can't be seen from here: a slab seen edge-on, or a slice outside it.
+function meshViewHint() {
+  const R = LOCAL.results;
+  if (!R || !$('#showMesh').checked) return '';
+  const t = R.tallies.filter(x => x.kind === 'mesh')[+($('#meshPick').value || 0)];
+  if (!t || t.mesh_type === 'cylindrical') return '';
+  const normal = 'xyz'.indexOf(SLAB_FLAT[view.plane]), flat = [0, 1, 2].filter(i => t.dims[i] === 1);
+  const plane = flat.length === 1 ? FLAT_SLAB['xyz'[flat[0]]].toUpperCase() : '';
+  // "Flux map (XZ)", without doubling a plane the name already carries
+  const what = plane && !t.name.includes(`(${plane})`) ? `${t.name} (${plane})` : t.name;
+  if (flat.length === 1 && flat[0] !== normal) return `${what} is edge-on here. Switch to the ${plane} view, or give it thickness.`;
+  const lo = t.lower[normal], hi = t.upper[normal], ax = 'xyz'[normal];
+  if (view.slice < lo || view.slice >= hi) {
+    return `${what} covers ${ax} = ${fmtNum(toShown(lo))} to ${showLen(hi)}; this slice is at ${ax} = ${showLen(view.slice)}.`;
+  }
+  return '';
 }
 function meshColorbar(ctx, W, t, M) {
   const bx = W - 180, by = 12, bw = 150, bh = 8;
@@ -8108,6 +8397,17 @@ function drawViewport() {
     if (on) { ctx.fillStyle = '#c89df2'; ctx.fillText(`${t.name}`, U(Math.min(u0, u1)) + 4, V(Math.max(v0, v1)) + 13); }
   });
 
+  // the geometry-check spot the user clicked in Problems
+  if (GEOM.mark && GEOM.key === geomKey()) {
+    const [u, v, d] = project(...GEOM.mark);
+    if (Math.abs(d) < 1e-6 * Math.max(1, S.settings.worldR)) {
+      const X = U(u), Y = V(v);
+      ctx.strokeStyle = '#ff6b6b'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(X, Y, 9, 0, 2 * Math.PI); ctx.moveTo(X - 14, Y); ctx.lineTo(X + 14, Y); ctx.moveTo(X, Y - 14); ctx.lineTo(X, Y + 14); ctx.stroke();
+      ctx.fillStyle = '#ff6b6b'; ctx.fillText('geometry problem here', X + 12, Y - 12);
+    }
+  }
+
   // sources
   vpGeom.sources = [];
   S.sources.forEach(s => {
@@ -8176,10 +8476,15 @@ function drawViewport() {
   const tt = toolTarget();
   vpGeom.handles = tt ? buildHandles(tt, adapter2D()) : [];
   drawHandles(ctx, vpGeom.handles);
+  let hintY = 46;
   if (TOOL.mode !== 'select' && !tt) {
     ctx.fillStyle = 'rgba(216,221,227,.7)';
-    ctx.fillText(TOOL.mode === 'move' ? 'Move: select a part or source' : `${TOOL.mode === 'scale' ? 'Scale' : 'Rotate'}: select a part`, 10, 46);
+    ctx.fillText(TOOL.mode === 'move' ? 'Move: select a part or source' : `${TOOL.mode === 'scale' ? 'Scale' : 'Rotate'}: select a part`, 10, hintY);
+    hintY += 15;
   }
+  const mh = meshViewHint();
+  vpGeom.meshHint = mh;
+  if (mh) { ctx.fillStyle = '#e6c07b'; ctx.fillText(mh, 10, hintY); }
 }
 function hitAt(evt) {
   if (!vpGeom) return null;
@@ -8215,7 +8520,7 @@ function renderProblems(P) {
   badge.textContent = e ? e : w ? w : P.length;
   badge.className = 'badge' + (e ? ' err' : w ? ' warn' : '');
   $('#problems').innerHTML = P.length
-    ? P.map((p, i) => `<li class="${p.sel ? 'click' : ''}" data-i="${i}"><span class="sev ${p.sev}">${p.sev}</span><span class="omsg">${esc(p.text)}</span></li>`).join('')
+    ? P.map((p, i) => `<li class="${p.sel || p.at ? 'click' : ''}" data-i="${i}"><span class="sev ${p.sev}">${p.sev}</span><span class="omsg">${esc(p.text)}</span></li>`).join('')
     : '<li><span class="sev ok">ok</span><span class="omsg">No problems. model.py is ready to run.</span></li>';
   lastProblems = P;
 }
@@ -8245,7 +8550,7 @@ function schedule() {
     compactGroups(S);
     pruneMaterials();
     const P = problems();
-    renderTree(); renderTitle(P); renderProblems(P); renderLegend(); renderPropsTitle();
+    renderTree(); renderTitle(P); renderProblems(P); renderLegend(); renderPropsTitle(); syncMeshInfo();
     if (sel.kind === 'source' || sel.kind === 'tally') refreshMcnp();
     renderPy(P); renderMcnp(P); liveMcnpTick(P);
     drawViewport();
@@ -8401,7 +8706,9 @@ document.addEventListener('pointerup', dragEnd);
 document.addEventListener('pointercancel', dragEnd);
 $('#problems').addEventListener('click', e => {
   const li = e.target.closest('li[data-i]'); if (!li) return;
-  const p = lastProblems[+li.dataset.i]; if (p && p.sel) select(p.sel.kind, p.sel.id);
+  const p = lastProblems[+li.dataset.i];
+  if (p && p.sel) select(p.sel.kind, p.sel.id);
+  if (p && p.at) showGeomSpot(p.at);
 });
 $('#otProblems').addEventListener('click', () => setOutTab('problems'));
 $('#otLog').addEventListener('click', () => setOutTab('log'));

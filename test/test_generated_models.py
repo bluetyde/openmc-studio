@@ -125,6 +125,20 @@ class GeneratedModels(unittest.TestCase):
         per_face = means["t_block"].reshape(6, -1).sum(axis=1)  # SurfaceFilter order: -x, +x, -y, +y, -z, +z
         self.assertTrue(np.all(per_face[0::2] < 0) and np.all(per_face[1::2] > 0), f"face currents {per_face}")
 
+    def test_flux_3d(self):
+        """A 3D box map (not a slab) builds as a 10 x 10 x 10 RegularMesh, runs, and peaks in the voxel holding the
+        source at (6, -6, 2) cm. (Its MCNP export, an FMESH with three bin counts, is checked in test_mesh_maps.js.)"""
+        ns, means = run(os.path.join(GEN, "flux_3d.py"))
+        mesh = next(f.mesh for t in ns["model"].tallies for f in t.filters if isinstance(f, openmc.MeshFilter))
+        self.assertEqual(list(mesh.dimension), [10, 10, 10])
+        flux = means["t_map"].ravel()
+        self.assertEqual(flux.size, 1000)
+        self.assertTrue(np.all(np.isfinite(flux)))
+        # 4,000 seeded histories of 2 MeV neutrons: the far corners of the tank stay empty (86.5% of voxels score)
+        self.assertGreater((flux > 0).mean(), 0.75, "a 1000-voxel map of a water tank scores in most voxels")
+        i = int(np.argmax(flux))  # MeshFilter bins run x fastest
+        self.assertEqual((i % 10, (i // 10) % 10, i // 100), (6, 3, 5), "the peak is in the source's voxel")
+
     def test_fission_as_capture_finishes(self):
         """A multiplying model in fixed-source mode only finishes because fission is treated as capture
         (create_fission_neutrons = False). With fission neutrons on, OpenMC stops with "secondary particle bank

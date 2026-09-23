@@ -35,10 +35,8 @@ and the MCNP lattice work; fixes listed under Completed).
 - **Name**: "OpenMabc" was floated; not decided.
 - **Mac copy**: pull both repos (openmc-studio and openmc-mcnp-project) on the Mac; the exporter changes for
   detector tallies and lattices are on GitHub `main` now.
-- **GEOUNED / CAD import**: browser import remains disabled. A real single-solid conversion spike and
-  reproducible environment are implemented under `setup/cad/`; Studio integration is still pending.
-  STEP export requires FreeCAD and supports selected primitives. See section 5 and
-  [the implementation plan](docs/design/cad-import-plan.md) before enabling import.
+- **CAD import**: done (all five stages of [the implementation plan](docs/design/cad-import-plan.md); see
+  section 5 and `docs/cad-conversion.md`). Still later: IGES and more native shapes.
 
 
 ---
@@ -58,9 +56,13 @@ and the MCNP lattice work; fixes listed under Completed).
 - **Mesh maps: slabs, 3D and how to look at them** (full plan: `Claude Code Test\plans\mesh-maps-plan.md`):
   - A mesh tally is a **slab**: one axis has a single bin, so it looks like a sliver from any other view. The
     bins and corners are already editable in the tally properties; what's missing is saying so.
-  - Stage 1: a Map control (XY / XZ / YZ slab or 3D box) with a thickness field, the voxel count **and the
-    expected relative error**, an "add the other two planes" button, an edge-on hint in the viewport, and
-    layer labels that name the plane.
+  - Stage 1: **done** (2026-09-24). Tally properties have a Map control (XY / XZ / YZ slab or 3D box; going 3D
+    and back returns the same slab), Thickness for a slab, Resolution for a box, "Centre on the current slice"
+    and "Add the other two planes", and a line with the voxel count, voxel size and expected error per voxel
+    (scaled from the last run's map of the same name, otherwise sqrt(voxels / histories); on the demo the rough
+    guess said 32% and the run measured a 23% median). The million-voxel warning carries the same numbers. The
+    viewport says when the map on show is edge-on or the slice is outside it, and the layer list names each
+    map's plane and thickness. Tests: `test/test_mesh_maps.js`, `flux_3d` in `test/test_generated_models.py`.
   - Stage 2: a volume view for 3D maps (brightest-along-ray, isosurface), marched per pixel so resolution
     doesn't cost frames. Today a 3D mesh is tallied in full but drawn one slice at a time.
   - Stage 3: functional expansion tallies (`SpatialLegendreFilter`, `ZernikeFilter`, ...) for a smooth flux
@@ -74,10 +76,16 @@ and the MCNP lattice work; fixes listed under Completed).
 - **VTK export of mesh tallies and geometry** (cheap): `mesh.write_data_to_vtk()` is one call and the official
   OpenMC plotter exports VTK too. Gives a real 3D flux view in ParaView now, without waiting for the volume
   renderer in the mesh plan's stage 2. Add STL export of the geometry for CAD viewers while we're there.
-- **Overlap and lost-particle check before a run** (cheap): the official plotter has an overlap view for this.
-  Problems catches modelling mistakes, but nothing catches two parts overlapping in space, which silently
-  biases results. We already do this for MCNP decks in `geometry_check.py`; the OpenMC side is missing.
-  Sample points (or use OpenMC's geometry-debug run) and report the offending pair in Problems.
+- **Overlap and lost-particle check before a run**: **done** (2026-09-24). Physics > Check geometry sends
+  model.py to the server (`/api/check-geometry`, `studio/openmc_studio/geometry_check.py`), which (1) locates
+  100,000 random points in the world through every universe, fill and lattice and reports any point in no
+  cell (a gap) or in two (an overlap), and (2) runs 1,000 particles with `openmc -g` (OpenMC's geometry
+  debugging) and counts lost particles. Results appear in Problems naming the parts; clicking one moves the
+  slice to the spot and marks it. Overlaps and gaps block Run until fixed; any geometry edit clears the
+  result. About 5 s on the demo. Studio's own parts can't overlap (higher parts win), so this mainly guards
+  lattices, imported CAD and future hand-edited models. Tests: `test/test_geometry_check.py` (broken models:
+  overlap, gap, lattice gap, overlap inside a rotated fill; and a clean control), `test/test_mesh_maps.js`.
+  Not yet: run it automatically before every Run (it would add ~5 s), or in the 3D view.
 - **Source sites and collision points in the viewport**: the OpenMC plotter draws source sites; MCNP's Visual
   Editor draws collision points, surface crossings and tally contributions. Source sites are nearly free since
   tracks already render, and this is the honest version of the splat idea (stage 4 of the mesh plan): each

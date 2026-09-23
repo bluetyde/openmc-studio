@@ -81,8 +81,8 @@ and the MCNP lattice work; fixes listed under Completed).
   100,000 random points in the world through every universe, fill and lattice and reports any point in no
   cell (a gap) or in two (an overlap), and (2) runs 1,000 particles with `openmc -g` (OpenMC's geometry
   debugging) and counts lost particles. Results appear in Problems naming the parts; clicking one moves the
-  slice to the spot and marks it. Overlaps and gaps block Run until fixed; any geometry edit clears the
-  result. About 5 s on the demo. Studio's own parts can't overlap (higher parts win), so this mainly guards
+  slice to the spot and marks it. Overlaps, gaps and lost particles block Run until fixed; a geometry edit clears the
+  result, and a source, material or physics change clears the particle half. About 5 s on the demo. Studio's own parts can't overlap (higher parts win), so this mainly guards
   lattices, imported CAD and future hand-edited models. Tests: `test/test_geometry_check.py` (broken models:
   overlap, gap, lattice gap, overlap inside a rotated fill; and a clean control), `test/test_mesh_maps.js`.
   Not yet: run it automatically before every Run (it would add ~5 s), or in the 3D view.

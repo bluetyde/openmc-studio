@@ -155,7 +155,7 @@ test('geometry check results become Problems, and go stale when the geometry cha
   const [a, b] = run('S.parts.slice(0, 2)');
   run(`GEOM.res = {seconds:1, cells:{"1":{kind:'part', id:${JSON.stringify(a.id)}}, "2":{kind:'part', id:${JSON.stringify(b.id)}}},
     points:{points:100000, gaps:0, overlaps:3, overlap_pairs:[[1, 2]], overlap_examples:[{p:[1, 2, 3], cells:[1, 2]}], gap_examples:[]},
-    transport:{ran:true, particles:1000, lost:0, overlap:null}}; GEOM.key = geomKey();`);
+    transport:{ran:true, particles:1000, lost:0, overlap:null}}; GEOM.key = geomKey(); GEOM.tkey = geomTransportKey();`);
   const e = run('problems()').find(p => p.geom && p.sev === 'error');
   assert.ok(e, 'an overlap error');
   assert.ok(e.text.startsWith(`${a.name} and ${b.name} overlap`), e.text);
@@ -169,12 +169,61 @@ test('geometry check results become Problems, and go stale when the geometry cha
 
 test('a clean geometry check is one info line', () => {
   run(`GEOM.res = {seconds:1, cells:{}, points:{points:100000, gaps:0, overlaps:0, overlap_pairs:[], overlap_examples:[], gap_examples:[]},
-    transport:{ran:true, particles:1000, lost:0, overlap:null}}; GEOM.key = geomKey();`);
+    transport:{ran:true, particles:1000, lost:0, overlap:null}}; GEOM.key = geomKey(); GEOM.tkey = geomTransportKey();`);
   const g = run('problems()').filter(p => p.geom);
   assert.equal(g.length, 1);
   assert.equal(g[0].sev, 'info');
   assert.match(g[0].text, /^Geometry check passed: 100,000 points/);
 });
 
-if (failed) { console.log(`test_mesh_maps: ${failed} FAILED`); process.exit(1); }
-console.log('test_mesh_maps: PASS');
+// Review findings (Codex, 2026-09-24): lost particles must block Run; the particle half must go stale when sources or
+// physics change; a response to an edited model must not pass or fail it.
+const CLEAN_POINTS = '{points:100000, gaps:0, overlaps:0, overlap_pairs:[], overlap_examples:[], gap_examples:[]}';
+test('lost particles with clean points are an error, so Run is blocked', () => {
+  run(`GEOM.res = {seconds:1, cells:{}, points:${CLEAN_POINTS},
+    transport:{ran:true, particles:1000, lost:3, lost_examples:['Particle 7 could not be located'], overlap:null}};
+    GEOM.key = geomKey(); GEOM.tkey = geomTransportKey();`);
+  const g = run('problems()').filter(p => p.geom);
+  assert.deepEqual(g.map(p => p.sev), ['error']);
+  assert.match(g[0].text, /lost 3 of 1,000 particles/);
+});
+
+test('moving a source or changing physics makes the particle half stale, not the points', () => {
+  run(`GEOM.res = {seconds:1, cells:{}, points:${CLEAN_POINTS},
+    transport:{ran:true, particles:1000, lost:2, lost_examples:['lost'], overlap:null}};
+    GEOM.key = geomKey(); GEOM.tkey = geomTransportKey();`);
+  assert.ok(run('problems()').some(p => p.geom && p.sev === 'error'));
+  run('S.sources[0].name = "renamed"; S.settings.particles *= 2; S.settings.name = "x";');
+  assert.ok(run('problems()').some(p => p.geom && p.sev === 'error'), 'names and run size do not change what particles meet');
+  run('S.sources[0].x += 5;');
+  let g = run('problems()').filter(p => p.geom);
+  assert.deepEqual(g.map(p => p.sev), ['info'], 'the particle finding is dropped, the point check still stands');
+  assert.match(g[0].text, /particle check is out of date/);
+  run('GEOM.tkey = geomTransportKey(); S.settings.runMode = S.settings.runMode === "eigenvalue" ? "fixed source" : "eigenvalue";');
+  g = run('problems()').filter(p => p.geom);
+  assert.match(g[0].text, /particle check is out of date/, 'run mode is physics');
+  run('GEOM.tkey = geomTransportKey(); S.materials[0].density *= 2;');
+  assert.match(run('problems()').filter(p => p.geom)[0].text, /out of date/, 'materials change the paths');
+});
+
+(async () => {
+  try {
+    run("S = normalizeProject(sampleModel()); S.tallies = []; GEOM.res = null; LOCAL.on = true; window.__logs = [];" +
+      "log = (kind, msg) => window.__logs.push([kind, msg]); renderRibbon = () => {}; setOutTab = () => {};");
+    // the server answers with an overlap, but the user moved a part while it ran
+    run(`api = async () => { S.parts[0].x += 3; return {seconds:2, cells:{}, points:{points:100000, gaps:0, overlaps:5,
+      overlap_pairs:[[1, 2]], overlap_examples:[{p:[0, 0, 0], cells:[1, 2]}], gap_examples:[]},
+      transport:{ran:true, particles:1000, lost:0, overlap:null}}; };`);
+    await run('checkGeometry()');
+    const logs = run('window.__logs');
+    const last = logs[logs.length - 1];
+    assert.equal(last[0], 'warn', JSON.stringify(logs));
+    assert.match(last[1], /changed while the geometry check ran/);
+    assert.ok(!logs.some(([, m]) => /passed/.test(m)), 'never "passed"');
+    assert.ok(!run('problems()').some(p => p.geom), 'and nothing stale in Problems');
+    console.log('  [PASS] (async) stale response after an edit');
+  } catch (e) { failed++; console.log(`  [FAIL] (async) stale response after an edit
+${e.stack}`); }
+  if (failed) { console.log(`test_mesh_maps: ${failed} FAILED`); process.exit(1); }
+  console.log('test_mesh_maps: PASS');
+})();

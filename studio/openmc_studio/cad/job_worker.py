@@ -53,7 +53,23 @@ def csg_xml(progress):
     return convert_step("source.step", "conversion", progress=progress)
 
 
-MODES = {"probe": probe, "csg-xml": csg_xml}
+def inspect(progress):
+    from .geouned_adapter import configure_runtime
+    configure_runtime()
+    import FreeCAD  # noqa: F401 - initialize the kernel before Part and Import
+    from .report import inspect as run_inspect
+    return run_inspect("source.step", progress=progress)
+
+
+def native(progress):
+    from .geouned_adapter import configure_runtime
+    configure_runtime()
+    import FreeCAD  # noqa: F401
+    from .report import native as run_native
+    return run_native("source.step", progress=progress)
+
+
+MODES = {"probe": probe, "csg-xml": csg_xml, "inspect": inspect, "native": native}
 
 
 def run(job_id):

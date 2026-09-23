@@ -86,7 +86,7 @@ elif behaviour == "disk-flood":
     time.sleep(5)
     ok()
 elif behaviour == "big-result":
-    atomic("result.json", {"id": job_id, "ok": True, "mode": mode, "pad": "x" * (200 * 1024)})
+    atomic("result.json", {"id": job_id, "ok": True, "mode": mode, "pad": "x" * (5 * 1024 * 1024)})
 elif behaviour == "churn":
     # Atomic rewrites and scratch files as fast as possible, like a busy engine:
     # the supervisor's size scan must not fail the job when a file vanishes under it.

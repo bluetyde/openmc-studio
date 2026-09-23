@@ -407,6 +407,7 @@ const ICON = {
   sphere:'<circle cx="9" cy="9" r="6.5"/><ellipse cx="9" cy="9" rx="6.5" ry="2.4"/>',
   cylinder:'<ellipse cx="9" cy="4.5" rx="5" ry="2"/><path d="M4 4.5v9c0 1.1 2.2 2 5 2s5-.9 5-2v-9"/>',
   box:'<path d="M3 6l6-3 6 3v6.5l-6 3-6-3z"/><path d="M3 6l6 3 6-3M9 9v6.5"/>',
+  cad:'<path d="M3 6l6-3 6 3v6.5l-6 3-6-3z"/><circle cx="9" cy="9.2" r="2"/>',
   wedge:'<path d="M3 14.5h9L3 5.5z"/><path d="M3 5.5l3.5-2.5 9 9-3.5 2.5"/>',
   hex_prism:'<path d="M9 2.5l5 2.5v3.5l-5 2.5-5-2.5V5z"/><path d="M4 8.5v4.5l5 2.5 5-2.5V8.5M9 11v4.5"/>',
   cone:'<ellipse cx="9" cy="4" rx="3.5" ry="1.4"/><path d="M5.5 4L3 14c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2L12.5 4"/>',
@@ -1278,7 +1279,8 @@ function inWorld(x, y, z) {
 function cellIndexAt(x, y, z) {
   if (!inWorld(x, y, z)) return -2;
   for (let i = 0; i < S.parts.length; i++) if (inShape(S.parts[i], x, y, z)) return i;
-  return -1;
+  const ci = csgCellAt(x, y, z);
+  return ci >= 0 ? S.parts.length + ci : -1;
 }
 function partHalfExtents(p) { // half-widths of the world-axis bounding box
   if (p.shape === 'sphere') return [p.r, p.r, p.r];
@@ -1399,14 +1401,14 @@ function problems() {
 
   csgComponents().forEach(k => {
     k.cells.forEach(c => {
-      if (c.materialPending) add('error', `${c.name} (imported) needs a material. CAD files carry none: pick one, or Void if it really is empty space.`);
-      else if (c.material !== 'void' && !matById(c.material)) add('error', `${c.name} (imported): its material was deleted. Pick a material or Void.`);
+      if (c.materialPending) add('error', `${c.name} (imported) needs a material. CAD files carry none: pick one, or Void if it really is empty space.`, 'component', k.id);
+      else if (c.material !== 'void' && !matById(c.material)) add('error', `${c.name} (imported): its material was deleted. Pick a material or Void.`, 'component', k.id);
     });
     const hit = S.parts.find(p => boundsOverlap(partBounds(p), k.bounds));
     if (hit) add('error', `${hit.name} reaches into the imported ${k.name}. Parts can't overlap imported CAD geometry yet (Studio can't check that overlap exactly), so move the part clear of it.`, 'part', hit.id);
     const R = S.settings.worldR, far = S.settings.worldShape === 'box' ? Math.max(...k.bounds.map(Math.abs))
       : Math.hypot(...[0, 1, 2].map(i => Math.max(Math.abs(k.bounds[i]), Math.abs(k.bounds[i + 3]))));
-    if (far > R + 1e-9) add('warn', `The imported ${k.name} may extend past the world boundary; the outer part would be cut off.`);
+    if (far > R + 1e-9) add('warn', `The imported ${k.name} may extend past the world boundary; the outer part would be cut off.`, 'component', k.id);
   });
   if (!S.sources.length) add('error', 'Add a source. OpenMC needs at least one.');
   S.sources.forEach(s => {
@@ -1444,7 +1446,7 @@ function problems() {
   S.tallies.forEach(t => {
     if (t.kind === 'cell') {
       if (!t.cells.length) add('error', `${t.name}: tick at least one cell to tally.`, 'tally', t.id);
-      t.cells.filter(c => c !== 'world' && !partById(c)).forEach(() => add('error', `${t.name} lists a part that was deleted.`, 'tally', t.id));
+      t.cells.filter(c => c !== 'world' && !partById(c) && !csgCellById(c)).forEach(() => add('error', `${t.name} lists a part that was deleted.`, 'tally', t.id));
     } else if (t.kind === 'surface') {
       const ids = t.surfaces || [];
       if (!ids.length) add('error', `${t.name}: tick at least one part whose surfaces to tally.`, 'tally', t.id);
@@ -2265,6 +2267,65 @@ function csgSurface(sf) {
   if (!ctor) throw new Error(`Unsupported imported surface type ${sf.type}`);
   return `openmc.${ctor[0]}(${ctor[1].map(k => `${k}=${exactNum(sf.coeffs[k])}`).join(', ')})`;
 }
+// f(x, y, z) of an imported surface, exactly as OpenMC (and cad/schema.py) defines it.
+function csgF(sf, x, y, z) {
+  const c = sf.coeffs;
+  switch (sf.type) {
+    case 'plane': return c.a * x + c.b * y + c.c * z - c.d;
+    case 'x-plane': return x - c.x0;
+    case 'y-plane': return y - c.y0;
+    case 'z-plane': return z - c.z0;
+    case 'sphere': return (x - c.x0) ** 2 + (y - c.y0) ** 2 + (z - c.z0) ** 2 - c.r * c.r;
+    case 'x-cylinder': return (y - c.y0) ** 2 + (z - c.z0) ** 2 - c.r * c.r;
+    case 'y-cylinder': return (x - c.x0) ** 2 + (z - c.z0) ** 2 - c.r * c.r;
+    case 'z-cylinder': return (x - c.x0) ** 2 + (y - c.y0) ** 2 - c.r * c.r;
+    case 'x-cone': return (y - c.y0) ** 2 + (z - c.z0) ** 2 - c.r2 * (x - c.x0) ** 2;
+    case 'y-cone': return (x - c.x0) ** 2 + (z - c.z0) ** 2 - c.r2 * (y - c.y0) ** 2;
+    case 'z-cone': return (x - c.x0) ** 2 + (y - c.y0) ** 2 - c.r2 * (z - c.z0) ** 2;
+    case 'quadric': return c.a * x * x + c.b * y * y + c.c * z * z + c.d * x * y + c.e * y * z + c.f * x * z + c.g * x + c.h * y + c.j * z + c.k;
+  }
+  return NaN;
+}
+function csgIn(node, table, x, y, z) {
+  if (node.half) { const f = csgF(table[node.s], x, y, z); return node.half === '-' ? f < 0 : f > 0; }
+  if (node.op === 'and') { for (const a of node.args) if (!csgIn(a, table, x, y, z)) return false; return true; }
+  if (node.op === 'or') { for (const a of node.args) if (csgIn(a, table, x, y, z)) return true; return false; }
+  return !csgIn(node.arg, table, x, y, z);
+}
+const CSG_TABLES = new WeakMap();
+function csgTable(k) {
+  let t = CSG_TABLES.get(k);
+  if (!t || t.src !== k.surfaces) { t = {src:k.surfaces, map:Object.fromEntries(k.surfaces.map(sf => [sf.id, sf]))}; CSG_TABLES.set(k, t); }
+  return t.map;
+}
+// Imported cells in one flat list; in the slice view cell i is index S.parts.length + i.
+function csgCellList() {
+  const out = [];
+  csgComponents().forEach(k => k.cells.forEach(c => out.push({k, c})));
+  return out;
+}
+function csgCellById(id) {
+  for (const k of csgComponents()) { const c = k.cells.find(x => x.id === id); if (c) return {k, c}; }
+  return null;
+}
+function csgCellAt(x, y, z) {
+  let i = 0;
+  for (const k of csgComponents()) {
+    const b = k.bounds, n = k.cells.length;
+    if (x >= b[0] && x <= b[3] && y >= b[1] && y <= b[4] && z >= b[2] && z <= b[5]) {
+      const table = csgTable(k);
+      for (let j = 0; j < n; j++) if (csgIn(k.cells[j].region, table, x, y, z)) return i + j;
+    }
+    i += n;
+  }
+  return -1;
+}
+const PENDING_RGB = [150, 78, 140];
+function csgCellRgb(c) {
+  if (c.materialPending) return PENDING_RGB;
+  const m = matById(c.material);
+  return m ? hexRgb(m.color) : [34, 39, 45];
+}
 function csgRegionExpr(node, vars) {
   if (node.half) return (node.half === '-' ? '-' : '+') + vars[node.s];
   if (node.op === 'not') return `~(${csgRegionExpr(node.arg, vars)})`;
@@ -2299,7 +2360,7 @@ function commitCsgImport(report, fileName, choice = {}) {
   const components = accepted.map(r => {
     const c = r.component;
     return {id:fresh('k'), name:c.name, import:importId, source:{key:r.key, path:r.path}, units:'cm',
-      ir:c.ir_version, bounds:c.bounds_cm, surfaces:clone(c.surfaces),
+      ir:c.ir_version, bounds:c.bounds_cm, surfaces:clone(c.surfaces), display:c.display ? clone(c.display) : null,
       cells:c.cells.map(cell => ({id:fresh('c'), name:cell.name, region:clone(cell.region),
         material:material || 'void', ...(material ? {} : {materialPending:true})}))};
   });
@@ -2454,6 +2515,7 @@ function getSel() {
   if (sel.kind === 'settings') return S.settings;
   if (sel.kind === 'world') return S.settings;
   if (sel.kind === 'group') return S.groups.find(g => g.id === sel.id) || null;
+  if (sel.kind === 'component') return csgComponents().find(k => k.id === sel.id) || null;
   if (sel.kind === 'multi') return selItems().length ? sel : null;
   const list = S[LISTS[sel.kind]];
   return list ? list.find(x => x.id === sel.id) || null : null;
@@ -2606,7 +2668,8 @@ function clearPhysics(what) {
 function addTally(kind) {
   const R = S.settings.worldR, flat = {xy:'z', xz:'y', yz:'x'}[view.plane];
   const named = {mesh:'Mesh tally', surface:'Surface tally'}[kind] || 'Cell tally';
-  const pick = sel.kind === 'part' && sel.id ? [sel.id] : [];
+  const pick = sel.kind === 'part' && sel.id ? [sel.id]
+    : sel.kind === 'component' && getSel() ? getSel().cells.map(c => c.id) : [];
   const t = {id:newId('t'), name:uniqueName(S.tallies, named), kind,
     cells: kind === 'cell' ? pick : [], surfaces: kind === 'surface' ? pick : [],
     scores: kind === 'surface' ? ['current'] : ['flux'], ebins:'',
@@ -3422,10 +3485,15 @@ function describeCadPart(p) {
   return p.shape;
 }
 
+function describeCsgComponent(c) {
+  const types = [...new Set(c.surfaces.map(sf => sf.type))].join(', ');
+  return `${c.cells.length} cell${c.cells.length === 1 ? '' : 's'}, ${c.surfaces.length} surface${c.surfaces.length === 1 ? '' : 's'} (${types})`;
+}
 function cadRowHtml(r) {
   const mark = r.status === 'accepted' ? '<span style="color:var(--ok)">✔</span>'
     : r.status === 'failed' ? '<span style="color:var(--err)">!</span>' : '<span style="color:var(--warn)">✖</span>';
-  const what = r.part ? ` <span style="color:var(--dim)">· ${esc(describeCadPart(r.part))}</span>` : '';
+  const what = r.part ? ` <span style="color:var(--dim)">· ${esc(describeCadPart(r.part))}</span>`
+    : r.component ? ` <span style="color:var(--dim)">· ${esc(describeCsgComponent(r.component))}</span>` : '';
   const why = r.status !== 'accepted' ? `<div style="color:var(--warn)">${esc((r.reasons || []).join('; '))}</div>` : '';
   return `<div class="cadrow" data-status="${esc(r.status)}" data-key="${esc(r.key)}" style="padding:3px 6px;border-bottom:1px solid var(--bdr)">${mark} ${esc(r.key || r.label || 'solid')}${what}${why}</div>`;
 }
@@ -3449,23 +3517,27 @@ function renderCadImport() {
       ${inv.solids.map(r => `<div class="invrow" data-key="${esc(r.key)}" style="padding:3px 6px;border-bottom:1px solid var(--bdr)">${r.valid ? '●' : '<span style="color:var(--warn)">▲</span>'} ${esc(r.key || r.label || 'solid')} <span style="color:var(--dim)">· ${esc(r.surface_types.join(', '))}</span>${r.reasons.length ? `<div style="color:var(--warn)">${esc(r.reasons.join('; '))}</div>` : ''}</div>`).join('')}
       </div>
       <div style="font-size:12px;font-weight:600;margin-bottom:4px">Import as</div>
-      <label style="display:block;font-size:12px;margin-bottom:3px"><input type="radio" name="cad-mode" value="native" checked> Native parts: boxes, spheres, cylinders and cones you can edit</label>
-      <label style="display:block;font-size:12px;color:var(--dim);margin-bottom:8px" title="Needs the analytical CSG data model, a later stage"><input type="radio" name="cad-mode" value="csg" disabled> Analytical CSG components: any analytical solid, read-only (coming later)</label>`;
+      <label style="display:block;font-size:12px;margin-bottom:3px"><input type="radio" name="cad-mode" value="native"${CADIMPORT.mode !== 'csg' ? ' checked' : ''}> Native parts: boxes, spheres, cylinders and cones you can edit</label>
+      <label style="display:block;font-size:12px;margin-bottom:8px"><input type="radio" name="cad-mode" value="csg"${CADIMPORT.mode === 'csg' ? ' checked' : ''}> Analytical CSG components: holes, shells and other analytical solids, exact but read-only. Starts a new project.</label>`;
     run = 'Convert'; runDisabled = st === 'converting';
   } else if (st === 'preview') {
+    const csg = CADIMPORT.mode === 'csg';
     const acc = rep.solids.filter(r => r.status === 'accepted'), om = rep.solids.filter(r => r.status !== 'accepted');
-    const leaves = acc.filter(r => { try { return partLeavesWorld({...newPart('tmp', 'tmp', r.part.shape), ...r.part}); } catch (e) { return false; } });
+    const leaves = csg ? [] : acc.filter(r => { try { return partLeavesWorld({...newPart('tmp', 'tmp', r.part.shape), ...r.part}); } catch (e) { return false; } });
+    const blocked = csg && (rep.overlaps || []).length > 0;
     const mats = S.materials.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
-    body = `<div style="font-size:12px;margin-bottom:6px"><b>${acc.length}</b> of ${rep.solids.length} solid${rep.solids.length === 1 ? '' : 's'} can be imported as native parts.</div>
+    body = `<div style="font-size:12px;margin-bottom:6px"><b>${acc.length}</b> of ${rep.solids.length} solid${rep.solids.length === 1 ? '' : 's'} can be imported as ${csg ? 'analytical CSG components' : 'native parts'}.</div>
       <div class="cadrows" id="cad-preview-rows" style="max-height:200px;overflow:auto;font-size:11px;border:1px solid var(--bdr);border-radius:4px;margin-bottom:8px">${rep.solids.map(cadRowHtml).join('')}</div>
-      ${(rep.overlaps || []).map(o => `<div class="cadwarn" style="font-size:11px;color:var(--warn);margin-bottom:4px">${esc(o.a)} and ${esc(o.b)} overlap${o.volume_cm3 ? ` by ${sci(o.volume_cm3)} cm³` : ''}. Studio gives the overlap to whichever is higher in the Explorer.</div>`).join('')}
+      ${(rep.overlaps || []).map(o => `<div class="cadwarn" style="font-size:11px;color:var(--${csg ? 'err' : 'warn'});margin-bottom:4px">${esc(o.a)} and ${esc(o.b)} overlap${o.volume_cm3 ? ` by ${sci(o.volume_cm3)} cm³` : ''}. ${csg ? "Imported CSG can't resolve overlaps yet: fix the CAD model, or import these solids as native parts." : 'Studio gives the overlap to whichever is higher in the Explorer.'}</div>`).join('')}
+      ${csg && !blocked ? '<div class="cadwarn" id="cad-new-project" style="font-size:11px;color:var(--warn);margin-bottom:4px">This replaces the current project\'s parts, groups and tallies with the imported geometry (materials, sources and settings stay). Undo brings the current project back.</div>' : ''}
       <div class="agrid" style="display:grid;grid-template-columns:80px 1fr;gap:6px;align-items:center;font-size:12px;margin:6px 0 8px">
-        <span style="font-weight:600">Group</span><input type="text" id="cad-group-name" value="${esc((f && f.name || 'CAD import').replace(/\.[^.]+$/, ''))}" style="padding:2px 4px">
+        <span style="font-weight:600">${csg ? 'Project' : 'Group'}</span><input type="text" id="cad-group-name" value="${esc((f && f.name || 'CAD import').replace(/\.[^.]+$/, ''))}" style="padding:2px 4px">
         <span style="font-weight:600">Material</span><select id="cad-material" style="padding:2px 4px"><option value="pending" selected>Choose later (runs are blocked until then)</option><option value="void">Void (empty space)</option>${mats}</select>
       </div>
       ${leaves.length ? `<label style="display:block;font-size:11.5px;margin-bottom:6px"><input type="checkbox" id="cad-grow-world" checked> Grow the world to fit (${leaves.length} part${leaves.length === 1 ? '' : 's'} reach past it now)</label>` : ''}
       ${om.length ? `<label style="display:block;font-size:11.5px;margin-bottom:6px;color:var(--warn)"><input type="checkbox" id="cad-allow-partial"> Import the ${acc.length} accepted solid${acc.length === 1 ? '' : 's'} and leave out the ${om.length} above (they're recorded with the project)</label>` : ''}`;
-    run = `Import ${acc.length} part${acc.length === 1 ? '' : 's'}`; runDisabled = !acc.length || om.length > 0;
+    run = csg ? `Import ${acc.length} component${acc.length === 1 ? '' : 's'}` : `Import ${acc.length} part${acc.length === 1 ? '' : 's'}`;
+    runDisabled = !acc.length || om.length > 0 || blocked;
   }
   const picker = st === 'pick' || st === 'inspecting' || st === 'unavailable';
   menu.innerHTML = `
@@ -3485,7 +3557,8 @@ function renderCadImport() {
   if (pick) pick.onclick = () => $('#cadFileInput').click();
   $('#cad-import-cancel').onclick = () => { menu.hidden = true; };
   const partial = $('#cad-allow-partial');
-  if (partial) partial.onchange = () => { $('#cad-import-run').disabled = !partial.checked; };
+  const blockedNow = st === 'preview' && CADIMPORT.mode === 'csg' && (rep.overlaps || []).length > 0;
+  if (partial) partial.onchange = () => { $('#cad-import-run').disabled = !partial.checked || blockedNow; };
   const runBtn = $('#cad-import-run');
   if (runBtn) runBtn.onclick = () => cadImportStep();
 }
@@ -3508,13 +3581,17 @@ async function cadImportStep() {
       CADIMPORT.inventory = await runCadJob({mode:'inspect', filename:f.name, data:CADIMPORT.bytes}, progress('Reading the file…'));
       set('inventory');
     } else if (st === 'inventory') {
-      set('converting', 'Recognizing and checking each solid…');
-      CADIMPORT.report = await runCadJob({mode:'native', filename:CADIMPORT.file.name, data:CADIMPORT.bytes},
-        progress('Recognizing and checking each solid…'));
+      const picked = document.querySelector('input[name="cad-mode"]:checked');
+      CADIMPORT.mode = picked && picked.value === 'csg' ? 'csg' : 'native';
+      const label = CADIMPORT.mode === 'csg' ? 'Converting each solid with GEOUNED and checking it…' : 'Recognizing and checking each solid…';
+      set('converting', label);
+      CADIMPORT.report = await runCadJob({mode:CADIMPORT.mode, filename:CADIMPORT.file.name, data:CADIMPORT.bytes}, progress(label));
       set('preview');
     } else if (st === 'preview') {
       const allow = $('#cad-allow-partial'), grow = $('#cad-grow-world');
-      commitCadImport(CADIMPORT.report, CADIMPORT.file.name, {
+      if (CADIMPORT.mode === 'csg') commitCsgImport(CADIMPORT.report, CADIMPORT.file.name, {
+        material:$('#cad-material').value, name:$('#cad-group-name').value.trim(), allowPartial:!!(allow && allow.checked)});
+      else commitCadImport(CADIMPORT.report, CADIMPORT.file.name, {
         material:$('#cad-material').value, groupName:$('#cad-group-name').value.trim(),
         allowPartial:!!(allow && allow.checked), growWorld:!!(grow && grow.checked)});
       menu.hidden = true;
@@ -3532,7 +3609,7 @@ async function openCadImportMenu(btn) {
   if (!menu.hidden && CADMENU.importBtn === btn) { menu.hidden = true; return; }
   CADMENU.importBtn = btn;
   CADMENU.selectedFile = null;
-  Object.assign(CADIMPORT, {file:null, bytes:null, inventory:null, report:null, status:'', reason:''});
+  Object.assign(CADIMPORT, {file:null, bytes:null, inventory:null, report:null, status:'', reason:'', mode:'native'});
   const r = btn.getBoundingClientRect();
   menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 420)) + 'px';
   menu.style.top = (r.bottom + 4) + 'px';
@@ -3955,6 +4032,13 @@ function renderTree() {
   }).join('') + S.groups.filter(g => !shown.has(g.id)).map(groupRow).join(''); // remaining groups
   h += group('parts', 'Geometry', S.parts.length + 1, 'Add sphere',
     partRows + item('world', undefined, ic('world', 14), 'World boundary', `${S.settings.worldShape} ${shortLen(S.settings.worldR)}`));
+  if (csgComponents().length) h += group('csg', 'Imported CAD', csgComponents().length, '',
+    csgComponents().map(k => {
+      const pending = k.cells.some(c => c.materialPending);
+      const mats = [...new Set(k.cells.map(c => c.material))];
+      return item('component', k.id, ic('cad', 14), k.name,
+        pending ? '⚠ needs material' : mats.length === 1 ? matName(mats[0]) : `${k.cells.length} cells`);
+    }).join(''));
   h += group('sources', 'Sources', S.sources.length, 'Add neutron source',
     S.sources.map((s, i) => item('source', s.id, ic('source', 14), s.name, s.group && groupById(s.group) ? `in ${groupById(s.group).name}` : energyMeta(s), {attrs:` data-idx="${i}"`})).join('') || empty('Add a source to run'));
   h += group('tallies', 'Tallies', S.tallies.length, 'Add cell tally',
@@ -4025,6 +4109,30 @@ function specFor(kind, o) {
     ]});
     return secs;
   }
+  if (kind === 'component') {
+    const imp = (S.imports || []).find(x => x.id === o.import) || {};
+    const types = [...new Set(o.surfaces.map(sf => sf.type))].join(', ');
+    const pending = o.cells.some(c => c.materialPending);
+    const all = {};  // one material for every cell at once
+    Object.defineProperty(all, 'material', {
+      get: () => { const m = [...new Set(o.cells.map(c => c.material))]; return m.length === 1 && !pending ? m[0] : ''; },
+      set: v => { if (v) o.cells.forEach(c => { c.material = v; delete c.materialPending; }); }
+    });
+    const secs = [{title:'Imported component', fields:[F('text', 'name', 'Name'),
+      note(`From <b>${esc(imp.file || 'a CAD file')}</b>: ${esc(o.source ? o.source.key : '')}. ${o.cells.length} cell${o.cells.length === 1 ? '' : 's'}, ${o.surfaces.length} surface${o.surfaces.length === 1 ? '' : 's'} (${esc(types)}).`),
+      note('The geometry is read-only: it is exactly the converted CAD solid, checked against it point by point. Move or resize it in the CAD file and import again.'),
+      ...(o.cells.length > 1 ? [F('material', 'material', 'All cells', {obj:all, hint:'Sets every cell of this component.'})] : []),
+      ...(pending ? [note('<b>Needs a material.</b> CAD files carry none, so runs are blocked until every cell has one.'),
+        {type:'buttons', btns:[['Keep as Void (empty space)', () => { HISTORY.boundary = true; o.cells.forEach(c => { if (c.materialPending) { c.material = 'void'; delete c.materialPending; } }); renderProps(); schedule(); }]]}] : []),
+      {type:'buttons', btns:[['Add a cell tally for it', () => addTally('cell')]]},
+    ]}];
+    secs.push({title:o.cells.length === 1 ? 'Cell' : 'Cells', fields:o.cells.map(c =>
+      F('material', 'material', c.name, {obj:c, hint:c.materialPending ? 'Needs a material.' : ''}))});
+    const d = o.display;
+    secs.push({title:'3D preview', fields:[note(!d ? 'No preview mesh came with this component; the 3D view says so. The slice view and the model are exact.'
+      : `A ${d.count.toLocaleString()}-triangle mesh of the CAD solid, for display only. The slice view and model.py use the exact regions.`)]});
+    return secs;
+  }
   if (kind === 'part') {
     const i = S.parts.indexOf(o), cyl = () => o.shape === 'cylinder', sph = () => o.shape === 'sphere', box = () => o.shape === 'box', wed = () => o.shape === 'wedge', hex = () => o.shape === 'hex_prism', con = () => o.shape === 'cone', ell = () => o.shape === 'ellipsoid';
     return [
@@ -4092,7 +4200,8 @@ function specFor(kind, o) {
   if (kind === 'tally') {
     const mesh = () => o.kind === 'mesh';
     const surf = () => o.kind === 'surface';
-    const cellOpts = () => S.parts.map(p => [p.id, p.name]).concat([['world', 'World']]);
+    const cellOpts = () => S.parts.map(p => [p.id, p.name])
+      .concat(csgCellList().map(({c}) => [c.id, `${c.name} (imported)`])).concat([['world', 'World']]);
     const partOpts = () => S.parts.map(p => [p.id, p.name]);
     const matOpts = () => [['', 'None (all materials)'], ...S.materials.map(m => [m.id, m.name])];
     const isDet = () => o.detector && o.detector !== 'none';
@@ -4277,7 +4386,7 @@ function fieldEl(f, obj) {
       b.addEventListener('click', () => openMatMenu(b, id => {
         HISTORY.boundary = true;
         obj[f.key] = id === 'auto' ? undefined : id;
-        if (f.key === 'material' && S.parts.includes(obj)) delete obj.materialPending;
+        if (f.key === 'material' && (S.parts.includes(obj) || (obj && obj.region))) delete obj.materialPending;
         renderProps(); schedule();
         const again = document.getElementById(fid); if (again) again.focus();
       }, { allowAuto: f.allowAuto }));
@@ -6662,6 +6771,8 @@ uniform float uCut;
 uniform float uCutAxis;
 uniform float uCutAt;
 uniform float uCutSide;
+uniform float uNear;
+uniform float uFar;
 uniform float uDepth;
 uniform float uTMax;
 
@@ -6671,6 +6782,13 @@ const float BIG = 1e9;
 const int MAX_CAND = 128;
 
 vec4 miss(vec3 bg) { return uDepth > 0.5 ? vec4(1.0) : vec4(bg, 1.0); }
+// Window depth of a hit t along the unit ray rd: the standard perspective mapping for
+// view depth z = t * dot(rd, uF), the same one the mesh pass uses for its triangles.
+float depthOf(float t, vec3 rd) {
+  float z = max(t * dot(rd, uF), uNear);
+  float ndc = (uFar + uNear) / (uFar - uNear) - 2.0 * uFar * uNear / ((uFar - uNear) * z);
+  return clamp(0.5 * ndc + 0.5, 0.0, 1.0);
+}
 
 // Fetch 4-component float vector from 1D texel address
 vec4 fetchTex1D(highp sampler2D tex, int addr, int texW) {
@@ -6884,6 +7002,7 @@ bool intersectBox(vec3 bmin, vec3 bmax, vec3 ro, vec3 invRd, float tMinLimit, fl
 }
 
 void main() {
+  gl_FragDepth = 1.0;  // a miss is at the far plane
   vec2 px = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
   vec3 rd = normalize(uF + uR * ((px.x - uRes.x * 0.5) / uFocal) - uU * ((px.y - uRes.y * 0.5) / uFocal));
   vec3 ro = uCam;
@@ -7013,6 +7132,7 @@ void main() {
       colRgb.z = fract(dCol.w); // Blue is stored in fraction
       float alphaFlag = floor(dCol.w);
       if (alphaFlag > 0.5) {
+        gl_FragDepth = depthOf(tc, rd);
         if (uDepth > 0.5) {
           float v = floor(clamp(tc / uTMax, 0.0, 1.0) * 16777214.0);
           fragColor = vec4(floor(v / 65536.0), mod(floor(v / 256.0), 256.0), mod(v, 256.0), 255.0) / 255.0;
@@ -7037,12 +7157,13 @@ void main() {
 function v3init() {
   if (V3.ok !== null) return V3.ok;
   const cv = $('#vp3');
-  const gl = cv.getContext('webgl2', {antialias:false, preserveDrawingBuffer:true});
+  const gl = cv.getContext('webgl2', {antialias:false, preserveDrawingBuffer:true, stencil:true});
   if (!gl) { V3.ok = false; V3.err = 'This browser does not support WebGL 2, which is required for the 3D view.'; return false; }
   const ext = gl.getExtension('EXT_color_buffer_float');
   const buf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+  V3.quad = buf;
 
   // Compile WebGL 2 shader program
   const mk = (type, src) => {
@@ -7058,9 +7179,28 @@ function v3init() {
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
 
     const names = ['uRes', 'uCam', 'uR', 'uU', 'uF', 'uFocal', 'uN', 'uBvhRoot', 'uPartTex', 'uBvhTex', 'uPartTexW', 'uBvhTexW',
-                   'uWorldR', 'uWorldSphere', 'uCut', 'uCutAxis', 'uCutAt', 'uCutSide', 'uDepth', 'uTMax'];
+                   'uWorldR', 'uWorldSphere', 'uCut', 'uCutAxis', 'uCutAt', 'uCutSide', 'uDepth', 'uTMax', 'uNear', 'uFar'];
     const loc = Object.fromEntries(names.map(n => [n, gl.getUniformLocation(prog, n)]));
     V3.prog = prog; V3.loc = loc;
+    // Imported CAD components: kernel meshes rasterized with the same camera and depth.
+    const mprog = gl.createProgram();
+    gl.attachShader(mprog, mk(gl.VERTEX_SHADER, MESH_VS));
+    gl.attachShader(mprog, mk(gl.FRAGMENT_SHADER, MESH_FS));
+    gl.linkProgram(mprog);
+    if (!gl.getProgramParameter(mprog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(mprog));
+    V3.meshProg = mprog;
+    V3.meshLoc = Object.fromEntries(['uCam', 'uR', 'uU', 'uF', 'uFocal', 'uRes', 'uNear', 'uFar', 'uColor', 'uSel', 'uDepth', 'uTMax',
+      'uCut', 'uCutAxis', 'uCutAt', 'uCutSide', 'uParity'].map(n => [n, gl.getUniformLocation(mprog, n)]));
+    const cprog = gl.createProgram();
+    gl.attachShader(cprog, mk(gl.VERTEX_SHADER, '#version 300 es\nin vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }'));
+    gl.attachShader(cprog, mk(gl.FRAGMENT_SHADER, CAP_FS));
+    gl.linkProgram(cprog);
+    if (!gl.getProgramParameter(cprog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(cprog));
+    V3.capProg = cprog;
+    V3.capLoc = Object.fromEntries(['uRes', 'uCam', 'uR', 'uU', 'uF', 'uColor', 'uFocal', 'uNear', 'uFar', 'uCutAxis', 'uCutAt', 'uDepth', 'uTMax', 'uSel']
+      .map(n => [n, gl.getUniformLocation(cprog, n)]));
+    V3.meshAttr = gl.getAttribLocation(mprog, 'aPos');
+    V3.meshBufs = new Map();
   } catch (e) {
     V3.ok = false; V3.err = `The 3D view couldn't start: ${e.message}`; return false;
   }
@@ -7092,6 +7232,203 @@ function partUniform(p) { // center, frame columns, dimensions, type
   return {c:[p.x, p.y, p.z], cols, dims, type};
 }
 
+const MESH_VS = `#version 300 es
+in vec3 aPos;
+uniform vec3 uCam, uR, uU, uF;
+uniform float uFocal, uNear, uFar;
+uniform vec2 uRes;
+out vec3 vPos;
+void main() {
+  vec3 d = aPos - uCam;
+  float z = dot(d, uF);
+  vPos = aPos;
+  gl_Position = vec4(dot(d, uR) * 2.0 * uFocal / uRes.x, dot(d, uU) * 2.0 * uFocal / uRes.y,
+                     (uFar + uNear) / (uFar - uNear) * z - 2.0 * uFar * uNear / (uFar - uNear), z);
+}`;
+const MESH_FS = `#version 300 es
+precision highp float;
+in vec3 vPos;
+uniform vec3 uCam, uColor;
+uniform float uSel, uDepth, uTMax, uCut, uCutAxis, uCutAt, uCutSide, uParity;
+out vec4 fragColor;
+void main() {
+  float c = uCutAxis < 0.5 ? vPos.x : (uCutAxis < 1.5 ? vPos.y : vPos.z);
+  if (uCut > 0.5 && (c - uCutAt) * uCutSide > 0.0) discard;   // the cut-away half, as in the ray tracer
+  if (uParity > 0.5) { fragColor = vec4(0.0); return; }          // stencil counting only
+  if (uDepth > 0.5) {
+    float v = floor(clamp(length(vPos - uCam) / uTMax, 0.0, 1.0) * 16777214.0);
+    fragColor = vec4(floor(v / 65536.0), mod(floor(v / 256.0), 256.0), mod(v, 256.0), 255.0) / 255.0;
+    return;
+  }
+  vec3 n = normalize(cross(dFdx(vPos), dFdy(vPos)));
+  vec3 col = gl_FrontFacing ? uColor * (0.30 + 0.70 * abs(dot(n, normalize(vPos - uCam)))) : uColor * 0.6;
+  if (uSel > 0.5) col = mix(col, vec3(0.32, 0.72, 1.0), 0.28);
+  fragColor = vec4(col, 1.0);
+}`;
+// The cap of a cut-open component: the cut plane, drawn only where the stencil parity
+// says the plane lies inside that component's (closed) mesh.
+const CAP_FS = `#version 300 es
+precision highp float;
+uniform vec2 uRes;
+uniform vec3 uCam, uR, uU, uF, uColor;
+uniform float uFocal, uNear, uFar, uCutAxis, uCutAt, uDepth, uTMax, uSel;
+out vec4 fragColor;
+float ax(vec3 v) { return uCutAxis < 0.5 ? v.x : (uCutAxis < 1.5 ? v.y : v.z); }
+void main() {
+  vec2 px = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+  vec3 rd = normalize(uF + uR * ((px.x - uRes.x * 0.5) / uFocal) - uU * ((px.y - uRes.y * 0.5) / uFocal));
+  float da = ax(rd);
+  if (abs(da) < 1e-12) discard;
+  float t = (uCutAt - ax(uCam)) / da;
+  if (t <= 0.0) discard;
+  vec3 p = uCam + rd * t;
+  float z = max(dot(p - uCam, uF), uNear);
+  gl_FragDepth = clamp(0.5 * ((uFar + uNear) / (uFar - uNear) - 2.0 * uFar * uNear / ((uFar - uNear) * z)) + 0.5, 0.0, 1.0);
+  if (uDepth > 0.5) {
+    float v = floor(clamp(t / uTMax, 0.0, 1.0) * 16777214.0);
+    fragColor = vec4(floor(v / 65536.0), mod(floor(v / 256.0), 256.0), mod(v, 256.0), 255.0) / 255.0;
+    return;
+  }
+  vec3 col = uColor * 0.82 + 0.05;
+  if (uSel > 0.5) col = mix(col, vec3(0.32, 0.72, 1.0), 0.28);
+  fragColor = vec4(col, 1.0);
+}`;
+const CSG_LIMITS = {triangles:400000};  // 3D preview budget; over it, a visible notice and no preview
+// Which components can be drawn in 3D, and why the others can't. Never silent: the
+// 3D view prints every reason on screen.
+function csgPreviewPlan() {
+  const ok = [], problems = [];
+  let total = 0;
+  csgComponents().forEach(k => {
+    const d = k.display, imp = (S.imports || []).find(x => x.id === k.import) || {};
+    if (!d || !Array.isArray(d.positions_cm) || !Array.isArray(d.triangles)) { problems.push(`${k.name}: no preview mesh`); return; }
+    if (d.conversion !== `${imp.sha256}|${k.source && k.source.key}`) { problems.push(`${k.name}: its preview mesh belongs to another conversion`); return; }
+    const P = d.positions_cm, b = k.bounds, tol = 0.02 * Math.hypot(b[3] - b[0], b[4] - b[1], b[5] - b[2]) + 1e-9;
+    for (let i = 0; i < P.length; i += 3) {
+      if (P[i] < b[0] - tol || P[i] > b[3] + tol || P[i + 1] < b[1] - tol || P[i + 1] > b[4] + tol || P[i + 2] < b[2] - tol || P[i + 2] > b[5] + tol) {
+        problems.push(`${k.name}: its preview mesh doesn't fit the component`); return;
+      }
+    }
+    total += d.triangles.length / 3;
+    ok.push(k);
+  });
+  if (total > CSG_LIMITS.triangles) return {draw:[], total, problems:[`The imported geometry needs ${total.toLocaleString()} triangles for the 3D preview (limit ${CSG_LIMITS.triangles.toLocaleString()}), so none of it is drawn here`, ...problems]};
+  return {draw:ok, total, problems};
+}
+function csgMeshBuffer(gl, k) {
+  const d = k.display, key = `${d.conversion}|${d.count}|${d.positions_cm.length}`;
+  let m = V3.meshBufs.get(k.id);
+  if (m && m.key === key) return m;
+  if (m) { gl.deleteBuffer(m.vbo); gl.deleteBuffer(m.ibo); }
+  const vbo = gl.createBuffer(), ibo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(d.positions_cm), gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(d.triangles), gl.STATIC_DRAW);
+  m = {key, vbo, ibo, n:d.triangles.length};
+  V3.meshBufs.set(k.id, m);
+  return m;
+}
+function drawCsgMeshes(gl, B, plan, depthMode, u) {
+  if (!plan.draw.length) return;
+  const L = V3.meshLoc;
+  gl.useProgram(V3.meshProg);
+  gl.uniform3fv(L.uCam, B.pos); gl.uniform3fv(L.uR, B.r); gl.uniform3fv(L.uU, B.u); gl.uniform3fv(L.uF, B.f);
+  gl.uniform1f(L.uFocal, u.focal); gl.uniform2f(L.uRes, u.w, u.h); gl.uniform1f(L.uNear, u.near); gl.uniform1f(L.uFar, u.far);
+  gl.uniform1f(L.uDepth, depthMode ? 1 : 0); gl.uniform1f(L.uTMax, u.tmax);
+  gl.uniform1f(L.uCut, u.cut); gl.uniform1f(L.uCutAxis, u.cutAxis); gl.uniform1f(L.uCutAt, u.cutAt); gl.uniform1f(L.uCutSide, u.cutSide);
+  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
+  gl.uniform1f(L.uParity, 0);
+  const rgbOf = k => {
+    const cells = k.cells, pending = cells.some(c => c.materialPending);
+    const mats = [...new Set(cells.map(c => c.material))], mat = mats.length === 1 ? matById(mats[0]) : null;
+    return pending ? PENDING_RGB : mat ? hexRgb(mat.color) : mats.length === 1 ? [70, 76, 84] : [150, 150, 150];
+  };
+  const drawMesh = k => {
+    const m = csgMeshBuffer(gl, k);
+    gl.bindBuffer(gl.ARRAY_BUFFER, m.vbo);
+    gl.enableVertexAttribArray(V3.meshAttr);
+    gl.vertexAttribPointer(V3.meshAttr, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, m.ibo);
+    gl.drawElements(gl.TRIANGLES, m.n, gl.UNSIGNED_INT, 0);
+  };
+  plan.draw.forEach(k => {
+    const rgb = rgbOf(k);
+    gl.uniform3f(L.uColor, rgb[0] / 255, rgb[1] / 255, rgb[2] / 255);
+    gl.uniform1f(L.uSel, sel.kind === 'component' && sel.id === k.id ? 1 : 0);
+    drawMesh(k);
+  });
+  if (u.cut) {
+    // Caps: for each component, a point of the cut plane is inside it exactly when the
+    // view ray crosses its kept surfaces an odd number of times (it is a closed mesh).
+    const C = V3.capLoc;
+    gl.enable(gl.STENCIL_TEST);
+    plan.draw.forEach(k => {
+      gl.useProgram(V3.meshProg);
+      gl.uniform1f(L.uParity, 1);
+      gl.clear(gl.STENCIL_BUFFER_BIT);
+      gl.colorMask(false, false, false, false); gl.depthMask(false); gl.disable(gl.DEPTH_TEST);
+      gl.stencilFunc(gl.ALWAYS, 0, 1); gl.stencilOp(gl.KEEP, gl.KEEP, gl.INVERT);
+      drawMesh(k);
+      gl.uniform1f(L.uParity, 0);
+      gl.colorMask(true, true, true, true); gl.depthMask(true); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
+      gl.stencilFunc(gl.EQUAL, 1, 1); gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
+      gl.disableVertexAttribArray(V3.meshAttr);
+      gl.useProgram(V3.capProg);
+      gl.bindBuffer(gl.ARRAY_BUFFER, V3.quad);
+      const pl = gl.getAttribLocation(V3.capProg, 'p');
+      gl.enableVertexAttribArray(pl);
+      gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 0, 0);
+      const rgb = rgbOf(k);
+      gl.uniform2f(C.uRes, u.w, u.h); gl.uniform3fv(C.uCam, B.pos); gl.uniform3fv(C.uR, B.r); gl.uniform3fv(C.uU, B.u); gl.uniform3fv(C.uF, B.f);
+      gl.uniform3f(C.uColor, rgb[0] / 255, rgb[1] / 255, rgb[2] / 255); gl.uniform1f(C.uFocal, u.focal);
+      gl.uniform1f(C.uNear, u.near); gl.uniform1f(C.uFar, u.far); gl.uniform1f(C.uCutAxis, u.cutAxis); gl.uniform1f(C.uCutAt, u.cutAt);
+      gl.uniform1f(C.uDepth, depthMode ? 1 : 0); gl.uniform1f(C.uTMax, u.tmax);
+      gl.uniform1f(C.uSel, sel.kind === 'component' && sel.id === k.id ? 1 : 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      gl.disableVertexAttribArray(pl);
+    });
+    gl.disable(gl.STENCIL_TEST);
+  }
+  gl.disableVertexAttribArray(V3.meshAttr);
+  // Back to the ray tracer's full-screen quad for the next pass.
+  gl.useProgram(V3.prog);
+  gl.bindBuffer(gl.ARRAY_BUFFER, V3.quad);
+  const pl = gl.getAttribLocation(V3.prog, 'p');
+  gl.enableVertexAttribArray(pl);
+  gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 0, 0);
+}
+// Nearest imported component under the pointer in 3D: ray against its preview mesh,
+// skipping the cut-away half. {id, t} or null.
+function pickComponent3(px, py) {
+  if (!V3.geom) return null;
+  const {B} = V3.geom, rd = rayFor(B, px, py), ro = B.pos, plan = csgPreviewPlan();
+  const cut = $('#cutaway').checked, ax = {xy:2, xz:1, yz:0}[view.plane], side = B.pos[ax] >= view.slice ? 1 : -1;
+  let best = null;
+  plan.draw.forEach(k => {
+    const b = k.bounds;
+    let t0 = 0, t1 = Infinity;
+    for (let i = 0; i < 3; i++) {
+      const inv = 1 / (rd[i] || 1e-30), a = (b[i] - ro[i]) * inv, c = (b[i + 3] - ro[i]) * inv;
+      t0 = Math.max(t0, Math.min(a, c)); t1 = Math.min(t1, Math.max(a, c));
+    }
+    if (t0 > t1) return;
+    const P = k.display.positions_cm, T = k.display.triangles;
+    for (let i = 0; i < T.length; i += 3) {
+      const a = T[i] * 3, bb = T[i + 1] * 3, cc = T[i + 2] * 3;
+      const e1 = [P[bb] - P[a], P[bb + 1] - P[a + 1], P[bb + 2] - P[a + 2]], e2 = [P[cc] - P[a], P[cc + 1] - P[a + 1], P[cc + 2] - P[a + 2]];
+      const h = v3cross(rd, e2), det = v3dot(e1, h);
+      if (Math.abs(det) < 1e-18) continue;
+      const f = 1 / det, s0 = [ro[0] - P[a], ro[1] - P[a + 1], ro[2] - P[a + 2]], uu = f * v3dot(s0, h);
+      if (uu < 0 || uu > 1) continue;
+      const q = v3cross(s0, e1), vv = f * v3dot(rd, q);
+      if (vv < 0 || uu + vv > 1) continue;
+      const t = f * v3dot(e2, q);
+      if (!(t > 1e-9) || (best && t >= best.t)) continue;
+      if (cut && (ro[ax] + rd[ax] * t - view.slice) * side > 0) continue;
+      best = {id:k.id, t};
+    }
+  });
+  return best;
+}
 function draw3D() {
   const wrap = $('#vpwrap'), W = wrap.clientWidth, H = wrap.clientHeight, cv = $('#vp3'), ov = $('#vp3o');
   if (!W || !H) return;
@@ -7184,23 +7521,31 @@ function draw3D() {
   gl.uniform1f(L.uCutAt, view.slice);
   const cutAx = {xy:2, xz:1, yz:0}[view.plane], cutSide = B.pos[cutAx] >= view.slice ? 1 : -1;
   gl.uniform1f(L.uCutSide, cutSide);
+  const near = Math.max(CAM.dist * 1e-3, 1e-6);
 
   const res = LOCAL.results;
   const meshT = res && $('#showMesh').checked ? res.tallies.filter(x => x.kind === 'mesh')[+($('#meshPick').value || 0)] : null;
   const showTr = !!(res && res.tracks.length && $('#showTracks').checked);
   const tmax = Math.hypot(...B.pos) + 2 * Math.sqrt(3) * (S.settings.worldR || 100);
   gl.uniform1f(L.uTMax, tmax);
+  gl.uniform1f(L.uNear, near); gl.uniform1f(L.uFar, tmax);
+  const plan = csgPreviewPlan();
+  const mu = {focal:B.focal * scale, w:cv.width, h:cv.height, near, far:tmax, tmax, cut:cut ? 1 : 0, cutAxis:cutAx, cutAt:view.slice, cutSide};
+  const quad = () => { gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.ALWAYS); gl.clear(gl.DEPTH_BUFFER_BIT); gl.drawArrays(gl.TRIANGLES, 0, 6); };
   V3.depth = null;
   if (meshT || showTr) {
     gl.uniform1f(L.uDepth, 1);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    quad();
+    drawCsgMeshes(gl, B, plan, true, mu);
     const n = 4 * cv.width * cv.height;
     if (!V3.depthBuf || V3.depthBuf.length !== n) V3.depthBuf = new Uint8Array(n);
     gl.readPixels(0, 0, cv.width, cv.height, gl.RGBA, gl.UNSIGNED_BYTE, V3.depthBuf);
     V3.depth = {buf:V3.depthBuf, w:cv.width, h:cv.height, tmax};
   }
   gl.uniform1f(L.uDepth, 0);
-  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  quad();
+  drawCsgMeshes(gl, B, plan, false, mu);
+  gl.disable(gl.DEPTH_TEST);
 
   const P = p => project3(B, p);
   const line = (a, b) => { const A = P(a), C = P(b); if (!fin(A[0]) || !fin(C[0])) return; ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(C[0], C[1]); ctx.stroke(); };
@@ -7216,6 +7561,16 @@ function draw3D() {
     for (const y of c) for (const z of c) line([-R, y, z], [R, y, z]);
   }
   ctx.setLineDash([]);
+  if (plan.problems.length) {
+    ctx.font = '12px "IBM Plex Sans", system-ui, sans-serif';
+    const lines = ['3D preview of imported CAD geometry:', ...plan.problems.slice(0, 5), ...(plan.problems.length > 5 ? [`… and ${plan.problems.length - 5} more`] : []),
+      'The slice view and model.py use the exact regions either way.'];
+    const w = Math.max(...lines.map(t => ctx.measureText(t).width)) + 20;
+    ctx.fillStyle = 'rgba(40,20,36,.88)'; ctx.fillRect(12, 12, w, lines.length * 17 + 10);
+    ctx.fillStyle = '#f0c6e6';
+    lines.forEach((t, i) => ctx.fillText(t, 22, 30 + i * 17));
+    V3.previewNotice = lines;
+  } else V3.previewNotice = null;
   // flux map on the slice plane, then tracks
   if (meshT) drawMesh3D(ctx, B, meshT, W, H);
   if (showTr) drawTracks3D(ctx, B, res);
@@ -7554,7 +7909,7 @@ function pick3(px, py) {
     let tn = tB;
     iv.forEach(v => { if (v[0] > tc + 1e-9 && v[0] < tn) tn = v[0]; if (v[1] > tc + 1e-9 && v[1] < tn) tn = v[1]; });
     const tm = (tc + tn) / 2, hit = iv.find(v => v[0] < tm && tm < v[1]);
-    if (hit && matById(S.parts[hit[2]].material)) return hit[2];
+    if (hit && matById(S.parts[hit[2]].material)) { V3.pickT = tc; return hit[2]; }
     tc = tn;
   }
   return -1;
@@ -7609,9 +7964,12 @@ function drawViewport() {
   const scale = Math.min(W, H) / (2 * R * 1.14) * view.zoom, cx = W / 2, cy = H / 2;
   vpGeom = {W, H, scale, cx, cy};
 
-  const img = new ImageData(W, H), px = img.data, idx = new Int16Array(W * H);
+  const cells = csgCellList(), nParts = S.parts.length;
+  const idx = new Int32Array(W * H);  // part index, then imported cells after the parts
+  const img = new ImageData(W, H), px = img.data;
   const edges = new ImageData(W, H), ex = edges.data; // outlines only, redrawn above result overlays
-  const colors = S.parts.map(p => { const m = matById(p.material); return m ? hexRgb(m.color) : [34, 39, 45]; });
+  const colors = S.parts.map(p => { const m = matById(p.material); return m ? hexRgb(m.color) : [34, 39, 45]; })
+    .concat(cells.map(({c}) => csgCellRgb(c)));
   const fillM = matById(S.settings.worldFill), worldRgb = fillM ? hexRgb(fillM.color) : [30, 34, 39], outside = [14, 16, 19];
   // Same answer as cellIndexAt, but each pixel only tests parts that cross the slice plane and whose bounding
   // box covers it (a model like a graphite pile with 130 apertures is otherwise seconds per frame).
@@ -7622,6 +7980,14 @@ function drawViewport() {
     if (!(c[wA] - h[wA] <= view.slice && view.slice <= c[wA] + h[wA])) return;
     cand.push({p, k, M:p.shape === 'sphere' ? null : partFrame(p).M, ulo:c[uA] - h[uA], uhi:c[uA] + h[uA], vlo:c[vA] - h[vA], vhi:c[vA] + h[vA]});
   });
+  // Imported components that cross the slice, with where their cells start in idx.
+  const csgCand = [];
+  { let first = nParts;
+    csgComponents().forEach(k => {
+      const b = k.bounds, lo = [b[0], b[1], b[2]], hi = [b[3], b[4], b[5]];
+      if (lo[wA] <= view.slice && view.slice <= hi[wA]) csgCand.push({k, first, table:csgTable(k), ulo:lo[uA], uhi:hi[uA], vlo:lo[vA], vhi:hi[vA]});
+      first += k.cells.length;
+    }); }
   const inPart = ({p, M}, x, y, z) => {
     const dx = x - p.x, dy = y - p.y, dz = z - p.z;
     if (!M) return dx * dx + dy * dy + dz * dz < p.r * p.r;
@@ -7645,16 +8011,25 @@ function drawViewport() {
   };
   for (let j = 0; j < H; j++) {
     const v = (cy - j - 0.5) / scale, row = cand.filter(q => q.vlo <= v && v <= q.vhi);
+    const crow = csgCand.filter(q => q.vlo <= v && v <= q.vhi);
     for (let i = 0; i < W; i++) {
       const u = (i + 0.5 - cx) / scale, [x, y, z] = toWorld(u, v);
       let hit = -1;
       if (!inWorld(x, y, z)) hit = -2;
       else for (let n = 0; n < row.length; n++) { const q = row[n]; if (u >= q.ulo && u <= q.uhi && inPart(q, x, y, z)) { hit = q.k; break; } }
+      if (hit === -1) for (let n = 0; n < crow.length && hit === -1; n++) {
+        const q = crow[n];
+        if (u < q.ulo || u > q.uhi) continue;
+        const kc = q.k.cells;
+        for (let m = 0; m < kc.length; m++) if (csgIn(kc[m].region, q.table, x, y, z)) { hit = q.first + m; break; }
+      }
       idx[j * W + i] = hit;
     }
   }
   const selIdx = new Set(selItems().filter(x => x.kind === 'part').map(x => S.parts.indexOf(x.o)));
   if (sel.kind === 'world') selIdx.add(-1);
+  if (sel.kind === 'component') cells.forEach(({k}, n) => { if (k.id === sel.id) selIdx.add(nParts + n); });
+  const isVoid = c => c >= 0 && (c < nParts ? S.parts[c].material === 'void' : cells[c - nParts].c.material === 'void' && !cells[c - nParts].c.materialPending);
   for (let k = 0; k < W * H; k++) {
     const c = idx[k], col = c >= 0 ? colors[c] : c === -1 ? worldRgb : outside, o = k * 4;
     let r = col[0], g = col[1], b = col[2];
@@ -7663,7 +8038,8 @@ function drawViewport() {
     const edge = c !== right || c !== down;
     if (selIdx.has(c) && (c !== right || c !== down || c !== left || c !== up)) { r = 82; g = 184; b = 255; ex[o] = r; ex[o + 1] = g; ex[o + 2] = b; ex[o + 3] = 255; }
     else if (edge) { r = r * .35 + 235 * .65; g = g * .35 + 238 * .65; b = b * .35 + 242 * .65; ex[o] = 225; ex[o + 1] = 230; ex[o + 2] = 236; ex[o + 3] = 170; }
-    else if (c >= 0 && S.parts[c].material === 'void') { const stripe = ((i + Math.floor(k / W)) % 7) === 0; if (stripe) { r += 14; g += 16; b += 18; } }
+    else if (isVoid(c)) { const stripe = ((i + Math.floor(k / W)) % 7) === 0; if (stripe) { r += 14; g += 16; b += 18; } }
+    else if (c >= nParts && cells[c - nParts].c.materialPending) { const stripe = ((i - Math.floor(k / W)) % 6 + 6) % 6 === 0; if (stripe) { r += 40; g += 30; b += 40; } }
     px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = 255;
   }
   const off = document.createElement('canvas'); off.width = W; off.height = H;
@@ -8043,8 +8419,10 @@ $('#vp3o').addEventListener('pointermove', e => {
   const hh = (V3.handles || []).length ? hitHandle(V3.handles, mx, my) : null, key = hh ? hh.key : null;
   if (key !== THOVER) { THOVER = key; $('#vp3o').style.cursor = hh ? (hh.type === 'ring' ? 'grab' : 'move') : 'grab'; schedule(); }
   if (V3.geom) {
-    const i = pick3(mx, my);
-    $('#readout').textContent = i >= 0 ? `${S.parts[i].name} (${(matById(S.parts[i].material) || {name:'void'}).name})` : '3D view · drag to orbit';
+    V3.pickT = Infinity;
+    const i = pick3(mx, my), tPart = i >= 0 ? V3.pickT : Infinity, kc = pickComponent3(mx, my);
+    const k = kc && kc.t < tPart ? csgComponents().find(x => x.id === kc.id) : null;
+    $('#readout').textContent = k ? `${k.name} (imported)` : i >= 0 ? `${S.parts[i].name} (${(matById(S.parts[i].material) || {name:'void'}).name})` : '3D view · drag to orbit';
   }
 });
 $('#vp3o').addEventListener('pointerup', e => {
@@ -8058,7 +8436,9 @@ $('#vp3o').addEventListener('pointerup', e => {
   const src = (V3.sources || []).find(q => Math.hypot(q.X - mx, q.Y - my) < 10);
   if (src) { selectFromView('source', src.id, e); return; }
   if (pickTrack3(mx, my)) return;
-  const i = pick3(mx, my);
+  V3.pickT = Infinity;
+  const i = pick3(mx, my), tPart = i >= 0 ? V3.pickT : Infinity, k = pickComponent3(mx, my);
+  if (k && k.t < tPart) { select('component', k.id); return; }
   if (i >= 0) selectFromView('part', S.parts[i].id, e);
 });
 $('#vp3o').addEventListener('pointercancel', () => { if (V3.drag && V3.drag.mode === 'tool') endTransform(true); V3.drag = null; });
@@ -8085,6 +8465,7 @@ $('#vp').addEventListener('pointermove', e => {
   const h = hitAt(e); if (!h) return;
   const what = h.src ? S.sources.find(s => s.id === h.src.id).name
     : h.cell === -2 ? 'outside the world' : h.cell === -1 ? `World (${(matById(S.settings.worldFill) || {name:'void'}).name})`
+    : h.cell >= S.parts.length ? (x => `${x.c.name} (${x.c.materialPending ? 'needs material' : (matById(x.c.material) || {name:'void'}).name}), imported`)(csgCellList()[h.cell - S.parts.length])
     : `${S.parts[h.cell].name} (${(matById(S.parts[h.cell].material) || {name:'void'}).name})`;
   const dp = imperial() ? 2 : 1;
   $('#readout').textContent = `x ${(+toShown(h.x)).toFixed(dp)}  y ${(+toShown(h.y)).toFixed(dp)}  z ${(+toShown(h.z)).toFixed(dp)} ${lenUnit()} · ${what}`;
@@ -8094,6 +8475,7 @@ $('#vp').addEventListener('click', e => {
   const h = hitAt(e); if (!h) return;
   if (pickTrack(e)) return;
   if (h.src) selectFromView('source', h.src.id, e);
+  else if (h.cell >= S.parts.length) select('component', csgCellList()[h.cell - S.parts.length].k.id);
   else if (h.cell >= 0) selectFromView('part', S.parts[h.cell].id, e);
   else if (h.cell === -1) select('world');
 });

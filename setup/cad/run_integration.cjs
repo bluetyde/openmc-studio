@@ -1,4 +1,4 @@
-// The CAD integration job (stage 5 of docs/cad-import-plan.md): every CAD suite, in order,
+// The CAD integration job (stage 5 of docs/design/cad-import-plan.md): every CAD suite, in order,
 // against the real engines. It exits 0 ONLY if every suite ran and passed with nothing
 // skipped. A missing tool is a failure, not a skip: this job can't pass by skipping.
 //

@@ -2,14 +2,14 @@
 
 Status: Staged implementation plan. Prepared 2026-09-22 against Studio f515d40.
 Progress 2026-09-23: stage 0 implemented and validated on four real WSL fixtures;
-see [setup and findings](../setup/cad/README.md). Stage 1 (job infrastructure)
-implemented and gated; see [CAD conversion](cad-conversion.md#conversion-jobs-stage-1).
+see [setup and findings](../../setup/cad/README.md). Stage 1 (job infrastructure)
+implemented and gated; see [CAD conversion](../cad-conversion.md#conversion-jobs-stage-1).
 Stage 2 (native STEP import) implemented and gated; see
-[CAD conversion](cad-conversion.md#importing-step-as-native-parts-stage-2). Stage 3 (CSG data model)
-implemented and gated; see [CAD conversion](cad-conversion.md#analytical-csg-components-stage-3).
+[CAD conversion](../cad-conversion.md#importing-step-as-native-parts-stage-2). Stage 3 (CSG data model)
+implemented and gated; see [CAD conversion](../cad-conversion.md#analytical-csg-components-stage-3).
 Stage 4 (general-CSG workflow) implemented and gated. Stage 5 (MCNP parity, integration
 job, clean-machine install, platform matrix) implemented and gated; see
-[CAD conversion](cad-conversion.md#mcnp-parity-and-packaging-stage-5). Remaining outside the
+[CAD conversion](../cad-conversion.md#mcnp-parity-and-packaging-stage-5). Remaining outside the
 plan's gates: IGES and further native shapes. Continuous integration is the local job
 (`node setup/cad/run_integration.cjs`), run before merging CAD work; there is deliberately no
 hosted CI workflow (maintainer decision, 2026-09-24).

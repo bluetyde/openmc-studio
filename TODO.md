@@ -229,9 +229,10 @@ and the MCNP lattice work; fixes listed under Completed).
     nothing skipped, 30-minute per-suite timeout. Clean-machine check: the lock installed from an empty package
     cache (1 min 53 s) passes all 17 suites (6.0 min); `test/test_cad_restart_e2e.cjs` checks restart. Platform
     matrix in docs/cad-conversion.md: Linux x86-64 / WSL2 verified; native Windows unsupported; macOS and arm64
-    not validated. **Not done:** a hosted CI workflow - running the job on GitHub Actions needs a decision on
-    Actions minutes for a private repo, a token for the private companion repo and a nuclear-data cache;
-    IGES and further native shapes remain later work.
+    not validated. **CI decision (2026-09-24):** no hosted CI workflow. The integration job runs locally before
+    merging CAD work; it needs no accounts or secrets, so anyone who installs the lock env can run it (a hosted
+    run would also be unable to fetch the private companion repo on fork pull requests). IGES and further
+    native shapes remain later work.
   - [x] **Git policy:** track adapter code, recipes/locks, documentation and small public fixtures. Keep CAD
     engines/environments, user uploads, caches, debug solids, logs and conversion scratch outside Git.
     Add narrow fixture exceptions for IGES/B-Rep and expected XML currently hidden by broad ignores;

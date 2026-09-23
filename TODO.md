@@ -178,10 +178,21 @@ and the MCNP lattice work; fixes listed under Completed).
     (12, real HTTP server) and `test/test_cad_jobs_engine.py` (4, real FreeCAD/GEOUNED; fails, never skips,
     without the engine). Diagnostics are per job (worker's own error plus a bounded log tail); **per-solid**
     diagnostics move to stage 2, which adds the multi-solid STEP inventory they depend on.
-  - [ ] **Stage 2 — native STEP import:** inventory every solid in a STEP file with per-solid diagnostics
+  - [x] **Stage 2 — native STEP import:** inventory every solid in a STEP file with per-solid diagnostics
     (validity, closure, surface types, bounds, source names); recognize boxes, spheres, capped cylinders and cones; rebuild and
     compare solids, preserve units/rotations, assign unique IDs and require explicit material mapping.
     Preview omissions before any partial import; commit as one undoable action. Test save/reload.
+    Delivered: `cad/read.py` (FreeCAD reader, stable keys for duplicate labels and repeated instances, flat-read
+    cross-check), `cad/primitives.py` (support-surface recognition, scale-aware tolerances), `cad/validate.py`
+    (rebuild through Studio's own part mapping; bounds, symmetric difference, boundary distances, band-aware point
+    probes, all in a local frame), `cad/report.py` (every solid accepted/rejected/failed, overlaps), `inspect` and
+    `native` job modes, and **Convert > Import CAD…**: engine probe, inventory, mode choice (CSG shown, disabled),
+    preview, explicit partial import, one-step undo, pending materials that block runs until chosen (or Void on
+    purpose), import records kept in the project. Tests: `test/test_cad_native_engine.py` (34 FreeCAD-written cases
+    + 5 files from an independent non-OCCT writer, units mm/cm/m/inch, 12 near misses, assemblies, teeth check),
+    `test/test_cad_import_browser.cjs` (9 workflow checks on real engine reports) and `test/test_cad_import_e2e.cjs`
+    (real browser + server + FreeCAD: import, save, reopen). Not done here, by design: wedge/hex-prism/ellipsoid
+    recognition (needs its own independent fixtures), a conversion cache with a clear-cache action (stage 5).
   - [ ] **Stage 3 — analytical CSG model:** call GEOUNED's real conversion API, parse OpenMC XML as data,
     add versioned surfaces/region trees and preserve source-to-cell identity. Resolve world/void ownership
     and overlaps; never execute generated Python or silently discard unsupported surfaces.

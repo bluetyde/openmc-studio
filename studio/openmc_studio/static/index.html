@@ -398,7 +398,7 @@ input[type=checkbox]{accent-color:var(--accent)}
 <div class="menu" id="stlMenu" hidden role="dialog" aria-label="Export 3D STL"></div>
 <div class="menu" id="cadImportMenu" hidden role="dialog" aria-label="Import CAD Model"></div>
 <div class="menu" id="cadExportMenu" hidden role="dialog" aria-label="Export CSG to CAD STEP"></div>
-<input type="file" id="cadFileInput" accept=".step,.stp,.iges,.igs" style="display:none">
+<input type="file" id="cadFileInput" accept=".step,.stp" style="display:none">
 <div class="dropline" id="dropLine" hidden></div>
 <script>
 "use strict";
@@ -898,6 +898,8 @@ function sampleModel() {
 const STORE_KEY = 'openmc-studio-v1';
 function normalizeProject(o) { // fill fields added in later versions
   o.settings = {...DEFAULT_SETTINGS, ...o.settings};
+  o.imports = Array.isArray(o.imports) ? o.imports : [];
+  (o.parts || []).forEach(p => { if (p.materialPending !== true) delete p.materialPending; });
   o.settings.photonCutoff = Number.isFinite(o.settings.photonCutoff) ? o.settings.photonCutoff : 1000;
   o.settings.temperatureDefault = Number.isFinite(o.settings.temperatureDefault) ? o.settings.temperatureDefault : 293.6;
   o.settings.temperatureMethod = o.settings.temperatureMethod || 'interpolation';
@@ -1367,6 +1369,12 @@ function problems() {
     if (!dims.every(pos)) add('error', `${p.name}: sizes must be above 0 cm.`, 'part', p.id);
     else if (partLeavesWorld(p)) add('warn', `${p.name} extends past the world boundary. Particles leave at the boundary, so the outer part is cut off.`, 'part', p.id);
     if (p.material !== 'void' && !matById(p.material)) add('error', `${p.name}: its material was deleted. Pick a material or Void.`, 'part', p.id);
+    if (p.materialPending) add('error', `${p.name} needs a material. It came from a CAD file, which carries none: pick one, or Void if it really is empty space.`, 'part', p.id);
+  });
+  (S.imports || []).filter(imp => imp.omitted && imp.omitted.length).forEach(imp => {
+    const n = imp.omitted.length;
+    add('info', `${imp.file}: ${n} solid${n === 1 ? ' was' : 's were'} left out of the import (${imp.omitted.slice(0, 3).map(o => o.key).join(', ')}${n > 3 ? ', …' : ''}). The reasons are kept with the project.`,
+      groupById(imp.group) ? 'group' : null, imp.group);
   });
 
   if (!S.sources.length) add('error', 'Add a source. OpenMC needs at least one.');
@@ -3146,17 +3154,22 @@ function generateStepText() {
 
 // One insertion boundary for CAD adapters: fresh identities, explicit units and
 // Studio defaults. Validate all parts before changing the current project.
-function insertCadParts(parts, groupName, units) {
+// CAD files carry no Studio materials. Unless the caller names one, every part is
+// stored as Void AND marked materialPending, which Problems reports as an error:
+// an unassigned solid is never silently simulated as empty space.
+function insertCadParts(parts, groupName, units, opts = {}) {
   if (units !== 'cm') throw new Error('CAD adapter must return geometry in centimeters.');
   if (!Array.isArray(parts) || !parts.length) throw new Error('No CAD solids were returned.');
+  if (opts.material && opts.material !== 'void' && !matById(opts.material)) throw new Error('Unknown material for the import.');
   const ids = new Set([...S.parts, ...S.groups, ...S.materials, ...S.sources, ...S.tallies].map(o => o.id));
   const fresh = prefix => { let id; do { id = newId(prefix); } while (ids.has(id)); ids.add(id); return id; };
   const gid = fresh('g');
+  const taken = [...S.parts];
   const prepared = parts.map(raw => {
     const fields = {box:['sx','sy','sz'], sphere:['r'], cylinder:['r','h'],
       cone:['r','r2','h'], wedge:['sx','sy','sz'], hex_prism:['r','h'], ellipsoid:['a','b','c']}[raw.shape];
     if (!fields) throw new Error('Unsupported CAD primitive.');
-    const p = newPart(fresh('p'), String(raw.name || 'CAD solid'), raw.shape);
+    const p = newPart(fresh('p'), uniqueName(taken, String(raw.name || 'CAD solid')), raw.shape);
     for (const key of ['x','y','z', ...fields]) {
       if (!Number.isFinite(raw[key])) throw new Error(`Invalid CAD ${key}.`);
       p[key] = raw[key];
@@ -3171,17 +3184,213 @@ function insertCadParts(parts, groupName, units) {
     }
     if (raw.axis !== undefined && !['x','y','z'].includes(raw.axis)) throw new Error('Invalid CAD axis.');
     p.axis = raw.axis || 'z';
-    p.material = 'void'; // CAD files carry no Studio material identities.
+    p.material = opts.material || 'void';
+    if (!opts.material) p.materialPending = true;
+    if (raw.cadSource) p.cadSource = {import:String(raw.cadSource.import), key:String(raw.cadSource.key)};
     p.group = gid;
+    taken.push(p);
     return p;
   });
-  S.groups.push({id:gid, name:String(groupName || 'CAD import')});
+  const mid = k => { const v = prepared.map(p => [p.x, p.y, p.z][k]); return (Math.min(...v) + Math.max(...v)) / 2; };
+  S.groups.push({id:gid, name:String(groupName || 'CAD import'), x:mid(0), y:mid(1), z:mid(2)});
   S.parts.push(...prepared);
-  renderAll();
+  if (opts.render !== false) renderAll();
   return prepared;
 }
 
+// The world radius (or half-width) that contains every given part, with a margin.
+function worldToFit(parts) {
+  const box = S.settings.worldShape === 'box';
+  const need = Math.max(S.settings.worldR || 0, ...parts.map(p => {
+    const h = partHalfExtents(p);
+    if (box) return Math.max(Math.abs(p.x) + h[0], Math.abs(p.y) + h[1], Math.abs(p.z) + h[2]);
+    return p.shape === 'sphere' ? Math.hypot(p.x, p.y, p.z) + p.r : Math.hypot(Math.abs(p.x) + h[0], Math.abs(p.y) + h[1], Math.abs(p.z) + h[2]);
+  }));
+  const step = Math.pow(10, Math.floor(Math.log10(need * 1.1))) / 2;
+  return Math.ceil(need * 1.1 / step) * step;
+}
+
+// Commit a native-import report as ONE undoable change. Every solid in the report
+// is accounted for: accepted ones become parts, the rest are recorded with the
+// project (S.imports), never dropped silently.
+function commitCadImport(report, fileName, choice) {
+  const accepted = report.solids.filter(r => r.status === 'accepted');
+  const omitted = report.solids.filter(r => r.status !== 'accepted');
+  if (!accepted.length) throw new Error('No solid in this file could be imported as a native part.');
+  if (omitted.length && !choice.allowPartial) throw new Error(`${omitted.length} solid(s) can't be imported; tick the box to import the rest and record what was left out.`);
+  HISTORY.boundary = true;
+  S.imports = S.imports || [];
+  let importId;
+  do { importId = newId('i'); } while (S.imports.some(x => x.id === importId));
+  const material = choice.material === 'pending' ? null : choice.material;
+  const made = insertCadParts(accepted.map(r => ({...r.part, cadSource:{import:importId, key:r.key}})),
+    choice.groupName || String(fileName).replace(/\.[^.]+$/, ''), 'cm', {material, render:false});
+  S.imports.push({
+    id:importId, file:String(fileName), sha256:report.source_sha256, at:new Date().toISOString(),
+    mode:'native', adapter:report.adapter, group:made[0].group, units:'mm (CAD) → cm',
+    accepted:accepted.map(r => r.key),
+    omitted:omitted.map(r => ({key:r.key, status:r.status, reasons:r.reasons || []})),
+    overlaps:report.overlaps || [],
+  });
+  if (choice.growWorld) S.settings.worldR = worldToFit(made);
+  sel = {kind:'group', id:made[0].group};
+  renderAll();
+  log('ok', `Imported ${made.length} part${made.length === 1 ? '' : 's'} from ${esc(fileName)}` +
+    (omitted.length ? `; ${omitted.length} solid${omitted.length === 1 ? ' was' : 's were'} left out and recorded with the project` : '') +
+    (material ? '.' : '. Each needs a material before a run: select the group and pick one.'));
+  return made;
+}
+
 const CADMENU = {importBtn:null, exportBtn:null, selectedFile:null};
+const CADIMPORT = {job:null, bytes:null, file:null, inventory:null, report:null, stage:'', caps:null, status:'', reason:''};
+
+function bytesToBase64(buf) {
+  const u8 = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+// Submit a CAD job and poll it. Hiding the dialog (Cancel, Escape, a click outside)
+// cancels the job on the server; a cancelled or failed job changes nothing here.
+async function runCadJob(body, onProgress) {
+  const job = await api('/api/cad/jobs', {method:'POST', body:JSON.stringify(body)});
+  CADIMPORT.job = job.id;
+  const menu = $('#cadImportMenu');
+  try {
+    for (;;) {
+      if (menu.hidden) {
+        await api(`/api/cad/jobs/${job.id}`, {method:'DELETE'}).catch(() => {});
+        throw new Error('Cancelled. Nothing was imported.');
+      }
+      const st = await api(`/api/cad/jobs/${job.id}`);
+      if (onProgress) onProgress(st);
+      if (st.state === 'succeeded') return await api(`/api/cad/jobs/${job.id}/result`);
+      if (['failed', 'cancelled', 'timed_out'].includes(st.state)) {
+        const why = st.state === 'timed_out' ? 'the conversion took too long' : st.state === 'cancelled' ? 'it was cancelled' : st.error || 'the conversion failed';
+        const err = new Error(`CAD job ${st.state.replace('_', ' ')}: ${why}`);
+        err.diagnostics = st.diagnostics;
+        throw err;
+      }
+      await new Promise(r => setTimeout(r, 250));
+    }
+  } finally {
+    CADIMPORT.job = null;
+  }
+}
+
+function describeCadPart(p) {
+  const L = v => showLen(v);
+  if (p.shape === 'box') return `Box ${L(p.sx)} × ${L(p.sy)} × ${L(p.sz)}`;
+  if (p.shape === 'sphere') return `Sphere r ${L(p.r)}`;
+  if (p.shape === 'cylinder') return `Cylinder r ${L(p.r)}, h ${L(p.h)}`;
+  if (p.shape === 'cone') return `Cone r ${L(p.r)} → ${L(p.r2)}, h ${L(p.h)}`;
+  return p.shape;
+}
+
+function cadRowHtml(r) {
+  const mark = r.status === 'accepted' ? '<span style="color:var(--ok)">✔</span>'
+    : r.status === 'failed' ? '<span style="color:var(--err)">!</span>' : '<span style="color:var(--warn)">✖</span>';
+  const what = r.part ? ` <span style="color:var(--dim)">· ${esc(describeCadPart(r.part))}</span>` : '';
+  const why = r.status !== 'accepted' ? `<div style="color:var(--warn)">${esc((r.reasons || []).join('; '))}</div>` : '';
+  return `<div class="cadrow" data-status="${esc(r.status)}" data-key="${esc(r.key)}" style="padding:3px 6px;border-bottom:1px solid var(--bdr)">${mark} ${esc(r.key || r.label || 'solid')}${what}${why}</div>`;
+}
+
+function renderCadImport() {
+  const menu = $('#cadImportMenu'), st = CADIMPORT.stage, f = CADIMPORT.file;
+  const inv = CADIMPORT.inventory, rep = CADIMPORT.report;
+  let body = '', run = '', runDisabled = true;
+  if (st === 'unavailable') {
+    body = `<div id="cad-unavailable" style="font-size:11.5px;color:var(--dim);margin-bottom:8px">Import is unavailable here: ${esc(CADIMPORT.reason || 'no CAD engine')}.</div>`;
+    run = 'Import'; runDisabled = !f;
+  } else if (st === 'checking') {
+    body = `<div style="font-size:11.5px;color:var(--dim);margin-bottom:8px">Checking the CAD engine with a small test conversion…</div>`;
+  } else if (st === 'pick' || st === 'inspecting') {
+    body = `<div style="font-size:11.5px;color:var(--dim);margin-bottom:8px">STEP files only. FreeCAD reads the file in a separate process; your project doesn't change until you press Import.</div>`;
+    run = 'Inspect'; runDisabled = !f || st === 'inspecting';
+  } else if (st === 'inventory' || st === 'converting') {
+    const bad = inv.solids.filter(r => !r.valid);
+    body = `<div style="font-size:12px;margin-bottom:6px"><b>${inv.solids.length}</b> solid${inv.solids.length === 1 ? '' : 's'} found${bad.length ? `, <b>${bad.length}</b> not usable` : ''}.</div>
+      <div class="cadrows" id="cad-inventory-rows" style="max-height:170px;overflow:auto;font-size:11px;border:1px solid var(--bdr);border-radius:4px;margin-bottom:8px">
+      ${inv.solids.map(r => `<div class="invrow" data-key="${esc(r.key)}" style="padding:3px 6px;border-bottom:1px solid var(--bdr)">${r.valid ? '●' : '<span style="color:var(--warn)">▲</span>'} ${esc(r.key || r.label || 'solid')} <span style="color:var(--dim)">· ${esc(r.surface_types.join(', '))}</span>${r.reasons.length ? `<div style="color:var(--warn)">${esc(r.reasons.join('; '))}</div>` : ''}</div>`).join('')}
+      </div>
+      <div style="font-size:12px;font-weight:600;margin-bottom:4px">Import as</div>
+      <label style="display:block;font-size:12px;margin-bottom:3px"><input type="radio" name="cad-mode" value="native" checked> Native parts: boxes, spheres, cylinders and cones you can edit</label>
+      <label style="display:block;font-size:12px;color:var(--dim);margin-bottom:8px" title="Needs the analytical CSG data model, a later stage"><input type="radio" name="cad-mode" value="csg" disabled> Analytical CSG components: any analytical solid, read-only (coming later)</label>`;
+    run = 'Convert'; runDisabled = st === 'converting';
+  } else if (st === 'preview') {
+    const acc = rep.solids.filter(r => r.status === 'accepted'), om = rep.solids.filter(r => r.status !== 'accepted');
+    const leaves = acc.filter(r => { try { return partLeavesWorld({...newPart('tmp', 'tmp', r.part.shape), ...r.part}); } catch (e) { return false; } });
+    const mats = S.materials.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
+    body = `<div style="font-size:12px;margin-bottom:6px"><b>${acc.length}</b> of ${rep.solids.length} solid${rep.solids.length === 1 ? '' : 's'} can be imported as native parts.</div>
+      <div class="cadrows" id="cad-preview-rows" style="max-height:200px;overflow:auto;font-size:11px;border:1px solid var(--bdr);border-radius:4px;margin-bottom:8px">${rep.solids.map(cadRowHtml).join('')}</div>
+      ${(rep.overlaps || []).map(o => `<div class="cadwarn" style="font-size:11px;color:var(--warn);margin-bottom:4px">${esc(o.a)} and ${esc(o.b)} overlap${o.volume_cm3 ? ` by ${sci(o.volume_cm3)} cm³` : ''}. Studio gives the overlap to whichever is higher in the Explorer.</div>`).join('')}
+      <div class="agrid" style="display:grid;grid-template-columns:80px 1fr;gap:6px;align-items:center;font-size:12px;margin:6px 0 8px">
+        <span style="font-weight:600">Group</span><input type="text" id="cad-group-name" value="${esc((f && f.name || 'CAD import').replace(/\.[^.]+$/, ''))}" style="padding:2px 4px">
+        <span style="font-weight:600">Material</span><select id="cad-material" style="padding:2px 4px"><option value="pending" selected>Choose later (runs are blocked until then)</option><option value="void">Void (empty space)</option>${mats}</select>
+      </div>
+      ${leaves.length ? `<label style="display:block;font-size:11.5px;margin-bottom:6px"><input type="checkbox" id="cad-grow-world" checked> Grow the world to fit (${leaves.length} part${leaves.length === 1 ? '' : 's'} reach past it now)</label>` : ''}
+      ${om.length ? `<label style="display:block;font-size:11.5px;margin-bottom:6px;color:var(--warn)"><input type="checkbox" id="cad-allow-partial"> Import the ${acc.length} accepted solid${acc.length === 1 ? '' : 's'} and leave out the ${om.length} above (they're recorded with the project)</label>` : ''}`;
+    run = `Import ${acc.length} part${acc.length === 1 ? '' : 's'}`; runDisabled = !acc.length || om.length > 0;
+  }
+  const picker = st === 'pick' || st === 'inspecting' || st === 'unavailable';
+  menu.innerHTML = `
+    <div class="atitle">Import CAD</div>
+    ${picker ? `
+    <div style="border:1px dashed var(--bdr);padding:10px;text-align:center;border-radius:4px;margin-bottom:8px;background:var(--bg2)">
+      <button type="button" id="cad-select-file-btn" style="padding:4px 8px;margin-bottom:4px">Select STEP file</button>
+      <div id="cad-file-name" style="font-size:11px;color:var(--dim)">${f ? `${esc(f.name)} (${(f.size / 1024).toFixed(1)} KB)` : 'No file selected'}</div>
+    </div>` : ''}
+    ${body}
+    <div id="cad-import-status" style="font-size:11px;color:var(--dim);margin-bottom:8px;min-height:16px;white-space:pre-wrap">${esc(CADIMPORT.status || '')}</div>
+    <div style="display:flex;justify-content:flex-end;gap:6px">
+      <button type="button" id="cad-import-cancel" style="padding:4px 10px">Cancel</button>
+      ${run ? `<button type="button" id="cad-import-run" class="on" style="padding:4px 12px;font-weight:600"${runDisabled ? ' disabled' : ''}>${esc(run)}</button>` : ''}
+    </div>`;
+  const pick = $('#cad-select-file-btn');
+  if (pick) pick.onclick = () => $('#cadFileInput').click();
+  $('#cad-import-cancel').onclick = () => { menu.hidden = true; };
+  const partial = $('#cad-allow-partial');
+  if (partial) partial.onchange = () => { $('#cad-import-run').disabled = !partial.checked; };
+  const runBtn = $('#cad-import-run');
+  if (runBtn) runBtn.onclick = () => cadImportStep();
+}
+
+async function cadImportStep() {
+  const menu = $('#cadImportMenu'), st = CADIMPORT.stage;
+  const set = (stage, status) => { CADIMPORT.stage = stage; CADIMPORT.status = status || ''; if (!menu.hidden) renderCadImport(); };
+  const progress = label => j => { const el = $('#cad-import-status'); if (el && !menu.hidden) el.textContent = `${label} ${j.progress || ''}`; };
+  if (st === 'unavailable') {
+    set('unavailable', `CAD import is unavailable: ${CADIMPORT.reason || 'no CAD engine'}. No geometry was imported.`);
+    return;
+  }
+  try {
+    if (st === 'pick') {
+      const f = CADIMPORT.file;
+      const limit = (CADIMPORT.caps && CADIMPORT.caps.max_input_bytes) || 16 * 1048576;
+      if (f.size > limit) throw new Error(`${f.name} is larger than the ${Math.round(limit / 1048576)} MiB limit.`);
+      CADIMPORT.bytes = bytesToBase64(await f.arrayBuffer());
+      set('inspecting', 'Reading the file…');
+      CADIMPORT.inventory = await runCadJob({mode:'inspect', filename:f.name, data:CADIMPORT.bytes}, progress('Reading the file…'));
+      set('inventory');
+    } else if (st === 'inventory') {
+      set('converting', 'Recognizing and checking each solid…');
+      CADIMPORT.report = await runCadJob({mode:'native', filename:CADIMPORT.file.name, data:CADIMPORT.bytes},
+        progress('Recognizing and checking each solid…'));
+      set('preview');
+    } else if (st === 'preview') {
+      const allow = $('#cad-allow-partial'), grow = $('#cad-grow-world');
+      commitCadImport(CADIMPORT.report, CADIMPORT.file.name, {
+        material:$('#cad-material').value, groupName:$('#cad-group-name').value.trim(),
+        allowPartial:!!(allow && allow.checked), growWorld:!!(grow && grow.checked)});
+      menu.hidden = true;
+    }
+  } catch (e) {
+    if (menu.hidden) return;
+    const back = CADIMPORT.stage === 'inspecting' ? 'pick' : CADIMPORT.stage === 'converting' ? 'inventory' : CADIMPORT.stage;
+    set(back, `${e.message}${e.diagnostics ? `\n${String(e.diagnostics).slice(-400)}` : ''}`);
+  }
+}
 
 async function openCadImportMenu(btn) {
   const menu = $('#cadImportMenu');
@@ -3189,50 +3398,49 @@ async function openCadImportMenu(btn) {
   if (!menu.hidden && CADMENU.importBtn === btn) { menu.hidden = true; return; }
   CADMENU.importBtn = btn;
   CADMENU.selectedFile = null;
-
-  const backendNote = 'Import unavailable: geometry-preserving adapter not implemented';
-
+  Object.assign(CADIMPORT, {file:null, bytes:null, inventory:null, report:null, status:'', reason:''});
   const r = btn.getBoundingClientRect();
-  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 340)) + 'px';
+  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 420)) + 'px';
   menu.style.top = (r.bottom + 4) + 'px';
-  menu.innerHTML = `
-    <div class="atitle">Import CAD to CSG</div>
-    <div style="font-size:11px;color:var(--accent);margin-bottom:6px;font-weight:600">Engine: ${backendNote}</div>
-    <div style="font-size:11.5px;color:var(--dim);margin-bottom:8px">STEP / IGES import is not yet supported. Open a Studio project to preserve geometry.</div>
-    <div style="border:1px dashed var(--bdr);padding:10px;text-align:center;border-radius:4px;margin-bottom:8px;background:var(--bg2)">
-      <button type="button" id="cad-select-file-btn" style="padding:4px 8px;margin-bottom:4px">Select STEP / IGES file</button>
-      <div id="cad-file-name" style="font-size:11px;color:var(--dim)">No file selected</div>
-    </div>
-    <div class="agrid" style="display:grid;grid-template-columns:80px 1fr;gap:6px;align-items:center;font-size:12px;margin-bottom:10px">
-      <span style="font-weight:600">Group</span>
-      <input type="text" id="cad-group-name" value="CAD_Import" style="padding:2px 4px">
-    </div>
-    <div id="cad-import-status" style="font-size:11px;color:var(--dim);margin-bottom:8px;min-height:16px"></div>
-    <div style="display:flex;justify-content:flex-end;gap:6px">
-      <button type="button" id="cad-import-cancel" style="padding:4px 10px">Cancel</button>
-      <button type="button" id="cad-import-run" class="on" style="padding:4px 12px;font-weight:600" disabled>Import to Scene</button>
-    </div>
-  `;
+  menu.style.width = '400px';
   menu.hidden = false;
-
-  const fileInput = $('#cadFileInput');
-  $('#cad-select-file-btn').onclick = () => fileInput.click();
-  fileInput.onchange = e => {
+  $('#cadFileInput').onchange = e => {
     const f = e.target.files && e.target.files[0];
-    if (f) {
-      CADMENU.selectedFile = f;
-      $('#cad-file-name').textContent = `${f.name} (${(f.size / 1024).toFixed(1)} KB)`;
-      $('#cad-group-name').value = f.name.replace(/\.[^.]+$/, '').replace(/[^\w-]+/g, '_') || 'CAD_Import';
-      $('#cad-import-run').disabled = false;
+    e.target.value = '';
+    if (!f) return;
+    CADIMPORT.status = '';
+    if (!/\.(step|stp)$/i.test(f.name) && CADIMPORT.stage !== 'unavailable') {
+      CADIMPORT.status = 'Only STEP (.step, .stp) files can be imported.';
+      CADIMPORT.file = CADMENU.selectedFile = null;
+    } else {
+      CADIMPORT.file = CADMENU.selectedFile = f;
     }
+    renderCadImport();
   };
-
-  $('#cad-import-cancel').onclick = () => { menu.hidden = true; };
-  $('#cad-import-run').onclick = async () => {
-    const status = $('#cad-import-status');
-    status.textContent = 'CAD import is unavailable until a geometry-preserving adapter is implemented. No geometry was imported.';
-    $('#cad-import-run').disabled = true;
-  };
+  if (!LOCAL.on) {
+    Object.assign(CADIMPORT, {stage:'unavailable', reason:'CAD import needs the local Studio server (start Studio from its launcher)'});
+    renderCadImport();
+    return;
+  }
+  CADIMPORT.stage = 'checking';
+  renderCadImport();
+  try {
+    let caps = await api('/api/cad/capabilities');
+    if (caps.available && !caps.engine_verified) {
+      // Importable modules prove nothing: convert a small solid before offering import.
+      await runCadJob({mode:'probe'});
+      caps = await api('/api/cad/capabilities');
+    }
+    CADIMPORT.caps = caps;
+    if (!caps.available || !caps.engine_verified) {
+      Object.assign(CADIMPORT, {stage:'unavailable', reason:caps.reason || 'the CAD engine did not pass its test conversion'});
+    } else {
+      CADIMPORT.stage = 'pick';
+    }
+  } catch (e) {
+    Object.assign(CADIMPORT, {stage:'unavailable', reason:e.message});
+  }
+  if (!menu.hidden) renderCadImport();
 }
 
 function parseStepAnalyticalBrowser() {
@@ -3383,7 +3591,7 @@ const RIBBON = {
   Convert:[
     {label:'3D Mesh', btns:[['stl', 'Export STL…', e => openStlMenu(e.currentTarget)]]},
     {label:'CAD Translation', btns:[
-      ['convert', 'CAD to CSG…', e => openCadImportMenu(e.currentTarget)],
+      ['convert', 'Import CAD…', e => openCadImportMenu(e.currentTarget)],
       ['convert', 'CSG to STEP…', e => openCadExportMenu(e.currentTarget)]
     ]},
     {label:'Nuclear Decks', btns:[
@@ -3608,7 +3816,7 @@ function renderTree() {
     const depth = p.group ? groupDepth(p.group) + 1 : 0;
     const isHidden = p.group ? isGroupCollapsed(p.group) : false;
     const pad = 26 + depth * 14;
-    return row + item('part', p.id, ic(p.shape, 14), p.name, matName(p.material),
+    return row + item('part', p.id, ic(p.shape, 14), p.name, p.materialPending ? '⚠ needs material' : matName(p.material),
       {attrs:` data-idx="${i}" style="padding-left:${pad}px"`, cls:p.group ? ' tin' : '', hidden:isHidden});
   }).join('') + S.groups.filter(g => !shown.has(g.id)).map(groupRow).join(''); // remaining groups
   h += group('parts', 'Geometry', S.parts.length + 1, 'Add sphere',
@@ -3652,7 +3860,7 @@ function specFor(kind, o) {
     const shared = {};
     Object.defineProperty(shared, 'material', {
       get: () => { const m = [...new Set(parts.map(x => x.o.material))]; return m.length === 1 ? m[0] : ''; },
-      set: v => { if (v) parts.forEach(x => { x.o.material = v; }); }
+      set: v => { if (v) parts.forEach(x => { x.o.material = v; delete x.o.materialPending; }); }
     });
     const what = `${parts.length} part${parts.length === 1 ? '' : 's'}${nS ? ` and ${nS} source${nS === 1 ? '' : 's'}` : ''}`;
     const secs = [];
@@ -3687,6 +3895,9 @@ function specFor(kind, o) {
     const i = S.parts.indexOf(o), cyl = () => o.shape === 'cylinder', sph = () => o.shape === 'sphere', box = () => o.shape === 'box', wed = () => o.shape === 'wedge', hex = () => o.shape === 'hex_prism', con = () => o.shape === 'cone', ell = () => o.shape === 'ellipsoid';
     return [
       {title:'Part', fields:[F('text', 'name', 'Name'), F('material', 'material', 'Material'),
+        ...(o.materialPending ? [note('<b>Needs a material.</b> CAD files carry none, so runs are blocked until you pick one above, or keep it as empty space.'),
+          {type:'buttons', btns:[['Keep as Void (empty space)', () => { HISTORY.boundary = true; o.material = 'void'; delete o.materialPending; renderProps(); schedule(); }]]}] : []),
+        ...(o.cadSource ? [note(`Imported from ${esc(((S.imports || []).find(x => x.id === o.cadSource.import) || {}).file || 'a CAD file')}: ${esc(o.cadSource.key)}.`)] : []),
         note(`Priority ${i + 1} of ${S.parts.length}. Parts higher in the Explorer win where shapes overlap. Drag it in the Explorer, or press Alt+↑/↓. MCNP cell ${i + 1}.`)]},
       {title:'Shape', fields:[
         F('select', 'shape', 'Shape', {options:() => [['sphere', 'Sphere (SPH)'], ['cylinder', 'Cylinder (RCC)'], ['box', 'Box (RPP)'], ['wedge', 'Right wedge (WED)'], ['hex_prism', 'Hexagonal prism (RHP)'], ['cone', 'Truncated cone (TRC)'], ['ellipsoid', 'Ellipsoid (ELL/SQ)']]}),
@@ -3932,6 +4143,7 @@ function fieldEl(f, obj) {
       b.addEventListener('click', () => openMatMenu(b, id => {
         HISTORY.boundary = true;
         obj[f.key] = id === 'auto' ? undefined : id;
+        if (f.key === 'material' && S.parts.includes(obj)) delete obj.materialPending;
         renderProps(); schedule();
         const again = document.getElementById(fid); if (again) again.focus();
       }, { allowAuto: f.allowAuto }));

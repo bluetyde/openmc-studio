@@ -24,21 +24,21 @@ const fs = require('fs'), path = require('path'), assert = require('assert');
     const convertTab = page.locator('#rtabs button[data-tab="Convert"]');
     await convertTab.click();
 
-    // 1. Test CAD to CSG Modal
-    console.log('Testing CAD to CSG Import Modal...');
-    const cadImportBtn = page.locator('#rbody button:has-text("CAD to CSG…")');
-    assert.equal(await cadImportBtn.count(), 1, 'CAD to CSG button must exist in Convert tab');
+    // 1. Test the CAD import modal (offline: no local server, so import is unavailable)
+    console.log('Testing CAD Import Modal...');
+    const cadImportBtn = page.locator('#rbody button:has-text("Import CAD…")');
+    assert.equal(await cadImportBtn.count(), 1, 'Import CAD button must exist in Convert tab');
     await cadImportBtn.click();
 
     const isImportVisible = await page.evaluate(() => {
       const m = document.querySelector('#cadImportMenu');
       return m && !m.hidden;
     });
-    assert.equal(isImportVisible, true, 'Clicking CAD to CSG… must show #cadImportMenu');
+    assert.equal(isImportVisible, true, 'Clicking Import CAD… must show #cadImportMenu');
 
     // Verify elements in import modal
     assert.equal(await page.locator('#cad-select-file-btn').count(), 1, 'File select button must exist');
-    assert.equal(await page.locator('#cad-group-name').count(), 1, 'Group name input must exist');
+    assert.match(await page.locator('#cad-unavailable').innerText(), /local Studio server/, 'Offline, the modal says why import is unavailable');
     assert.equal(await page.locator('#cad-import-run').count(), 1, 'Import run button must exist');
     assert.equal(await page.locator('#cad-import-run').isDisabled(), true, 'Import button should be disabled without file');
     console.log('  [PASS] CAD Import modal elements');
@@ -132,7 +132,10 @@ const fs = require('fs'), path = require('path'), assert = require('assert');
     assert.notEqual(ingestion.ids[0], ingestion.ids[1]);
     assert.deepEqual(ingestion.materials, ['void','void']);
     assert.equal(ingestion.count, 2); assert.ok(ingestion.rejected);
-    assert.deepEqual(ingestion.errors, []);
+    // CAD carries no materials: an inserted part is Void AND pending, which blocks a run
+    // until someone chooses (the CAD import plan: never simulate an unassigned solid as empty space).
+    assert.equal(ingestion.errors.length, 2);
+    assert.ok(ingestion.errors.every(e => /needs a material/.test(e.text)), JSON.stringify(ingestion.errors));
     assert.deepEqual(ingestion.defaults, [0,0,0,.025]);
 
     // Test dismissals: Cancel button

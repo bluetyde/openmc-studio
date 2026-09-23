@@ -1,9 +1,10 @@
 # CAD conversion limits
 
-CAD import is unavailable until an adapter can preserve solid geometry and
-units. Installing GEOUNED alone does not enable it. Earlier versions replaced
-solids with bounding boxes or interpreted untrimmed surfaces as complete
-objects; these paths now return an error without changing the project.
+STEP files can be imported as **native parts** (boxes, spheres, capped cylinders
+and cones) when every solid is proven to match; see below. General analytical CSG
+import (holes, shells, other solids) is a later stage. Earlier versions replaced
+solids with bounding boxes or interpreted untrimmed surfaces as complete objects;
+those paths are gone and never come back as fallbacks.
 
 The [stage-0 engine spike](../setup/cad/README.md) now performs real single-solid
 FreeCAD/GEOUNED conversion and checks holes, units and placement on four fixtures.
@@ -72,3 +73,50 @@ Set `OPENMC_CAD_PYTHON` to the pinned CAD interpreter (see
 Tests: `test/test_cad_jobs.py` and `test/test_cad_jobs_http.py` need no CAD engine;
 `test/test_cad_jobs_engine.py` runs real conversions and fails, rather than
 skips, when `OPENMC_CAD_PYTHON` is not set.
+
+## Importing STEP as native parts (stage 2)
+
+**Convert > Import CAD…** in the local app. The dialog walks through the plan's
+workflow; the project doesn't change until the last step.
+
+1. **Engine check.** If the CAD engine hasn't been verified this session, a probe
+   job converts a small drilled block first. No probe, no import.
+2. **Inspect.** Every solid in the file is listed by its source path, with its
+   surfaces and anything that makes it unusable (an open face, an invalid solid).
+3. **Import as.** Native parts now. Analytical CSG components are shown but not
+   offered until the CSG data model lands.
+4. **Preview.** Each solid is *accepted* (with its part), *rejected* (with the
+   reason) or *failed* (with the error). Overlapping solids are called out.
+5. **Import.** One undoable step. If anything was rejected you must tick the box
+   that accepts importing the rest; the omitted solids and their reasons are
+   stored with the project and listed in Problems.
+
+**What "accepted" means.** The solid was recognized from its surfaces *and* the
+Studio part was rebuilt the way Studio will model it and compared with the
+source: bounds, symmetric-difference volume, boundary-to-boundary distance and a
+deterministic set of inside/outside probes, within tolerances recorded per solid
+(1e-7 of the part's size, never looser than 1e-6 mm). Rejected examples: a 0.01 mm
+chamfer, a fillet, a drilled box, a hollow cylinder, a TRISO coating shell, a
+0.5 degree parallelepiped, a cylinder with a 1 degree sheared cap, an elliptic
+cylinder, a torus, B-spline surfaces. This is sampled evidence within stated
+tolerances, not a proof of exact equality.
+
+**Units.** FreeCAD's reader converts whatever the file declares (mm, cm, m, inch)
+to millimetres; Studio divides by ten, once. Files written by an independent
+non-OpenCASCADE writer are part of the tests for exactly this.
+
+**Materials.** CAD files carry none. Imported parts are stored as Void and marked
+*needs material*; Problems reports each one as an error, which blocks runs and
+exports, until you pick a material (select the import's group to set them all at
+once) or press *Keep as Void* to say the part really is empty space.
+
+**Names and identity.** Parts get fresh Studio IDs every time, so importing a file
+twice never collides. Each part remembers its source path (`cadSource`), and the
+project keeps an import record (`imports`): file name, SHA-256, adapter version,
+accepted and omitted solids. The saved project needs neither the CAD file nor
+FreeCAD to reopen.
+
+Tests: `test/test_cad_native_engine.py` (real engine, fails without it),
+`test/test_cad_import_browser.cjs` (browser workflow on real engine reports) and
+`test/test_cad_import_e2e.cjs` (real browser, server and engine; see its header
+for the environment variables).

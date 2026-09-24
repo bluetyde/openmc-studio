@@ -286,7 +286,7 @@ the drive is mounted.
 
 ## Git
 
-This folder is the repo `github.com/bluetyde/openmc-studio` (private). The nuclear
+This folder is the repo [`github.com/bluetyde/openmc-studio`](https://github.com/bluetyde/openmc-studio). The nuclear
 data is not in git (see `.gitignore`); `nuclear_data/archives/SHA256SUMS` records
 which archive it came from.
 
@@ -332,7 +332,9 @@ For MCNP features, install the companion and its dependencies as described in
 [INSTRUCTIONS.md](INSTRUCTIONS.md). Set `OPENMC_MCNP_PROJECT` to its checkout when
 it is outside the automatically searched locations. Studio's MCNP worker uses
 the companion's remediation and validation modules together with NuCoMP MCNPy;
-the companion is not bundled with Studio.
+the companion is not bundled with Studio. MCNPy and MetaPy are distributed from RPI's GitHub
+(`github.rpi.edu/NuCoMP`), which may need an RPI account; without them everything except the MCNP
+export and the live `model.mcnp` tab still works.
 
 ## License
 

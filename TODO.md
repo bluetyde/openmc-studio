@@ -160,6 +160,29 @@ and the MCNP lattice work; fixes listed under Completed).
   scattered between Export and the file menu: CAD in and out, MCNP in and out, OpenMC scripts and XML in,
   VTK/STL out, and whatever phase-space format we support later. Each entry says what survives the trip and
   what doesn't, since none of these conversions is lossless.
+- **Round trips: edit model.py / model.mcnp outside Studio and bring the edits back** (asked for 2026-09-24):
+  - **Import as a patch (first).** Open an edited model.py (then model.mcnp) onto the project it came from.
+    Studio regenerates the file from the current project, diffs it against the imported one, and maps each
+    changed line to its Studio object and number: model.py through `studio_ids` and Studio's own line map,
+    model.mcnp through the `c @studio-v1` records (`docs/studio-ids.md` in the companion). Each change goes
+    through the same path as editing a number in place in the code tabs (surface positions and radii,
+    densities and compositions, source, tally and run settings), as one Undo step, with a summary.
+  - Anything that doesn't map back is listed, never dropped silently: new cells or surfaces, rewritten
+    region logic, and numbers Studio derives rather than stores (GQ coefficients of rotated parts,
+    lattice-generated, shared or macrobody surfaces; the report says what to change in Studio instead).
+  - Refuse when the file came from another project or an older version whose IDs no longer match.
+  - **Then embed the whole project** in both files (model.py: a data block; MCNP: percent-encoded comment
+    records like the ID links, which MCNP ignores), so either file alone reopens the exact project, the way
+    `.openmc-studio.json` does. Store a fingerprint of the generated text so hand edits made afterwards are
+    detected and offered as a patch instead of being overwritten. Today the ID comments are links only
+    ("card X came from object Y"); they don't carry the objects, so the deck alone can't rebuild the project.
+  - **STEP: keep names and materials.** STEP export writes one unnamed compound today, so even part names
+    are lost. Write each part as its own named solid (PRODUCT name = the Studio name), put Studio data
+    (material, density, id) in the product description, and also write a small sidecar JSON beside the
+    .step, since CAD tools that re-save a file often drop the description. On import, use whichever
+    survived; otherwise parts stay "needs a material" as now.
+  - Tests: an edited radius, density and batch count come back exactly; an unsupported edit is reported;
+    a file from another project is refused; STEP export -> import keeps names and materials.
 - **Import an MCNP deck** (`openmc_mcnp_adapter` converts MCNP models to OpenMC):
   - We already write MCNP decks *and* check them against the OpenMC model point by point. Import closes the
     loop: read a hand-written deck (e.g. the user's NE403 graphite deck) into Studio's scene graph, then run

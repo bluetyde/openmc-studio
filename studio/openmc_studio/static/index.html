@@ -1514,7 +1514,6 @@ function problems() {
       if (inLat.length) add('error', `${t.name}: dose on a part inside a lattice isn't supported yet. Untick "Export as RectLattice" (or HexLattice) on its array, or pick another part.`, 'tally', t.id);
       if (!eig && !(st.sourceRate > 0)) add('info', `${t.name} gives dose per source particle (pSv). Set Source emission rate in Settings to see µSv/h.`, 'settings');
       if (t.scores.some(sc => sc !== 'flux') || t.ebins.trim()) add('info', `${t.name}: a dose tally scores flux times the dose coefficients; its other scores and energy bins are left out.`, 'tally', t.id);
-      add('info', `${t.name} isn't in model.mcnp yet: MCNP dose cards (DE/DF) come in a later update.`, 'tally', t.id);
     }
     if (t.detector && t.detector !== 'none') {
       const det = resolveDetector(t), micro = t.responseScale === 'micro';
@@ -2183,8 +2182,8 @@ function buildScript(probs, mark, opts = {}) {
       'geometry.determine_paths()  # numbers every cell instance, for the CellInstanceFilter bins below', '');
   }
   // Dose: ICRP coefficients as an energy function per particle, divided by a cell volume from OpenMC's
-  // volume calculation after the run (results.py). Not written to the MCNP deck yet.
-  const doseTallies = [], doseCells = new Map(), doseOn = opts !== MCNP_OPTS && S.tallies.some(t => (t.kind === 'cell' || t.kind === 'mesh') && t.dose);
+  // volume calculation (results.py; the MCNP export measures the same volume for its SD card).
+  const doseTallies = [], doseCells = new Map(), doseOn = S.tallies.some(t => (t.kind === 'cell' || t.kind === 'mesh') && t.dose);
   if (doseOn) push('def _dose_filter(particle, geometry, data, lowest):',
     '    """ICRP effective-dose coefficients (pSv cm^2) as an energy function, log-log like MCNP\'s DE/DF cards.',
     '    Padded down to the lowest energy transported with the first value, so low energies count the way MCNP',
@@ -2588,10 +2587,35 @@ function detectorFm(n, t, det, ids, mesh) {
     : `c FM${n}: N = atom density of ${m ? m.name : 'the detector material'} in atoms/b-cm (the export writes the number)`;
   return [card, note];
 }
-function mcnpTally(t) {
-  if ((t.kind === 'cell' || t.kind === 'mesh') && t.dose) return 'c Dose tallies are not in the MCNP deck yet: its DE/DF dose cards come in a later update.';
+// Preview of a dose tally's cards. The exporter writes the real ones: DE/DF from the tally's own padded table
+// (so every number matches model.py), SD with the cell volume it measures with OpenMC's volume calculation (the
+// same numbers the run gets), and the source rate as FM (cells) or FACTOR (maps), so the deck prints Sv/h.
+function mcnpDoseTally(t, k0) {
+  const parts = t.dose === 'np' ? ['neutron', 'photon'] : ['neutron'], out = [];
+  const rate = S.settings.sourceRate > 0 ? +S.settings.sourceRate : null, unit = rate ? 'Sv/h' : 'pSv per source particle';
+  const table = `${t.doseData === 'icrp74' ? 'ICRP-74' : 'ICRP-116'} ${t.doseGeom || 'AP'}`;
+  parts.forEach((p, i) => {
+    const n = 10 * (k0 + i) + 4;
+    const base = mcnpTally({...t, dose:'', detector:'none', scores:['flux'], ebins:'', particle:p}, k0 + i).split('\n').filter(l => !/^c /.test(l));
+    if (t.kind === 'mesh') {
+      out.push(...base);
+      if (rate) out.push(`     FACTOR=${mcnpNum(rate * 3600e-12)}`);
+    } else out.push(base[0]);
+    out.push(`FC${n} ${t.name}: ${p} effective dose, ${unit} (${table})`,
+      `c DE${n} LOG / DF${n} LOG: the ${table} table (pSv cm2), as in model.py`);
+    if (t.kind === 'cell') {
+      if (rate) out.push(`FM${n} ${mcnpNum(rate * 3600e-12)}`);
+      out.push(`c SD${n}: each cell's volume, measured when the deck is exported`);
+    }
+  });
+  return out.join('\n');
+}
+// MCNP tallies a Studio tally becomes: one per score, or one per particle for a dose tally.
+const mcnpTallyCount = x => (x.kind === 'cell' || x.kind === 'mesh') && x.dose ? (x.dose === 'np' ? 2 : 1) : x.scores.length;
+function mcnpTally(t, k0 = null) {
+  if (k0 === null) k0 = S.tallies.slice(0, S.tallies.indexOf(t)).reduce((a, x) => a + mcnpTallyCount(x), 0);
+  if ((t.kind === 'cell' || t.kind === 'mesh') && t.dose) return mcnpDoseTally(t, k0);
   const ids = mcnpIds(), out = [];
-  const k0 = S.tallies.slice(0, S.tallies.indexOf(t)).reduce((a, x) => a + x.scores.length, 0);
   const eb = t.ebins.trim() ? parseNums(t.ebins).vals : null;
   const isDetector = t.detector && t.detector !== 'none';
   const det = resolveDetector(t);

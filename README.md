@@ -160,7 +160,10 @@ and needs photon transport.
   flux, with the colorbar in µSv/h (or mrem/h). Voxel volumes are exact, so no volume step is needed. Export for
   ParaView writes it as `<particle>_dose_Sv_per_h_*` arrays.
 - This is effective dose, not the ambient dose equivalent H*(10) a survey meter reads.
-- Dose tallies are not written to model.mcnp yet.
+- **model.mcnp** carries the same dose: `F4:N` (and `F4:P` for photons) or `FMESH`, `DE`/`DF` with exactly the
+  table model.py uses, `SD` with the same cell volume (the export runs the same volume calculation), and the
+  source rate as `FM` (or `FACTOR` on a map), so MCNP prints Sv/h. MCNP 6.3 has no built-in dose tables, so they
+  are written out.
 - Source **Strength** is a relative weight between sources: model.py scales the strengths to sum to 1, so every
   tally is per source particle, as in MCNP.
 

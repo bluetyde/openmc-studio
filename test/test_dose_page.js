@@ -35,7 +35,7 @@ test('Problems: no rate is info; eigenvalue, photons off and a detector response
   let P = doseProblems();
   assert.ok(P.some(([s, t]) => s === 'error' && /photon dose needs photon transport/.test(t)), JSON.stringify(P));
   assert.ok(P.some(([s, t]) => s === 'info' && /per source particle \(pSv\)/.test(t)));
-  assert.ok(P.some(([s, t]) => s === 'info' && /isn't in model.mcnp yet/.test(t)));
+  assert.ok(!P.some(([, t]) => /model\.mcnp/.test(t)), 'dose tallies are in the MCNP deck now');
   run("S.settings.photon = true; S.settings.sourceRate = 1e8;");
   P = doseProblems();
   assert.ok(!P.some(([s]) => s === 'error'), JSON.stringify(P));
@@ -59,12 +59,24 @@ test('model.py: one tally per particle, padded log-log coefficients, volumes and
   assert.match(py, /"dose\.json"/);
 });
 
-test('the MCNP script leaves dose tallies out for now; the card preview says so', () => {
-  run("addDetectorTally('dose_n'); addTally('cell');");
+test('the MCNP script carries the dose tallies and their description for the exporter', () => {
+  run("S.settings.photon = true; S.settings.sourceRate = 5e7; addDetectorTally('dose_np'); addTally('cell');");
   const mc = run('mcnpScript(problems())');
-  assert.doesNotMatch(mc, /_dose_filter|dose_tallies|calculate_volumes/);
-  assert.match(mc, /openmc\.Tally\(name="Cell tally"\)/, 'other tallies are still exported');
-  assert.match(run('mcnpTally(S.tallies[0])'), /not in the MCNP deck yet/);
+  assert.match(mc, /_dose_filter\("neutron"/); assert.match(mc, /_dose_filter\("photon"/);
+  assert.match(mc, /dose_tallies = \{/); assert.match(mc, /dose_cells = \[/); assert.match(mc, /SOURCE_RATE = 5e7 /);
+  assert.match(mc, /openmc\.Tally\(name="Cell tally"\)/);
+});
+
+test('the MCNP preview: F4:N and F14:P, FC, FM rate factor; later tallies number after both', () => {
+  run("S.settings.photon = true; S.settings.sourceRate = 5e7; addDetectorTally('dose_np'); addTally('cell');");
+  const p = run('mcnpTally(S.tallies[0])');
+  assert.match(p, /^F4:N /m); assert.match(p, /^F14:P /m);
+  assert.match(p, /^FC4 .*: neutron effective dose, Sv\/h \(ICRP-116 AP\)$/m);
+  assert.match(p, /^FM4 0\.18$/m);
+  assert.match(p, /^c SD4: each cell's volume/m);
+  assert.match(run('mcnpTally(S.tallies[1])'), /^F24:N /m, 'the next tally is 24: the dose tally took 4 and 14');
+  run("S.settings.sourceRate = null;");
+  assert.doesNotMatch(run('mcnpTally(S.tallies[0])'), /^FM4/m, 'no rate: per source particle, no multiplier');
 });
 
 test('a model without dose tallies is unchanged: no helper, no volume step', () => {
@@ -105,8 +117,9 @@ test('dose maps: a mesh tally with Dose writes mesh x particle x dose tallies an
   assert.match(py, /"mesh": True/);
   assert.match(py, /dose_cells = \[\]/);
   assert.equal((py.match(/= openmc\.RegularMesh\(/g) || []).length, 1, 'one mesh, shared');
-  assert.doesNotMatch(run('mcnpScript(problems())'), /_dose_filter/);
-  assert.ok(run('problems()').some(p => p.sev === 'info' && /isn't in model.mcnp yet/.test(p.text)));
+  assert.match(run('mcnpScript(problems())'), /_dose_filter\("neutron", "PA"/);
+  const p = run('mcnpTally(S.tallies[0])');
+  assert.match(p, /^FMESH4:N GEOM=XYZ/m); assert.match(p, /^     FACTOR=3\.6$/m); assert.doesNotMatch(p, /SD4/);
 });
 
 test('dose maps: colorbar and Results line in µSv/h, mrem/h or pSv per source particle', () => {

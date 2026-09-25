@@ -113,7 +113,7 @@ test('Windows line endings and trailing spaces don\'t count as changes', () => {
 });
 
 test('the Convert ribbon has the button', () => {
-  assert.ok(run("RIBBON.Convert.some(g => g.label === 'Round trip' && g.btns.some(b => b[1] === 'Import edited model.py…'))"));
+  assert.ok(run("RIBBON.Convert.some(g => g.label === 'Round trip' && g.btns.some(b => b[1] === 'Import edited model.py / .mcnp…'))"));
 });
 
 if (failed) { console.log(`test_patch_import: ${failed} FAILED`); process.exit(1); }

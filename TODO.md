@@ -194,7 +194,15 @@ and the MCNP lattice work; fixes listed under Completed).
     to its twin with only the marked numbers free, applies them through `applyEdit` as one Undo step, and logs
     each change by object; new/deleted/rewritten lines and unmarked (computed) numbers are listed as not applied;
     blank lines, CRLF and trailing spaces don't count; unknown studio IDs refuse the file. Tests:
-    `test/test_patch_import.js` (8). **Next:** the model.mcnp side (below), then the shared record format.
+    `test/test_patch_import.js` (9).
+  - **model.mcnp part: done** (2026-09-25). The same button takes an edited deck (`planMcnpPatch`): it is lined
+    up against the live model.mcnp tab (which must be current), whose editable numbers are read back from
+    `annotateMcnp`'s own rendering (`markedMcnp`), so deck numbers map to objects exactly as in-place editing does
+    (`@studio-v1` records). Shared core `planLinePatch` with the model.py import. Decks without records, naming
+    unknown objects, or a stale tab are refused. Checked live: a density edited in the deck reached the material,
+    model.py and the re-translated deck. Tests: `test/test_mcnp_patch_import.js` (7; fixture
+    `test/fixtures/mcnp/shielding_demo.*` is a real exported deck and its project). **Next:** the shared record
+    format (below) and embedding the whole project.
   - **Import as a patch (first).** Open an edited model.py (then model.mcnp) onto the project it came from.
     Studio regenerates the file from the current project, diffs it against the imported one, and maps each
     changed line to its Studio object and number: model.py through `studio_ids` and Studio's own line map,

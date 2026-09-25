@@ -43,6 +43,11 @@ out["rect"] = {"dims": list(g.GetDimensions()), "origin": list(g.GetOrigin()), "
 r = vtkStructuredGridReader(); r.SetFileName(d + "/cyl.vtk"); r.ReadAllScalarsOn(); r.Update(); g = r.GetOutput()
 e = g.GetExtent()
 out["cyl"] = {"dims": [e[1] - e[0] + 1, e[3] - e[2] + 1, e[5] - e[4] + 1], "points": vtk_to_numpy(g.GetPoints().GetData()).tolist(), "arrays": arrays(g)}
+from vtkmodules.vtkFiltersVerdict import vtkCellSizeFilter
+r = vtkStructuredGridReader(); r.SetFileName(d + "/Dose_Sv_h_ring.vtk"); r.ReadAllScalarsOn(); r.Update()
+cs = vtkCellSizeFilter(); cs.SetInputData(r.GetOutput()); cs.ComputeVolumeOn(); cs.Update()
+vol = vtk_to_numpy(cs.GetOutput().GetCellData().GetArray("Volume"))
+out["ring"] = {"volume_sum": float(vol.sum()), "volume_min": float(vol.min()), "cells": int(len(vol))}
 r = vtkPolyDataReader(); r.SetFileName(d + "/tracks.vtk"); r.ReadAllScalarsOn(); r.Update(); g = r.GetOutput()
 lines = g.GetLines(); ids = []
 lines.InitTraversal()
@@ -79,7 +84,11 @@ def build_and_run(work):
     t2 = openmc.Tally(name="cyl")
     t2.filters = [openmc.MeshFilter(cyl)]
     t2.scores = ["flux", "absorption"]
-    model = openmc.Model(geometry, openmc.Materials([water]), s, openmc.Tallies([t1, t2]))
+    ring = openmc.CylindricalMesh(r_grid=[2, 6], phi_grid=[0, 2 * np.pi], z_grid=[-3, 3], name="ring")
+    t3 = openmc.Tally(name="Dose \u00b5Sv/h ring")  # a micro sign: legacy VTK headers are ASCII
+    t3.filters = [openmc.MeshFilter(ring)]
+    t3.scores = ["flux"]
+    model = openmc.Model(geometry, openmc.Materials([water]), s, openmc.Tallies([t1, t2, t3]))
     cwd = os.getcwd()
     try:
         os.chdir(work)
@@ -127,8 +136,8 @@ def expected(work):
             "cyl_first_points": [[1 + r[0] * np.cos(phi[0]), 0 + r[0] * np.sin(phi[0]), z[0]],
                                  [1 + r[1] * np.cos(phi[0]), r[1] * np.sin(phi[0]), z[0]],
                                  [1 + r[0], 0, z[0]]],
-            "cyl_point_after_r": [1 + r[0] * np.cos(phi[1]), r[0] * np.sin(phi[1]), z[0]],
-            "cyl_point_row1": [1 + r[1] * np.cos(phi[1]), r[1] * np.sin(phi[1]), z[0]],
+            "cyl_point_after_r": [1 + r[0] * np.cos(np.pi / 16), r[0] * np.sin(np.pi / 16), z[0]],
+            "cyl_point_row1": [1 + r[1] * np.cos(np.pi / 16), r[1] * np.sin(np.pi / 16), z[0]],
             "track0": {"x": first.states["r"]["x"].tolist(), "E": first.states["E"].tolist()}, "n_lines": n_lines}
 
 
@@ -151,7 +160,7 @@ class VtkExport(unittest.TestCase):
 
     def test_manifest_and_readme(self):
         names = [f["file"] for f in self.manifest["files"]]
-        self.assertEqual(names, ["rect.vtk", "cyl.vtk", "tracks.vtk", "geometry_Water.stl"])
+        self.assertEqual(names, ["rect.vtk", "cyl.vtk", "Dose_Sv_h_ring.vtk", "tracks.vtk", "geometry_Water.stl"])
         readme = (Path(self.work) / "vtk" / "README.txt").read_text()
         self.assertIn("per source particle, per cm^3", readme)
         self.assertIn("rect.vtk (mesh tally \"rect\", 120 voxels)", readme)
@@ -175,13 +184,24 @@ class VtkExport(unittest.TestCase):
 
     def test_cylindrical_mesh(self):
         g = self.got["cyl"]
-        self.assertEqual(g["dims"], [4, 5, 3])
+        self.assertEqual(g["dims"], [4, 33, 3], "4 angular bins of 90 degrees, each drawn as 8 segments")
         pts = np.array(g["points"])
         np.testing.assert_allclose(pts[1], self.exp["cyl_first_points"][1], atol=1e-12)      # r fastest
         np.testing.assert_allclose(pts[4], self.exp["cyl_point_after_r"], atol=1e-12)        # then phi
         np.testing.assert_allclose(pts[5], self.exp["cyl_point_row1"], atol=1e-12)
-        np.testing.assert_allclose(g["arrays"]["absorption_mean"], self.exp["cyl"]["absorption_mean"], rtol=1e-12)
+        # every segment carries its bin's value: cell (i, jj, k) is bin (i, jj // 8, k)
+        want = np.array(self.exp["cyl"]["absorption_mean"]).reshape(2, 4, 3)
+        np.testing.assert_allclose(np.array(g["arrays"]["absorption_mean"]).reshape(2, 32, 3),
+                                   np.repeat(want, 8, axis=1), rtol=1e-12)
         self.assertIn("flux_mean", g["arrays"])
+
+    def test_one_bin_ring_keeps_its_volume(self):
+        """A full circle in one angular bin is drawn as a ring, not a sliver (review 2026-09-25)."""
+        g = self.got["ring"]
+        exact = np.pi * (6 ** 2 - 2 ** 2) * 6
+        self.assertEqual(g["cells"], 32)
+        self.assertGreater(g["volume_min"], 0)
+        self.assertLess(abs(g["volume_sum"] - exact) / exact, 0.01, g)  # a 32-gon ring vs the true circle
 
     def test_tracks(self):
         g = self.got["tracks"]

@@ -60,6 +60,18 @@ test('a part dimension comes back (a sphere radius in model.py)', () => {
   assert.equal(run(`S.parts.find(p => p.id === ${JSON.stringify(p.id)}).r`), r0 + 1.5);
 });
 
+test('a sphere\'s centre and radius edited together both apply (review: the second lost its target)', () => {
+  run("S.parts.find(p => p.shape === 'sphere').x = 3;");  // off the origin, so model.py writes an x0 to edit
+  const p = run("S.parts.find(p => p.shape === 'sphere')"), {x, r: r0} = p;
+  const text = editedScript([
+    {pick: r => r.t === 'sphere' && r.which === 'x' && Math.abs(r.r - r0) < 1e-9, to: String(x + 4)},
+    {pick: r => r.t === 'sphere' && r.which === 'r' && Math.abs(r.r - r0) < 1e-9, to: String(r0 + 1)}]);
+  const r = sb.importScriptPatch(text);
+  assert.equal(r.failed.length, 0, JSON.stringify(r.failed.map(f => f.err)));
+  const q = run(`S.parts.find(p => p.id === ${JSON.stringify(p.id)})`);
+  assert.deepEqual([q.x, q.r], [x + 4, r0 + 1]);
+});
+
 test('what can\'t come back is listed, and the rest still applies', () => {
   let text = editedScript([{pick: isParticles, to: '777'}]);
   const lines = text.split('\n');

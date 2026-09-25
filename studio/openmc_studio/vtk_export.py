@@ -28,7 +28,8 @@ PARTICLE_CODES = {"neutron": 0, "photon": 1, "electron": 2, "positron": 3}
 
 
 def _safe(name):
-    return re.sub(r"[^\w-]+", "_", str(name)).strip("_") or "tally"
+    """An ASCII file or array name: legacy VTK headers are ASCII, and so is every name ParaView lists."""
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", str(name)).strip("_") or "tally"
 
 
 def _num(values):
@@ -37,7 +38,8 @@ def _num(values):
 
 
 def _header(title, dataset):
-    return (f"# vtk DataFile Version 3.0\n{title[:250]}\nBINARY\nDATASET {dataset}\n").encode("ascii")
+    title = title[:250].encode("ascii", "replace").decode("ascii")  # a tally named "Dose uSv/h" with a micro sign
+    return (f"# vtk DataFile Version 3.0\n{title}\nBINARY\nDATASET {dataset}\n").encode("ascii")
 
 
 def _array_block(name, values, kind="double"):
@@ -105,19 +107,25 @@ def _write_cylindrical(path, t, m, arrays, scale=1.0):
     r, phi, z = (np.asarray(g, float) for g in (m.r_grid, m.phi_grid, m.z_grid))
     ox, oy, oz = (float(v) for v in getattr(m, "origin", (0.0, 0.0, 0.0)))
     nr, nphi, nz = len(r) - 1, len(phi) - 1, len(z) - 1
+    # A cell is drawn as a hexahedron, so a bin spanning a wide angle (a whole ring, with one angular bin) would
+    # collapse to a sliver. Each angular bin is drawn as `sub` segments of at most 11.25 degrees, all carrying
+    # the bin's value; the bin structure is unchanged.
+    sub = max(1, int(math.ceil(float(np.max(np.diff(phi))) / (2 * math.pi / 32) - 1e-9)))
+    phi_f = np.concatenate([np.linspace(phi[j], phi[j + 1], sub, endpoint=False) for j in range(nphi)] + [phi[-1:]])
     # points with r varying fastest, then phi, then z (VTK structured-grid order)
-    zz, pp, rr = np.meshgrid(z, phi, r, indexing="ij")
+    zz, pp, rr = np.meshgrid(z, phi_f, r, indexing="ij")
     pts = np.stack([ox + rr * np.cos(pp), oy + rr * np.sin(pp), oz + zz], axis=-1).reshape(-1, 3)
     vols = (0.5 * (r[1:] ** 2 - r[:-1] ** 2)[None, None, :] * np.diff(phi)[None, :, None]
             * np.diff(z)[:, None, None]).ravel()
+    grid = lambda v: np.repeat(np.asarray(v).reshape(nz, nphi, nr), sub, axis=1).ravel()  # bin -> its segments
     body = _header(f"OpenMC Studio mesh tally {t.name} (per source particle, per cm^3)", "STRUCTURED_GRID")
-    body += f"DIMENSIONS {nr + 1} {nphi + 1} {nz + 1}\nPOINTS {len(pts)} double\n".encode("ascii")
+    body += f"DIMENSIONS {nr + 1} {nphi * sub + 1} {nz + 1}\nPOINTS {len(pts)} double\n".encode("ascii")
     body += np.ascontiguousarray(pts, dtype=">f8").tobytes() + b"\n"
-    body += f"CELL_DATA {nr * nphi * nz}\n".encode("ascii")
+    body += f"CELL_DATA {nr * nphi * sub * nz}\n".encode("ascii")
     for name, vals in arrays.items():
-        body += _array_block(name, vals if name.endswith("_rel_err") else vals / vols * scale)
+        body += _array_block(name, grid(vals if name.endswith("_rel_err") else vals / vols * scale))
     Path(path).write_bytes(body)
-    return {"cells": nr * nphi * nz, "type": "STRUCTURED_GRID"}
+    return {"cells": nr * nphi * sub * nz, "bins": nr * nphi * nz, "segments_per_bin": sub, "type": "STRUCTURED_GRID"}
 
 
 def _write_tracks(path, tracks):

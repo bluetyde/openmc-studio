@@ -122,5 +122,73 @@ class DoseRates(unittest.TestCase):
         self.assertEqual((n.energy[0], n.y[0], n.y[1]), (1e-5, n.y[1], n.y[1]))
 
 
+def voxel_fluence(points_per_axis, lo, hi):
+    """Mean of 1/(4 pi d^2) over a box voxel, by the midpoint rule (the source is at the origin, outside it)."""
+    axes = [lo[i] + (np.arange(points_per_axis) + 0.5) * (hi[i] - lo[i]) / points_per_axis for i in range(3)]
+    x, y, z = np.meshgrid(*axes, indexing="ij")
+    return float(np.mean(1.0 / (4 * math.pi * (x * x + y * y + z * z))))
+
+
+def ring_fluence(r0, r1, z0, z1, n=400):
+    """Mean of 1/(4 pi d^2) over a full ring r0..r1, z0..z1 around the source (volume-weighted in r)."""
+    r = r0 + (np.arange(n) + 0.5) * (r1 - r0) / n
+    z = z0 + (np.arange(n) + 0.5) * (z1 - z0) / n
+    R, Z = np.meshgrid(r, z, indexing="ij")
+    w = R  # dV = r dr dphi dz
+    return float(np.sum(w / (4 * math.pi * (R * R + Z * Z))) / np.sum(w))
+
+
+class DoseMaps(unittest.TestCase):
+    """A box map and a cylindrical map of the same point source in void: every voxel against the hand value."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.work, cls.res, _ = run_fixture("dose_map")
+        cls.maps = {t["name"]: t for t in cls.res["tallies"] if t["kind"] == "mesh"}
+        cls.coef = coefficient("neutron", "AP", "icrp116", 14.1e6) * 1e8 * 3600e-12  # Sv/h per (1/cm^2 per source)
+
+    def compare(self, t, want):
+        got, rel = np.array(t["values"]["dose"]), np.array(t["rel_err"]["dose"])
+        self.assertEqual(t["unit"], "Sv/h")
+        self.assertTrue(np.all(rel > 0) and np.all(rel < 0.08), rel)
+        z = (got - want) / (rel * got)
+        self.assertLess(np.max(np.abs(z)), 4.5, f"worst voxel {np.argmax(np.abs(z))}: z = {z[np.argmax(np.abs(z))]:.2f}")
+        self.assertLess(abs(np.mean(z)), 4 / math.sqrt(len(z)), f"mean z {np.mean(z):.3f}: a bias across all voxels")
+        return got
+
+    def test_box_map_every_voxel(self):
+        t = self.maps["t_box"]
+        self.assertEqual((t["scores"], t["dims"], t["dose"]["source_rate"]), (["dose"], [4, 4, 4], 1e8))
+        lo, step = np.array([20.0, -10, -10]), 5.0
+        want = [self.coef * voxel_fluence(24, lo + step * np.array([i, j, k]), lo + step * np.array([i + 1, j + 1, k + 1]))
+                for k in range(4) for j in range(4) for i in range(4)]  # x fastest, like the map
+        got = self.compare(t, np.array(want))
+        self.assertEqual(int(np.argmax(got)) % 4, 0, "the voxels nearest the source are the hottest")
+
+    def test_cylindrical_map_every_ring(self):
+        t = self.maps["t_cyl"]
+        self.assertEqual((t["mesh_type"], t["dims"]), ("cylindrical", [4, 1, 1]))
+        want = [self.coef * ring_fluence(10 + 5 * i, 15 + 5 * i, -5, 5) for i in range(4)]
+        self.compare(t, np.array(want))
+
+    def test_paraview_export_matches_results(self):
+        """The VTK writer (vtk_export.py) and results.py compute the dose map separately; they must agree."""
+        from openmc_studio import vtk_export
+        man = vtk_export.export_run(self.work, self.work / "vtk")
+        f = next(x for x in man["files"] if x.get("dose") and x["cells"] == 64)
+        self.assertEqual(f["dose"], "neutron_dose_Sv_per_h")
+        raw = (self.work / "vtk" / f["file"]).read_bytes()
+        key = b"SCALARS neutron_dose_Sv_per_h_mean double 1\nLOOKUP_TABLE default\n"
+        i = raw.index(key) + len(key)
+        vtk_vals = np.frombuffer(raw[i:i + 64 * 8], dtype=">f8")
+        np.testing.assert_allclose(vtk_vals, self.maps["t_box"]["values"]["dose"], rtol=1e-12)
+        self.assertIn("Dose maps", (self.work / "vtk" / "README.txt").read_text())
+
+    def test_maps_need_no_volume_calculation(self):
+        info = json.loads((self.work / "dose.json").read_text())
+        self.assertEqual(info["volumes"], {})
+        self.assertFalse(list(self.work.glob("volume_*.h5")))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

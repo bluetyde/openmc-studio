@@ -142,8 +142,16 @@ and the MCNP lattice work; fixes listed under Completed).
   Problems refuses dose in eigenvalue mode, photon dose without photon transport, dose plus a detector response,
   and dose on lattice members. **Found and fixed on the way:** OpenMC multiplies fixed-source tallies by the
   total source strength, so models whose strengths didn't sum to 1 showed tallies scaled by that sum (and
-  unlike MCNP). model.py now scales the strengths to sum to 1 before the run. **Next:** stage 2 (dose maps)
-  and stage 3 (MCNP `DE`/`DF` + `SD` + rate `FM`); dose tallies stay out of model.mcnp until then.
+  unlike MCNP). model.py now scales the strengths to sum to 1 before the run.
+  **Stage 2 (dose maps): done** (2026-09-25). A mesh tally (regular or cylindrical) with Dose is a dose map:
+  results.py sums the particles and divides by each voxel's exact volume, and returns it as an ordinary map
+  (score "dose", `unit` Sv/h or pSv/source), so the viewport, Map control, noise line and VTK export work
+  unchanged; the colorbar and Results line show µSv/h or mrem/h, the layer is "Dose map". Tested voxel by voxel
+  against a numerically integrated point-source fluence (64 box voxels, 4 cylindrical rings, all within 4.5
+  sigma, mean deviation unbiased), and the VTK export equals Results value for value. **Found and fixed:** every
+  Studio cylindrical mesh tally failed to run: 2π rounded to 12 digits (6.28318530718) is above 2π and OpenMC
+  refuses the phi grid; a full circle is now `2 * np.pi` (`test_cylindrical_view.js` asserted the old string).
+  **Next:** stage 3 (MCNP `DE`/`DF` + `SD` + rate `FM`); dose tallies stay out of model.mcnp until then.
 - **Fluence-to-Dose Conversion (ICRP / ANSI)**, original notes:
   - Energy-dependent dose response filters (`openmc.data.dose_coefficients`):
     - **ICRP-74 / ICRP-116**: Effective dose for AP, PA, ISO, and ROT irradiation geometries.

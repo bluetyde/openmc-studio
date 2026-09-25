@@ -140,6 +140,15 @@ test('layer labels and viewport hints', () => {
   assert.equal(sb.meshViewHint(), 'Flux map (XZ) is edge-on here. Switch to the XZ view, or give it thickness.', 'no doubled plane');
 });
 
+test('a cylindrical map writes a full circle as 2 * np.pi (12-digit 2π is above 2π and OpenMC refuses it)', () => {
+  addMap();
+  run("Object.assign(S.tallies[0], {meshGeom:'cylindrical', nr:4, nphi:8, nz:2, rmin:0, rmax:10, zmin:-5, zmax:5});");
+  const py = run('generate(problems())');
+  assert.match(py, /phi_grid=np\.linspace\(0\.0, 2 \* np\.pi, 9\)/);
+  run("S.tallies[0].phimax = Math.PI;");
+  assert.match(run('generate(problems())'), /phi_grid=np\.linspace\(0\.0, 3\.14159265359, 9\)/, 'a partial range is written as typed');
+});
+
 test('a 3D map builds a 3D mesh in model.py and an FMESH with three bin counts', () => {
   const t = addMap();
   sb.setMeshMap(t, '3d');

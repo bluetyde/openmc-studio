@@ -1485,16 +1485,6 @@ function problems() {
   S.tallies.forEach(t => {
     if (t.kind === 'cell') {
       if (!t.cells.length) add('error', `${t.name}: tick at least one cell to tally.`, 'tally', t.id);
-      if (t.dose) {
-        if (eig) add('error', `${t.name}: dose needs a fixed-source run. An eigenvalue run has no absolute source rate to scale by.`, 'tally', t.id);
-        if (t.dose === 'np' && !st.photon) add('error', `${t.name}: photon dose needs photon transport. Turn on Photons in Settings, or set Dose to Neutrons.`, 'tally', t.id);
-        if (t.detector && t.detector !== 'none') add('error', `${t.name}: a tally can have a dose or a detector response, not both. Both multiply the flux by a function of energy.`, 'tally', t.id);
-        const inLat = t.cells.filter(id => (S.groups || []).some(g => g.lattice && g.lattice.asLattice && latticePlan(g).ok && latticePlan(g).parts.some(p => p.id === id)));
-        if (inLat.length) add('error', `${t.name}: dose on a part inside a lattice isn't supported yet. Untick "Export as RectLattice" (or HexLattice) on its array, or pick another part.`, 'tally', t.id);
-        if (!eig && !(st.sourceRate > 0)) add('info', `${t.name} gives dose per source particle (pSv). Set Source emission rate in Settings to see µSv/h.`, 'settings');
-        if (t.scores.some(sc => sc !== 'flux') || t.ebins.trim()) add('info', `${t.name}: a dose tally scores flux times the dose coefficients; its other scores and energy bins are left out.`, 'tally', t.id);
-        add('info', `${t.name} isn't in model.mcnp yet: MCNP dose cards (DE/DF) come in a later update.`, 'tally', t.id);
-      }
       t.cells.filter(c => c !== 'world' && !partById(c) && !csgCellById(c)).forEach(() => add('error', `${t.name} lists a part that was deleted.`, 'tally', t.id));
     } else if (t.kind === 'surface') {
       const ids = t.surfaces || [];
@@ -1515,6 +1505,16 @@ function problems() {
         add('warn', `${t.name} has ${(t.nx * t.ny * t.nz).toLocaleString()} voxels, over a million. Expect a large statepoint file` +
           (e ? ` and about ${pctText(e.rel)} error per voxel (${e.basis}).` : '.'), 'tally', t.id);
       }
+    }
+    if (t.dose && (t.kind === 'cell' || t.kind === 'mesh')) {
+      if (eig) add('error', `${t.name}: dose needs a fixed-source run. An eigenvalue run has no absolute source rate to scale by.`, 'tally', t.id);
+      if (t.dose === 'np' && !st.photon) add('error', `${t.name}: photon dose needs photon transport. Turn on Photons in Settings, or set Dose to Neutrons.`, 'tally', t.id);
+      if (t.detector && t.detector !== 'none') add('error', `${t.name}: a tally can have a dose or a detector response, not both. Both multiply the flux by a function of energy.`, 'tally', t.id);
+      const inLat = t.kind !== 'cell' ? [] : t.cells.filter(id => (S.groups || []).some(g => g.lattice && g.lattice.asLattice && latticePlan(g).ok && latticePlan(g).parts.some(p => p.id === id)));
+      if (inLat.length) add('error', `${t.name}: dose on a part inside a lattice isn't supported yet. Untick "Export as RectLattice" (or HexLattice) on its array, or pick another part.`, 'tally', t.id);
+      if (!eig && !(st.sourceRate > 0)) add('info', `${t.name} gives dose per source particle (pSv). Set Source emission rate in Settings to see µSv/h.`, 'settings');
+      if (t.scores.some(sc => sc !== 'flux') || t.ebins.trim()) add('info', `${t.name}: a dose tally scores flux times the dose coefficients; its other scores and energy bins are left out.`, 'tally', t.id);
+      add('info', `${t.name} isn't in model.mcnp yet: MCNP dose cards (DE/DF) come in a later update.`, 'tally', t.id);
     }
     if (t.detector && t.detector !== 'none') {
       const det = resolveDetector(t), micro = t.responseScale === 'micro';
@@ -2184,7 +2184,7 @@ function buildScript(probs, mark, opts = {}) {
   }
   // Dose: ICRP coefficients as an energy function per particle, divided by a cell volume from OpenMC's
   // volume calculation after the run (results.py). Not written to the MCNP deck yet.
-  const doseTallies = [], doseCells = new Map(), doseOn = opts !== MCNP_OPTS && S.tallies.some(t => t.kind === 'cell' && t.dose);
+  const doseTallies = [], doseCells = new Map(), doseOn = opts !== MCNP_OPTS && S.tallies.some(t => (t.kind === 'cell' || t.kind === 'mesh') && t.dose);
   if (doseOn) push('def _dose_filter(particle, geometry, data, lowest):',
     '    """ICRP effective-dose coefficients (pSv cm^2) as an energy function, log-log like MCNP\'s DE/DF cards.',
     '    Padded down to the lowest energy transported with the first value, so low energies count the way MCNP',
@@ -2200,21 +2200,53 @@ function buildScript(probs, mark, opts = {}) {
     const b = p ? partBounds(p) : csg ? csg.k.bounds : [-R, -R, -R, R, R, R];
     return [0, 1, 2].map(i => Math.max(-R, b[i] - pad)).concat([0, 1, 2].map(i => Math.min(R, b[i + 3] + pad)));
   };
+  // A mesh tally's mesh (written once), as the filter that uses it.
+  const meshFilter = t => {
+    const m = name('mesh', t.name);
+    if (t.meshGeom === 'cylindrical') {
+      const nr = Math.max(1, parseInt(t.nr) || 10);
+      const nphi = Math.max(1, parseInt(t.nphi) || 1);
+      const nz = Math.max(1, parseInt(t.nz) || 10);
+      const rmin = num(t.rmin ?? 0);
+      const rmax = num(t.rmax ?? t.ux ?? 10);
+      const phimin = num(t.phimin ?? 0);
+      // A full circle is written as 2 * np.pi: num() rounds 2π to 12 digits (6.28318530718), just above
+      // 2π, and OpenMC refuses a phi grid outside [0, 2π].
+      const phiTop = t.phimax ?? 2 * Math.PI;
+      const phimax = Math.abs(phiTop - 2 * Math.PI) < 1e-9 ? '2 * np.pi' : num(Math.min(phiTop, 2 * Math.PI));
+      const zmin = num(t.zmin ?? t.lz ?? -10);
+      const zmax = num(t.zmax ?? t.uz ?? 10);
+      const ox = num(t.ox ?? 0), oy = num(t.oy ?? 0), oz = num(t.oz ?? 0);
+      push(`${m} = openmc.CylindricalMesh(`,
+        `    r_grid=np.linspace(${rmin}, ${rmax}, ${nr + 1}),`,
+        `    phi_grid=np.linspace(${phimin}, ${phimax}, ${nphi + 1}),`,
+        `    z_grid=np.linspace(${zmin}, ${zmax}, ${nz + 1}),`,
+        `    origin=(${ox}, ${oy}, ${oz})`,
+        `)`);
+    } else {
+      const I = k => F(t, k, int(t[k]), {int:true});
+      push(`${m} = openmc.RegularMesh(name=${pyStr(t.name)})`, `${m}.dimension = [${I('nx')}, ${I('ny')}, ${I('nz')}]`,
+        `${m}.lower_left = [${F(t, 'lx', num(t.lx))}, ${F(t, 'ly', num(t.ly))}, ${F(t, 'lz', num(t.lz))}]`,
+        `${m}.upper_right = [${F(t, 'ux', num(t.ux))}, ${F(t, 'uy', num(t.uy))}, ${F(t, 'uz', num(t.uz))}]`);
+    }
+    return `openmc.MeshFilter(${m})`;
+  };
   const talVars = S.tallies.flatMap(t => {
     owner = {kind:'tally', id:t.id};
-    if (t.kind === 'cell' && t.dose) {
+    if ((t.kind === 'cell' || t.kind === 'mesh') && t.dose) {
       if (!doseOn) return [];
-      const ids = t.cells.filter(c => cv[c] && !latMember[c]);
+      const mesh = t.kind === 'mesh', ids = mesh ? [] : t.cells.filter(c => cv[c] && !latMember[c]);
       ids.forEach(c => doseCells.set(cv[c], doseBox(c)));
+      const where = mesh ? meshFilter(t) : `openmc.CellFilter([${ids.map(c => cv[c]).join(', ')}])`;
       const data = t.doseData === 'icrp74' ? 'icrp74' : 'icrp116', geom = t.doseGeom || 'AP';
       return (t.dose === 'np' ? ['neutron', 'photon'] : ['neutron']).map(pt => {
         const v = name('tally', `${t.name} ${pt} dose`);
         const lowest = pt === 'photon' ? num(st.photonCutoff || 1000) : '1e-5';
         push(`${v} = openmc.Tally(name=${pyStr(`${t.name} [${pt} dose]`)})`,
-          `${v}.filters = [openmc.CellFilter([${ids.map(c => cv[c]).join(', ')}]), openmc.ParticleFilter([${pyStr(pt)}]), ` +
+          `${v}.filters = [${where}, openmc.ParticleFilter([${pyStr(pt)}]), ` +
             `_dose_filter(${pyStr(pt)}, ${pyStr(geom)}, ${pyStr(data)}, ${lowest})]`,
           `${v}.scores = ['flux']  # x dose coefficient = pSv cm per source particle; / cell volume = pSv`, '');
-        doseTallies.push(`${v}.id: {"studio": ${pyStr(t.id)}, "name": ${pyStr(t.name)}, "particle": ${pyStr(pt)}, "data": ${pyStr(data)}, "geometry": ${pyStr(geom)}}`);
+        doseTallies.push(`${v}.id: {"studio": ${pyStr(t.id)}, "name": ${pyStr(t.name)}, "particle": ${pyStr(pt)}, "data": ${pyStr(data)}, "geometry": ${pyStr(geom)}${mesh ? ', "mesh": True' : ''}}`);
         return v;
       });
     }
@@ -2226,31 +2258,7 @@ function buildScript(probs, mark, opts = {}) {
       filters.push(`openmc.MaterialFilter([${mv[t.materialFilter]}])`);
     }
     if (t.kind === 'mesh') {
-      const m = name('mesh', t.name);
-      if (t.meshGeom === 'cylindrical') {
-        const nr = Math.max(1, parseInt(t.nr) || 10);
-        const nphi = Math.max(1, parseInt(t.nphi) || 1);
-        const nz = Math.max(1, parseInt(t.nz) || 10);
-        const rmin = num(t.rmin ?? 0);
-        const rmax = num(t.rmax ?? t.ux ?? 10);
-        const phimin = num(t.phimin ?? 0);
-        const phimax = num(t.phimax ?? 6.283185307179586);
-        const zmin = num(t.zmin ?? t.lz ?? -10);
-        const zmax = num(t.zmax ?? t.uz ?? 10);
-        const ox = num(t.ox ?? 0), oy = num(t.oy ?? 0), oz = num(t.oz ?? 0);
-        push(`${m} = openmc.CylindricalMesh(`,
-          `    r_grid=np.linspace(${rmin}, ${rmax}, ${nr + 1}),`,
-          `    phi_grid=np.linspace(${phimin}, ${phimax}, ${nphi + 1}),`,
-          `    z_grid=np.linspace(${zmin}, ${zmax}, ${nz + 1}),`,
-          `    origin=(${ox}, ${oy}, ${oz})`,
-          `)`);
-      } else {
-        const I = k => F(t, k, int(t[k]), {int:true});
-        push(`${m} = openmc.RegularMesh(name=${pyStr(t.name)})`, `${m}.dimension = [${I('nx')}, ${I('ny')}, ${I('nz')}]`,
-          `${m}.lower_left = [${F(t, 'lx', num(t.lx))}, ${F(t, 'ly', num(t.ly))}, ${F(t, 'lz', num(t.lz))}]`,
-          `${m}.upper_right = [${F(t, 'ux', num(t.ux))}, ${F(t, 'uy', num(t.uy))}, ${F(t, 'uz', num(t.uz))}]`);
-      }
-      filters.push(`openmc.MeshFilter(${m})`);
+      filters.push(meshFilter(t));
     } else if (t.kind === 'surface') {
       // Current leaving the selected parts through their own bounding surfaces.
       const ids = (t.surfaces || []).filter(id => shapeSurfs[id] && cv[id]);
@@ -2355,14 +2363,17 @@ function buildScript(probs, mark, opts = {}) {
     '        raise SystemExit(0)',
     ...(doseTallies.length ? [
       '    # Dose needs each tallied cell\'s volume: OpenMC\'s stochastic volume calculation, in the box around it.',
-      '    settings.volume_calculations = [openmc.VolumeCalculation([c], 200000, lo, hi) for c, lo, hi in dose_cells]',
-      '    model.calculate_volumes(output=False)',
-      '    dose_volumes = {str(cid): [v.nominal_value, v.std_dev] for vc in settings.volume_calculations for cid, v in vc.volumes.items()}',
-      '    settings.volume_calculations = []',
+      '    dose_volumes = {}  # dose maps need none: a voxel\'s volume is exact',
+      '    if dose_cells:',
+      '        settings.volume_calculations = [openmc.VolumeCalculation([c], 200000, lo, hi) for c, lo, hi in dose_cells]',
+      '        model.calculate_volumes(output=False)',
+      '        dose_volumes = {str(cid): [v.nominal_value, v.std_dev] for vc in settings.volume_calculations for cid, v in vc.volumes.items()}',
+      '        settings.volume_calculations = []',
       '    with open("dose.json", "w") as _f:',
       '        _studio_json.dump({"source_rate": SOURCE_RATE, "volumes": dose_volumes,',
       '                           "tallies": {str(k): v for k, v in dose_tallies.items()}}, _f, indent=1)',
-      '    print("Dose cell volumes (cm3):", {k: f"{v[0]:.5g} +/- {v[1]:.2g}" for k, v in dose_volumes.items()})'] : []),
+      '    if dose_volumes:',
+      '        print("Dose cell volumes (cm3):", {k: f"{v[0]:.5g} +/- {v[1]:.2g}" for k, v in dose_volumes.items()})'] : []),
     `    statepoint = model.run(${wantAll ? 'tracks=True' : ''})`,
     '    print(f"Finished: {statepoint}")');
   if (wantAll || tracks.length) push('    print("Particle tracks written to tracks.h5 (open with openmc.Tracks)")');
@@ -2578,7 +2589,7 @@ function detectorFm(n, t, det, ids, mesh) {
   return [card, note];
 }
 function mcnpTally(t) {
-  if (t.kind === 'cell' && t.dose) return 'c Dose tallies are not in the MCNP deck yet: its DE/DF dose cards come in a later update.';
+  if ((t.kind === 'cell' || t.kind === 'mesh') && t.dose) return 'c Dose tallies are not in the MCNP deck yet: its DE/DF dose cards come in a later update.';
   const ids = mcnpIds(), out = [];
   const k0 = S.tallies.slice(0, S.tallies.indexOf(t)).reduce((a, x) => a + x.scores.length, 0);
   const eb = t.ebins.trim() ? parseNums(t.ebins).vals : null;
@@ -4518,11 +4529,11 @@ function specFor(kind, o) {
         ]}
       ]},
       {title:'Dose', fields:[
-        F('select', 'dose', 'Dose', {options:() => [['', 'Off'], ['n', 'Neutrons'], ['np', 'Neutrons + photons']], show:() => o.kind === 'cell',
+        F('select', 'dose', 'Dose', {options:() => [['', 'Off'], ['n', 'Neutrons'], ['np', 'Neutrons + photons']], show:() => o.kind === 'cell' || o.kind === 'mesh',
           hint:'Effective dose from ICRP fluence-to-dose coefficients: what a person standing there would receive, not the H*(10) a survey meter reads. Set Source emission rate in Settings for µSv/h (mrem/h with imperial units).'}),
-        F('select', 'doseData', 'Coefficients', {options:() => [['icrp116', 'ICRP-116 (2010)'], ['icrp74', 'ICRP-74 (1996)']], show:() => o.kind === 'cell' && !!o.dose}),
+        F('select', 'doseData', 'Coefficients', {options:() => [['icrp116', 'ICRP-116 (2010)'], ['icrp74', 'ICRP-74 (1996)']], show:() => (o.kind === 'cell' || o.kind === 'mesh') && !!o.dose}),
         F('select', 'doseGeom', 'Facing the source', {options:() => [['AP', 'Front (AP)'], ['PA', 'Back (PA)'], ['LLAT', 'Left side (LLAT)'], ['RLAT', 'Right side (RLAT)'], ['ROT', 'Turning (ROT)'], ['ISO', 'From all sides (ISO)']],
-          show:() => o.kind === 'cell' && !!o.dose, hint:'Which way the body faces the radiation. Front (AP) gives the highest dose for most energies, so it is the usual conservative choice.'})
+          show:() => (o.kind === 'cell' || o.kind === 'mesh') && !!o.dose, hint:'Which way the body faces the radiation. Front (AP) gives the highest dose for most energies, so it is the usual conservative choice.'})
       ]},
       {title:'Detector response', fields:[
         F('select', 'detector', 'Response', {options:() => [
@@ -5210,7 +5221,9 @@ function renderResults() {
         '</tbody></table></div>';
     } else {
       const v = t.values[t.scores[0]], nz = v.filter(x => x > 0);
-      h += `<h4>${esc(t.name)}</h4><p class="envline">${t.dims.join(' × ')} mesh · ${esc(t.scores[0])} ${nz.length ? `${sci(Math.min(...nz))} to ${sci(Math.max(...nz))}` : 'all zero'} · shown on the viewport</p>`;
+      const d = meshDisplay(t);
+      h += `<h4>${esc(t.name)}</h4><p class="envline">${t.dims.join(' × ')} mesh · ${esc(t.scores[0])} ${nz.length ? `${sci(Math.min(...nz) * d.f)} to ${sci(Math.max(...nz) * d.f)}` : 'all zero'}${d.unit ? ' ' + esc(d.unit) : ''}` +
+        (t.dose ? ` · effective dose, ${esc(t.dose.data.toUpperCase().replace('ICRP', 'ICRP-'))} ${esc(t.dose.geometry)}${t.dose.source_rate ? '' : ' (set Source emission rate in Settings for µSv/h)'}` : '') + ' · shown on the viewport</p>';
     }
   });
   if (R.tracks.length) h += `<h4>Tracks</h4><p class="envline">${R.tracks.length} particle${R.tracks.length === 1 ? '' : 's'} drawn on the viewport, colored by energy. Click one to select it, then Replay neutron.${R.tracks_truncated ? ' Long tracks are thinned for drawing.' : ''}</p>`;
@@ -5218,7 +5231,7 @@ function renderResults() {
   box.innerHTML = h;
   const meshes = R.tallies.filter(t => t.kind === 'mesh');
   $('#meshPick').innerHTML = meshes.map((t, i) => `<option value="${i}">${esc(t.name)} · ${esc(meshLayerLabel(t))}</option>`).join('');
-  $('#meshLabel').textContent = meshes.length === 1 ? `Flux map · ${meshLayerLabel(meshes[0])}` : 'Flux map';
+  $('#meshLabel').textContent = meshes.length === 1 ? `${meshes[0].dose ? 'Dose map' : 'Flux map'} · ${meshLayerLabel(meshes[0])}` : 'Map';
   $('#meshPick').hidden = meshes.length < 2;
   $('#showMesh').parentElement.hidden = !meshes.length;
   $('#showTracks').parentElement.hidden = !R.tracks.length;
@@ -6247,13 +6260,20 @@ function meshViewHint() {
   }
   return '';
 }
+// A mesh result in display units: a dose map is Sv/h (shown as µSv/h or mrem/h) or pSv per source particle.
+function meshDisplay(t) {
+  if (t.unit === 'Sv/h') return imperial() ? {f:1e5, unit:'mrem/h'} : {f:1e6, unit:'µSv/h'};
+  if (t.unit === 'pSv/source') return {f:1, unit:'pSv per source particle'};
+  return {f:1, unit:''};
+}
 function meshColorbar(ctx, W, t, M) {
   const bx = W - 180, by = 12, bw = 150, bh = 8;
   for (let i = 0; i < bw; i++) { const [r, g, bl] = ramp(VIRIDIS, i / bw); ctx.fillStyle = `rgb(${r},${g},${bl})`; ctx.fillRect(bx + i, by, 1, bh); }
   ctx.fillStyle = 'rgba(216,221,227,.8)'; ctx.font = '10.5px "JetBrains Mono", Consolas, monospace';
-  ctx.textAlign = 'left'; ctx.fillText(sci(M.mn), bx, by + bh + 12);
-  ctx.textAlign = 'right'; ctx.fillText(sci(M.mx), bx + bw, by + bh + 12);
-  ctx.textAlign = 'center'; ctx.fillText(`${t.scores[0]} (log)`, bx + bw / 2, by + bh + 24);
+  const d = meshDisplay(t);
+  ctx.textAlign = 'left'; ctx.fillText(sci(M.mn * d.f), bx, by + bh + 12);
+  ctx.textAlign = 'right'; ctx.fillText(sci(M.mx * d.f), bx + bw, by + bh + 12);
+  ctx.textAlign = 'center'; ctx.fillText(d.unit ? `${t.scores[0]}, ${d.unit} (log)` : `${t.scores[0]} (log)`, bx + bw / 2, by + bh + 24);
   ctx.textAlign = 'left';
 }
 function drawMeshOverlay(ctx, cx, cy, scale, W, H) {

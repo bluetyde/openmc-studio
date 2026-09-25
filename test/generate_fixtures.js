@@ -142,6 +142,15 @@ write('dose_point_nr', {materials: [], parts: [part('det', 'sphere', 30, 0, 0, {
   tallies: [{...cellTally('t_dose', ['det']), dose: 'n', doseData: 'icrp74', doseGeom: 'ISO'}],
   settings: settings({worldR: 40, particles: 50000, batches: 20})});
 
+// 5c4. Dose maps with answers known by hand: the same 14.1 MeV point source in empty space, a 4 x 4 x 4 box map
+//      beside it and a cylindrical map (r 10-30 cm, 4 rings) around it. Each voxel's mean fluence is geometry alone.
+write('dose_map', {materials: [], parts: [], groups: [],
+  sources: [{...pointSource(), lines: '14.1:1'}],
+  tallies: [{...meshTally('t_box', [20, -10, -10], [40, 10, 10], [4, 4, 4]), dose: 'n', doseData: 'icrp116', doseGeom: 'AP'},
+    {...meshTally('t_cyl', [-30, -30, -5], [30, 30, 5], [4, 1, 1]), meshGeom: 'cylindrical', nr: 4, nphi: 1, nz: 1,
+      rmin: 10, rmax: 30, zmin: -5, zmax: 5, ox: 0, oy: 0, oz: 0, dose: 'n', doseData: 'icrp116', doseGeom: 'AP'}],
+  settings: settings({worldR: 45, particles: 50000, batches: 20, sourceRate: 1e8})});
+
 // 5d. A multiplying model run as a fixed source: fission is treated as capture (create_fission_neutrons = False,
 //     MCNP NONU), so the chains die out instead of stopping OpenMC with "secondary particle bank growing without
 //     bound". Without the switch this model does not finish.

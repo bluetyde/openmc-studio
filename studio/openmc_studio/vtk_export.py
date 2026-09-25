@@ -46,7 +46,7 @@ def _array_block(name, values, kind="double"):
     return f"SCALARS {name} {kind} 1\nLOOKUP_TABLE default\n".encode("ascii") + data + b"\n"
 
 
-def _mesh_arrays(t, openmc, mesh_f, dims):
+def _mesh_arrays(t, openmc, mesh_f, dims, label=None):
     """{array name: values in VTK cell order (x or r fastest)}, per source particle, not yet per volume."""
     shape = [f.num_bins for f in t.filters]
     k = t.filters.index(mesh_f)
@@ -68,7 +68,7 @@ def _mesh_arrays(t, openmc, mesh_f, dims):
             m_k, v_k = m_k[:, None], v_k[:, None]
         tot_m, tot_v = m_k.sum(axis=1), v_k.sum(axis=1)
         grid = lambda a: _place(a, idx, n)
-        name = _safe(score)
+        name = label or _safe(score)
         out[f"{name}_mean"] = grid(tot_m)
         out[f"{name}_std_dev"] = grid(np.sqrt(tot_v))
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -85,7 +85,7 @@ def _place(a, idx, n):
     return g
 
 
-def _write_regular(path, t, m, arrays):
+def _write_regular(path, t, m, arrays, scale=1.0):
     dims = [int(d) for d in m.dimension] + [1] * (3 - len(m.dimension))
     lo = np.array(m.lower_left, float)
     hi = np.array(m.upper_right, float)
@@ -96,12 +96,12 @@ def _write_regular(path, t, m, arrays):
              f"ORIGIN {_num(lo)}\nSPACING {_num(step)}\n"
              f"CELL_DATA {int(np.prod(dims))}\n").encode("ascii")
     for name, vals in arrays.items():
-        body += _array_block(name, vals if name.endswith("_rel_err") else vals / vol)
+        body += _array_block(name, vals if name.endswith("_rel_err") else vals / vol * scale)
     Path(path).write_bytes(body)
     return {"cells": int(np.prod(dims)), "type": "STRUCTURED_POINTS"}
 
 
-def _write_cylindrical(path, t, m, arrays):
+def _write_cylindrical(path, t, m, arrays, scale=1.0):
     r, phi, z = (np.asarray(g, float) for g in (m.r_grid, m.phi_grid, m.z_grid))
     ox, oy, oz = (float(v) for v in getattr(m, "origin", (0.0, 0.0, 0.0)))
     nr, nphi, nz = len(r) - 1, len(phi) - 1, len(z) - 1
@@ -115,7 +115,7 @@ def _write_cylindrical(path, t, m, arrays):
     body += np.ascontiguousarray(pts, dtype=">f8").tobytes() + b"\n"
     body += f"CELL_DATA {nr * nphi * nz}\n".encode("ascii")
     for name, vals in arrays.items():
-        body += _array_block(name, vals if name.endswith("_rel_err") else vals / vols)
+        body += _array_block(name, vals if name.endswith("_rel_err") else vals / vols * scale)
     Path(path).write_bytes(body)
     return {"cells": nr * nphi * nz, "type": "STRUCTURED_GRID"}
 
@@ -158,6 +158,9 @@ Units
 - Mesh tallies: per source particle, per cm^3 of voxel. For flux that is fluence per source particle
   (particle-cm per cm^3 = 1/cm^2). <score>_rel_err is the relative error (0.05 = 5%); voxels with no
   score have 0. <score>_mean_E<i> is energy bin i on its own, lowest energy first.
+- Dose maps (a "[neutron dose]" or "[photon dose]" file per particle): effective dose per voxel, in Sv/h
+  (<particle>_dose_Sv_per_h_*, from the source rate set in Studio) or pSv per source particle
+  (<particle>_dose_pSv_*). Add the particles with ParaView's Calculator for the total.
 - Lengths are in cm.
 - tracks.vtk: energy_eV at each point; particle 0 = neutron, 1 = photon, 2 = electron, 3 = positron.
 - geometry_*.stl: one file per material, from Studio's STL export. Each part is its whole shape: where
@@ -178,6 +181,11 @@ def export_run(run_dir, out_dir, stl=None, stl_note=""):
     run_dir, out = Path(run_dir), Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     files = []
+    try:
+        dose_info = json.loads((run_dir / "dose.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        dose_info = {}
+    dose = dose_info.get("tallies", {})
     sps = sorted(glob.glob(str(run_dir / "statepoint.*.h5")), key=lambda p: int(os.path.basename(p).split(".")[1]))
     if sps:
         with openmc.StatePoint(sps[-1]) as sp:
@@ -197,8 +205,17 @@ def export_run(run_dir, out_dir, stl=None, stl_note=""):
                 while name in used:
                     name, i = f"{base}_{i}", i + 1
                 used.add(name)
-                arrays = _mesh_arrays(t, openmc, mf, dims)
-                info = (_write_cylindrical if is_cyl else _write_regular)(out / f"{name}.vtk", t, m, arrays)
+                d = dose.get(str(t.id))
+                if d:  # a dose map: flux x ICRP coefficient per voxel volume = pSv per source particle
+                    rate = dose_info.get("source_rate")
+                    label = f"{d['particle']}_dose_" + ("Sv_per_h" if rate else "pSv")
+                    scale = rate * 3600e-12 if rate else 1.0
+                else:
+                    label, scale = None, 1.0
+                arrays = _mesh_arrays(t, openmc, mf, dims, label)
+                info = (_write_cylindrical if is_cyl else _write_regular)(out / f"{name}.vtk", t, m, arrays, scale)
+                if d:
+                    info["dose"] = label
                 files.append({"file": f"{name}.vtk", "tally": t.name, "arrays": list(arrays), **info})
     tpath = run_dir / "tracks.h5"
     if tpath.exists():

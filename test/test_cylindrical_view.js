@@ -31,7 +31,8 @@ assert.equal(modelTally.nphi,12); assert.equal(modelTally.nz,15);
 sandbox.__t=modelTally;
 vm.runInContext('S.tallies=[__t];',sandbox);
 assert.match(sandbox.mcnpTally(modelTally),/KINTS=12/);
-assert.match(sandbox.buildScript([],false).text,/phi_grid=np.linspace\\(0.0, 6.28318530718, 13\\)/);
+// A full circle is 2 * np.pi: 2π rounded to 12 digits (6.28318530718) is above 2π and OpenMC refuses it.
+assert.match(sandbox.buildScript([],false).text,/phi_grid=np.linspace\\(0.0, 2 \\* np.pi, 13\\)/);
 modelTally.meshGeom='regular';
 assert.equal(JSON.stringify(sandbox.annotateMcnp(deck.replace('GEOM=CYL','GEOM=XYZ'),context,true).refs.map(r=>r.key)),JSON.stringify(['lx','ly','lz','ux','nx','uy','ny','uz','nz']));
 console.log('Cylindrical rendering, occlusion and edit round trips PASSED');

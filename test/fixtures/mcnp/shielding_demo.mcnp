@@ -1,0 +1,189 @@
+$ This file was written with mcnpy
+c @studio-map-v1
+c ===================================================================
+c BLOCK 1: CELL CARDS
+c Format: <cell_id> <mat_id> <density> <surfaces> <parameters>
+c   - Material 0 = void (vacuum)
+c   - Negative density = mass density in g/cm3; positive = at/b-cm
+c   - Positive surface = outside (+); negative surface = inside (-)
+c ===================================================================
+c --- Cell 1: He-3 detector (Material 3: He-3 detector gas (4 atm), rho = -0.000502 g/cm3) ---
+c @studio-v1 cell 1 1/1 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22p1%22%7D
+1 3 -5.02E-4 -7 8 -9 1 -2 3 -4 5 -6 IMP:N=1.0
+c --- Cell 2: Source cavity (void) ---
+c @studio-v1 cell 2 1/1 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22p2%22%7D
+2 0 -10 1 -2 3 -4 5 -6 IMP:N=1.0
+c --- Cell 3: Moderator (Material 1: Polyethylene, non-borated, rho = -0.93 g/cm3) ---
+c @studio-v1 cell 3 1/1 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22p3%22%7D
+3 1 -0.93 -11 1 -2 3 -4 5 -6 10 IMP:N=1.0
+c --- Cell 4: Lead shield (Material 2: Lead, rho = -11.35 g/cm3) ---
+c @studio-v1 cell 4 1/1 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22p4%22%7D
+4 2 -11.35 -12 1 -2 3 -4 5 -6 10 11 IMP:N=1.0
+c --- Cell 5: Floor slab (Material 4: Concrete, ordinary (NIST), rho = -2.3 g/cm3) ---
+c @studio-v1 cell 5 1/1 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22p5%22%7D
+5 4 -2.3 1 -2 3 -4 5 -13 1 -2 3 -4 5 -6 IMP:N=1.0
+c --- Cell 6: World (void) ---
+c @studio-v1 cell 6 1/1 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%7D
+6 0 1 -2 3 -4 5 -6 (7:-8:9) 10 11 12 (-1:2:-3:4:-5:13)
+     IMP:N=1.0
+c --- Cell 999: Outside World (vacuum boundary, particles terminated) ---
+c @studio-v1 cell 999 1/1 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%7D
+999 0 #1 #2 #3 #4 #5 #6 IMP:N=0
+
+c ===================================================================
+c BLOCK 2: SURFACE CARDS
+c Format: <surf_id> <mnemonic> <parameters in cm>
+c ===================================================================
+c --- Surface 7: (ZCylinder) ---
+c @studio-v1 surface 7 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22p1%22%2C%22slot%22%3A
+c @studio-v1 surface 7 2/2 6%7D
+7 C/Z 60.0 0.0 2.5
+c --- Surface 8: (ZPlane) ---
+c @studio-v1 surface 8 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22p1%22%2C%22slot%22%3A
+c @studio-v1 surface 8 2/2 7%7D
+8 P 0.0 0.0 1.0 -10.0
+c --- Surface 9: (ZPlane) ---
+c @studio-v1 surface 9 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22p1%22%2C%22slot%22%3A
+c @studio-v1 surface 9 2/2 8%7D
+9 P 0.0 0.0 1.0 10.0
+c --- Surface 1: (XPlane) ---
+1 P 1.0 0.0 0.0 -100.0
+c --- Surface 2: (XPlane) ---
+2 P 1.0 0.0 0.0 100.0
+c --- Surface 3: (YPlane) ---
+3 P 0.0 1.0 0.0 -100.0
+c --- Surface 4: (YPlane) ---
+4 P 0.0 1.0 0.0 100.0
+c --- Surface 5: (ZPlane) ---
+5 P 0.0 0.0 1.0 -100.0
+c --- Surface 6: (ZPlane) ---
+c @studio-v1 surface 6 1/2 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%2C%22slot%2
+c @studio-v1 surface 6 2/2 2%3A5%7D
+6 P 0.0 0.0 1.0 100.0
+c --- Surface 10: (Sphere) ---
+c @studio-v1 surface 10 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22p2%22%2C%22slot%22%3A
+c @studio-v1 surface 10 2/2 9%7D
+10 SO 5.0
+c --- Surface 11: (Sphere) ---
+c @studio-v1 surface 11 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22p3%22%2C%22slot%22%3A
+c @studio-v1 surface 11 2/2 10%7D
+11 SO 25.0
+c --- Surface 12: (Sphere) ---
+c @studio-v1 surface 12 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22p4%22%2C%22slot%22%3A
+c @studio-v1 surface 12 2/2 11%7D
+12 SO 32.0
+c --- Surface 13: (ZPlane) ---
+c @studio-v1 surface 13 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22p5%22%2C%22slot%22%3A
+c @studio-v1 surface 13 2/2 12%7D
+13 P 0.0 0.0 1.0 -70.0
+
+c ===================================================================
+c BLOCK 3: DATA CARDS (Materials, Physics, Source, Tallies)
+c ===================================================================
+c -------------------------------------------------------------------
+c Materials & Thermal Scattering S(alpha, beta)
+c Format: M<id> <zaid> <fraction> (negative = wt%, positive = at%)
+c -------------------------------------------------------------------
+c --- Material 1: Polyethylene, non-borated, rho = 0.93 g/cm3 ---
+c @studio-v1 material 1 1/1 %7B%22kind%22%3A%22material%22%2C%22id%22%3A%22m1%22%7D
+M1
+     1001   -0.14367127668001117
+     1002   -4.472331998882998E-5
+     6012   -0.8460144533373521
+     6013   -0.010269546662648
+c MT1: Thermal neutron scattering S(alpha, beta) for Material 1
+MT1 h-poly.40t
+c --- Material 2: Lead, rho = 11.35 g/cm3 ---
+c @studio-v1 material 2 1/1 %7B%22kind%22%3A%22material%22%2C%22id%22%3A%22m2%22%7D
+M2
+     82204   -0.013780837879174387
+     82206   -0.23955499914108686
+     82207   -0.22074295834851623
+     82208   -0.5259212046312225
+c --- Material 3: He-3 detector gas (4 atm), rho = 0.000502 g/cm3 ---
+c @studio-v1 material 3 1/1 %7B%22kind%22%3A%22material%22%2C%22id%22%3A%22m3%22%7D
+M3 2003   1.0
+c --- Material 4: Concrete, ordinary (NIST), rho = 2.3 g/cm3 ---
+c @studio-v1 material 4 1/1 %7B%22kind%22%3A%22material%22%2C%22id%22%3A%22m4%22%7D
+M4
+     1001   -0.02209312264903175
+     1002   -6.877350968250874E-6
+     6012   -0.0024542090031928455
+     6013   -2.9790996807154672E-5
+     8016   -0.5734046375843271
+     8017   -2.3151536360915253E-4
+     8018   -0.0012938470520638158
+     11023   -0.015208
+     12024   -9.863360639149484E-4
+     12025   -1.304032523909056E-4
+     12026   -1.4926068369414605E-4
+     13027   -0.019953
+     14028   -0.2798715394931871
+     14029   -0.014718815964406412
+     14030   -0.010036644542406442
+     19039   -0.009335527929552606
+     19040   -1.2012871969376925E-6
+     19041   -7.082707832504547E-4
+     20040   -0.04151720676721007
+     20042   -2.909326405278777E-4
+     20043   -6.215163600579411E-5
+     20044   -9.826397780431284E-4
+     20046   -1.9699144005446173E-6
+     20048   -9.609926381259581E-5
+     26054   -3.632916716311861E-4
+     26056   -0.005913863376964844
+     26057   -1.3901972028996284E-4
+     26058   -1.8825231114007384E-5
+c -------------------------------------------------------------------
+c Particle Transport Mode
+c -------------------------------------------------------------------
+c @studio-v1 data MODE 1/1 %7B%22kind%22%3A%22settings%22%2C%22id%22%3A%22settings%22%7D
+MODE N
+c -------------------------------------------------------------------
+c Source Definition & Run Control
+c -------------------------------------------------------------------
+c SDEF: General particle source distribution
+c @studio-v1 data SDEF 1/1 %7B%22kind%22%3A%22source%22%2C%22id%22%3A%22s1%22%7D
+SDEF PAR=1
+     POS=0.0 0.0 0.0
+     ERG=14.1
+c NPS: Total particle histories to simulate
+c @studio-v1 data NPS 1/1 %7B%22kind%22%3A%22settings%22%2C%22id%22%3A%22settings%22%7D
+NPS 100000
+c -------------------------------------------------------------------
+c Tallies
+c Format: F<n>:<p> <cells/surfaces> (e.g., F4: volume flux, F1: surface current)
+c -------------------------------------------------------------------
+c @studio-v1 tally 4 1/1 %7B%22kind%22%3A%22tally%22%2C%22id%22%3A%22t1%22%7D
+F4:N 1
+FC4 Detector spectrum (flux)
+E4 5e-07 0.1 20.0
+SD4 1
+c @studio-v1 tally 14 1/1 %7B%22kind%22%3A%22tally%22%2C%22id%22%3A%22t1%22%7D
+F14:N 1
+FC14 Detector spectrum ((n,p))
+FM14 (-1 3 103)
+E14 5e-07 0.1 20.0
+SD14 1
+c @studio-v1 tally 24 1/1 %7B%22kind%22%3A%22tally%22%2C%22id%22%3A%22t2%22%7D
+FMESH24:N GEOM=XYZ ORIGIN=-100.0 -5.0 -100.0
+     IMESH=100.0 IINTS=100 JMESH=5.0 JINTS=1
+     KMESH=100.0 KINTS=100
+c @studio-v1 tally 34 1/1 %7B%22kind%22%3A%22tally%22%2C%22id%22%3A%22t_dose%22%7D
+F34:N 1
+FC34 Dose rate at the detector: neutron effective dose, Sv/h (ICRP116 AP)
+c DE34/DF34: ICRP116 AP dose coefficients (pSv cm2), log-log
+DE34 1e-11 1e-09 1e-08 2.5e-08 1e-07 2e-07 5e-07 1e-06 2e-06 5e-06 1e-05 2e-05
+     5e-05 0.0001 0.0002 0.0005 0.001 0.002 0.005 0.01 0.02 0.03 0.05 0.07 0.1
+     0.15 0.2 0.3 0.5 0.7 0.9 1.0 1.2 1.5 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0
+     12.0 14.0 15.0 16.0 18.0 20.0 21.0 30.0 50.0 75.0 100.0 130.0 150.0 180.0
+     200.0 300.0 400.0 500.0 600.0 700.0 800.0 900.0 1000.0 2000.0 5000.0
+     10000.0
+DF34 3.09 3.09 3.55 4.0 5.2 5.87 6.59 7.03 7.39 7.71 7.82 7.84 7.82 7.79 7.73
+     7.54 7.54 7.61 7.97 9.11 12.2 15.7 23.0 30.6 41.9 60.6 78.8 114.0 177.0
+     232.0 279.0 301.0 330.0 365.0 407.0 458.0 483.0 494.0 498.0 499.0 499.0
+     500.0 500.0 499.0 495.0 493.0 490.0 484.0 477.0 474.0 453.0 433.0 420.0
+     402.0 382.0 373.0 363.0 359.0 363.0 389.0 422.0 457.0 486.0 508.0 524.0
+     537.0 612.0 716.0 933.0
+FM34 0.36
+SD34 392.8103506926668

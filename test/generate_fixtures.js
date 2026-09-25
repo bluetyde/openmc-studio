@@ -128,6 +128,20 @@ write('flux_3d', {materials: [water],
   tallies: [meshTally('t_map', [-20, -20, -20], [20, 20, 20], [10, 10, 10])],
   settings: settings({worldR: 30})});
 
+// 5c3. Dose rate with an answer known by hand: a 14.1 MeV neutron and a 1.25 MeV photon point source (equal
+//      strength) at the origin in empty space, and a void detector sphere (r = 2 cm) 30 cm away. The fluence in
+//      the sphere is geometry alone, so the dose follows from the ICRP coefficients (test/test_dose_rates.py).
+write('dose_point', {materials: [],
+  parts: [part('det', 'sphere', 30, 0, 0, {r: 2}, 'void')],
+  sources: [{...pointSource(), lines: '14.1:1'}, {...pointSource(), id: 's2', name: 'Gamma', particle: 'photon', lines: '1.25:1'}],
+  groups: [],
+  tallies: [{...cellTally('t_dose', ['det']), dose: 'np', doseData: 'icrp116', doseGeom: 'AP'}],
+  settings: settings({worldR: 40, photon: true, particles: 100000, batches: 20, sourceRate: 1e8})});
+write('dose_point_nr', {materials: [], parts: [part('det', 'sphere', 30, 0, 0, {r: 2}, 'void')],
+  sources: [{...pointSource(), lines: '14.1:1'}], groups: [],
+  tallies: [{...cellTally('t_dose', ['det']), dose: 'n', doseData: 'icrp74', doseGeom: 'ISO'}],
+  settings: settings({worldR: 40, particles: 50000, batches: 20})});
+
 // 5d. A multiplying model run as a fixed source: fission is treated as capture (create_fission_neutrons = False,
 //     MCNP NONU), so the chains die out instead of stopping OpenMC with "secondary particle bank growing without
 //     bound". Without the switch this model does not finish.

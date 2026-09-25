@@ -64,12 +64,74 @@ def load(run_dir):
                 cell_names = {c.id: (c.name or f"cell {c.id}") for c in sp.summary.geometry.get_all_cells().values()}
                 if hasattr(sp.summary, "materials") and sp.summary.materials is not None:
                     mat_names = {m.id: (m.name or f"mat {m.id}") for m in sp.summary.materials}
+            dose = _dose_info(run_dir)
+            dosed = []
             for t in sp.tallies.values():
-                out["tallies"].append(_tally(t, cell_names, mat_names, openmc))
+                if str(t.id) in dose.get("tallies", {}):
+                    dosed.append(t)
+                else:
+                    out["tallies"].append(_tally(t, cell_names, mat_names, openmc))
+            out["tallies"].extend(_dose(dosed, dose, cell_names, openmc))
 
     tpath = os.path.join(run_dir, "tracks.h5")
     if os.path.exists(tpath):
         out["tracks"], out["tracks_truncated"] = _tracks(openmc.Tracks(tpath))
+    return out
+
+
+def _dose_info(run_dir):
+    """dose.json, written by model.py before the run: dose tallies, cell volumes, source rate."""
+    import json
+    try:
+        with open(os.path.join(run_dir, "dose.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _dose(tallies, info, cell_names, openmc):
+    """Dose tallies -> dose per cell, per particle and in total.
+
+    Each tally scores flux x an ICRP coefficient: pSv cm per source particle. Dividing by the cell's volume
+    gives pSv per source particle; x source rate x 3600 s/h x 1e-12 Sv/pSv gives Sv/h. The relative error
+    combines the tally's and the volume's (the same volume divides every particle's tally, so they share it).
+    """
+    rate = info.get("source_rate")
+    vols = info.get("volumes", {})
+    groups = {}
+    for t in tallies:
+        meta = info["tallies"][str(t.id)]
+        g = groups.setdefault(meta["studio"], {"meta": meta, "cells": {}})
+        cf = t.find_filter(openmc.CellFilter)
+        mean, std = t.mean.reshape(-1), t.std_dev.reshape(-1)
+        for i, cid in enumerate(cf.bins):
+            c = g["cells"].setdefault(int(cid), {})
+            c[meta["particle"]] = (float(mean[i]), float(std[i]))
+    out = []
+    for studio, g in groups.items():
+        rows = []
+        for cid, parts in g["cells"].items():
+            v, dv = vols.get(str(cid), [None, None])
+            row = {"cell": cell_names.get(cid, f"cell {cid}"), "cell_id": cid, "volume": [_num(v), _num(dv)] if v else None}
+            vrel = (dv / v) if v else None
+
+            def entry(m, s):
+                if not v:
+                    return None
+                ps = m / v  # pSv per source particle
+                rel = math.sqrt((s / m) ** 2 + vrel ** 2) if m > 0 else None
+                return {"pSv_per_source": _num(ps), "sv_per_h": _num(ps * rate * 3600e-12) if rate else None,
+                        "rel_err": _num(rel) if rel is not None else None}
+            for p, (m, s) in parts.items():
+                row[p] = entry(m, s)
+            m_tot = sum(m for m, _ in parts.values())
+            s_tot = math.sqrt(sum(s * s for _, s in parts.values()))
+            row["total"] = entry(m_tot, s_tot)
+            rows.append(row)
+        meta = g["meta"]
+        out.append({"name": meta["name"], "kind": "dose", "studio": studio, "data": meta["data"], "geometry": meta["geometry"],
+                    "particles": sorted({p for c in g["cells"].values() for p in c}, key=["neutron", "photon"].index),
+                    "source_rate": rate, "rows": rows})
     return out
 
 

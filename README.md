@@ -17,6 +17,11 @@ press **Run**, and results appear on the viewport (flux map, neutron tracks) and
 under **Results**. Click a neutron track, then **Replay neutron** to rerun exactly
 that neutron with the same seed.
 
+**Export for ParaView…** (in Results, or Export > ParaView (VTK)) saves a finished run as a zip that
+ParaView or VisIt opens directly: each flux map as a VTK file (mean, standard deviation and relative error
+per voxel, and per energy bin), the particle tracks coloured by energy, and the geometry as one STL per
+material. A README inside gives the units and how to open it.
+
 To stop Studio, close that window or press Ctrl+C in it. Runs are saved on the
 computer (not a removable drive) in `~/OpenMC-runs`, one folder per run with `model.py`,
 the statepoint, tracks and the log. Past runs are under **Runs**.

@@ -3969,7 +3969,7 @@ const RIBBON = {
   ],
   Export:[
     {label:'Script', btns:[['copy', 'Copy model.py', copyScript], ['save', 'Save model.py', saveScript, () => !!downloads]]},
-    {label:'3D Mesh', btns:[['stl', 'Export STL…', e => openStlMenu(e.currentTarget)]]},
+    {label:'3D Mesh', btns:[['stl', 'Export STL…', e => openStlMenu(e.currentTarget)], ['stl', 'ParaView (VTK)', exportParaview, () => LOCAL.on && !!LOCAL.resultsRun]]},
     {label:'CAD', btns:[['convert', 'Export STEP…', e => openCadExportMenu(e.currentTarget)]]},
     {label:'MCNP', btns:[['save', 'MCNP input', () => exportMcnp(), () => LOCAL.on]]},
     {label:'Project', btns:[['save', 'Save project', saveProject, () => !!downloads], ['open', 'Open project', () => $('#openFile').click()]]}
@@ -4933,6 +4933,43 @@ function streamRun(id) {
   });
   es.onerror = () => { if (es.readyState === EventSource.CLOSED && LOCAL.run === id) { LOCAL.run = null; setRunning(false); log('error', 'Lost the connection to the Studio server.'); } };
 }
+/* ───────── Export for ParaView: VTK maps and tracks (server) + STL geometry per material (page) ───────── */
+// Geometry comes from the run's own saved project, so it matches the results even if the model changed since.
+function paraviewStl(project) {
+  const byMat = new Map();
+  (project.parts || []).forEach(p => {
+    const m = (project.materials || []).find(x => x.id === p.material);
+    const key = m ? m.name : p.material === 'void' || !p.material ? 'void' : 'unassigned';
+    if (!byMat.has(key)) byMat.set(key, []);
+    byMat.get(key).push(p);
+  });
+  const files = {};
+  for (const [name, parts] of byMat) {
+    const bytes = generateSTL(parts, {binary:true, quality:32, units:'cm', modelName:name}).data;
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    files[`geometry_${name}.stl`] = btoa(bin);
+  }
+  return files;
+}
+async function exportParaview() {
+  const rid = LOCAL.resultsRun;
+  if (!LOCAL.on || !rid) { log('warn', 'Run the model (or open a past run under Runs) first: this exports the results of a run.'); return; }
+  setOutTab('log');
+  log('info', `Writing run <code>${esc(rid)}</code> for ParaView…`);
+  let project, r;
+  try { project = await api(`/api/runs/${encodeURIComponent(rid)}/project`); } catch (e) { project = S; }
+  const note = ((project.csg && project.csg.components) || []).length
+    ? '\n  Imported CAD components are not included: Studio cannot write them as STL yet.' : '';
+  try {
+    r = await api(`/api/runs/${encodeURIComponent(rid)}/export-vtk`, {method:'POST', body:JSON.stringify({stl:paraviewStl(project), stl_note:note})});
+  } catch (e) { log('error', `Export for ParaView failed: ${esc(e.message)}`); return; }
+  const bin = atob(r.zip), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const maps = r.files.filter(f => f.tally).length, tracks = r.files.some(f => f.file === 'tracks.vtk');
+  await saveFile(r.zip_name, bytes, `${maps} flux map${maps === 1 ? '' : 's'}${tracks ? ', tracks' : ''} and geometry, for ParaView. README.txt inside says how to open them. Also in <code>${esc(r.folder)}</code>.`);
+}
+$('#results').addEventListener('click', e => { if (e.target.closest('#paraviewBtn')) exportParaview(); });
 function clearResults() {
   LOCAL.results = null; LOCAL.resultsRun = null; LOCAL.selTrack = null; LOCAL.mesh = 0;
   renderResults();
@@ -5038,7 +5075,8 @@ function renderResults() {
   if (!R) { box.innerHTML = '<p class="envline">Run the model to see tallies here. Past runs are under Runs.</p>'; $('#layers').hidden = true; return; }
   const s = R.summary || {};
   let h = `<h4>Run ${esc(LOCAL.resultsRun)}</h4><p class="envline">${esc(s.run_mode || '')} · ${s.particles?.toLocaleString?.() ?? '?'} × ${s.batches ?? '?'} batches · seed ${s.seed ?? '?'} · ${s.runtime_s ? s.runtime_s.toFixed(1) + ' s' : ''}` +
-    (s.keff ? ` · k-eff ${s.keff[0].toFixed(5)} ± ${s.keff[1].toFixed(5)}` : '') + `</p>`;
+    (s.keff ? ` · k-eff ${s.keff[0].toFixed(5)} ± ${s.keff[1].toFixed(5)}` : '') + `</p>` +
+    `<p class="envline"><button class="tbtn" type="button" id="paraviewBtn" title="Flux maps, tracks and geometry as VTK and STL files for ParaView or VisIt">Export for ParaView…</button></p>`;
   if (s.k_generation && s.k_generation.length) {
     h += renderKeffChart(s);
   }

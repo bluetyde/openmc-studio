@@ -171,6 +171,13 @@ and the MCNP lattice work; fixes listed under Completed).
     region logic, and numbers Studio derives rather than stores (GQ coefficients of rotated parts,
     lattice-generated, shared or macrobody surfaces; the report says what to change in Studio instead).
   - Refuse when the file came from another project or an older version whose IDs no longer match.
+  - **model.py and model.mcnp are interchangeable.** Both point to the same Studio objects, so importing
+    either one updates the project and the other file is regenerated from it: edit model.mcnp and the change
+    shows up in model.py, and the reverse. Neither file is ever translated straight into the other. Give
+    model.py the same `@studio-v1` comment records model.mcnp has (today it has the `studio_ids` table and
+    Studio's line map instead), so one record format and one importer serve both files. Numbers that exist
+    in only one file (MCNP isotope fractions expanded from an element, GQ for a rotated part, NPS; track
+    settings in model.py) can't cross over; the report says what to change instead.
   - **Then embed the whole project** in both files (model.py: a data block; MCNP: percent-encoded comment
     records like the ID links, which MCNP ignores), so either file alone reopens the exact project, the way
     `.openmc-studio.json` does. Store a fingerprint of the generated text so hand edits made afterwards are

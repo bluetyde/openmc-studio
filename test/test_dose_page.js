@@ -98,5 +98,24 @@ test('Results: µSv/h, or mrem/h in imperial, or pSv per source particle without
   assert.match(h, /pSv per source particle/); assert.match(h, /<b>0\.02264<\/b>/);
 });
 
+test('dose maps: a mesh tally with Dose writes mesh x particle x dose tallies and no volume calculation', () => {
+  run("addTally('mesh'); Object.assign(S.tallies[0], {dose:'n', doseData:'icrp116', doseGeom:'PA'}); S.settings.sourceRate = 1e9;");
+  const py = run('generate(problems())');
+  assert.match(py, /filters = \[openmc\.MeshFilter\(mesh_\w+\), openmc\.ParticleFilter\(\["neutron"\]\), _dose_filter\("neutron", "PA", "icrp116", 1e-5\)\]/);
+  assert.match(py, /"mesh": True/);
+  assert.match(py, /dose_cells = \[\]/);
+  assert.equal((py.match(/= openmc\.RegularMesh\(/g) || []).length, 1, 'one mesh, shared');
+  assert.doesNotMatch(run('mcnpScript(problems())'), /_dose_filter/);
+  assert.ok(run('problems()').some(p => p.sev === 'info' && /isn't in model.mcnp yet/.test(p.text)));
+});
+
+test('dose maps: colorbar and Results line in µSv/h, mrem/h or pSv per source particle', () => {
+  assert.deepEqual(run("meshDisplay({unit:'Sv/h'})"), {f: 1e6, unit: 'µSv/h'});
+  run("UNITS.system = 'imperial'");
+  assert.deepEqual(run("meshDisplay({unit:'Sv/h'})"), {f: 1e5, unit: 'mrem/h'});
+  assert.deepEqual(run("meshDisplay({unit:'pSv/source'})"), {f: 1, unit: 'pSv per source particle'});
+  assert.deepEqual(run("meshDisplay({})"), {f: 1, unit: ''}, 'flux maps are untouched');
+});
+
 if (failed) { console.log(`test_dose_page: ${failed} FAILED`); process.exit(1); }
 console.log('test_dose_page: PASS');

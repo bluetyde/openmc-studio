@@ -98,8 +98,16 @@ def _dose(tallies, info, cell_names, openmc):
     """
     rate = info.get("source_rate")
     vols = info.get("volumes", {})
+    maps = {}
+    for t in tallies:
+        meta = info["tallies"][str(t.id)]
+        if meta.get("mesh"):
+            maps.setdefault(meta["studio"], []).append((t, meta))
+    out = [_dose_map(parts, rate, openmc) for parts in maps.values()]
     groups = {}
     for t in tallies:
+        if info["tallies"][str(t.id)].get("mesh"):
+            continue
         meta = info["tallies"][str(t.id)]
         g = groups.setdefault(meta["studio"], {"meta": meta, "cells": {}})
         cf = t.find_filter(openmc.CellFilter)
@@ -107,7 +115,6 @@ def _dose(tallies, info, cell_names, openmc):
         for i, cid in enumerate(cf.bins):
             c = g["cells"].setdefault(int(cid), {})
             c[meta["particle"]] = (float(mean[i]), float(std[i]))
-    out = []
     for studio, g in groups.items():
         rows = []
         for cid, parts in g["cells"].items():
@@ -133,6 +140,42 @@ def _dose(tallies, info, cell_names, openmc):
                     "particles": sorted({p for c in g["cells"].values() for p in c}, key=["neutron", "photon"].index),
                     "source_rate": rate, "rows": rows})
     return out
+
+
+def _dose_map(parts, rate, openmc):
+    """A dose map: the per-particle mesh tallies summed, divided by each voxel's (exact) volume.
+
+    Returned as an ordinary mesh result whose one score is "dose", in Sv/h when the source rate is known,
+    otherwise pSv per source particle, so the viewport, the flux-map controls and the noise estimate treat it
+    like any other map.
+    """
+    base, total, var = None, None, None
+    for t, meta in parts:
+        r = _tally(t, {}, {}, openmc)
+        v = np.array(r["values"]["flux"])
+        s = np.array(r["rel_err"]["flux"]) * v
+        base = base or r
+        total = v if total is None else total + v
+        var = s * s if var is None else var + s * s
+    mf = parts[0][0].find_filter(openmc.MeshFilter)
+    m = mf.mesh
+    if base["mesh_type"] == "cylindrical":
+        r_, p_, z_ = (np.asarray(g, float) for g in (m.r_grid, m.phi_grid, m.z_grid))
+        vox = (0.5 * (r_[1:] ** 2 - r_[:-1] ** 2)[None, None, :] * np.diff(p_)[None, :, None]
+               * np.diff(z_)[:, None, None]).ravel()  # radius fastest, like the values
+    else:
+        vox = float(np.prod((np.asarray(m.upper_right) - np.asarray(m.lower_left)) / np.asarray(m.dimension)))
+    scale = rate * 3600e-12 if rate else 1.0
+    dose = total / vox * scale
+    with np.errstate(divide="ignore", invalid="ignore"):
+        rel = np.where(total > 0, np.sqrt(var) / total, 0.0)
+    meta = parts[0][1]
+    res = dict(base)
+    res.update(name=meta["name"], scores=["dose"], values={"dose": [float(x) for x in dose]},
+               rel_err={"dose": [round(float(x), 4) for x in rel]}, unit="Sv/h" if rate else "pSv/source",
+               dose={"data": meta["data"], "geometry": meta["geometry"], "source_rate": rate,
+                     "particles": [p["particle"] for _, p in parts]})
+    return res
 
 
 def _tally(t, cell_names, mat_names, openmc):

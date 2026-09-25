@@ -156,6 +156,9 @@ and needs photon transport.
   (mrem/h with imperial units). Without it, Results shows pSv per source particle.
 - Before the run, model.py measures each dosed part's volume with OpenMC's stochastic volume calculation (the
   dose is the tally divided by it); Results lists the volume, and its error is part of the relative error.
+- **Dose maps:** turn on Dose on a mesh tally (box or cylindrical) and its map shows dose rate instead of
+  flux, with the colorbar in µSv/h (or mrem/h). Voxel volumes are exact, so no volume step is needed. Export for
+  ParaView writes it as `<particle>_dose_Sv_per_h_*` arrays.
 - This is effective dose, not the ambient dose equivalent H*(10) a survey meter reads.
 - Dose tallies are not written to model.mcnp yet.
 - Source **Strength** is a relative weight between sources: model.py scales the strengths to sum to 1, so every

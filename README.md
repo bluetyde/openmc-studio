@@ -233,6 +233,11 @@ model.py or model.mcnp on the right.
   editable; change their source in Properties.
 - While model.mcnp is refreshing it's dimmed and not editable, so an edit never
   lands on an out-of-date line.
+- **Edited model.py in another editor?** Convert ▸ Import edited model.py… takes your edits back into the
+  project it came from: every number you could edit in place here (dimensions, positions, densities and
+  compositions, source, tally and run settings) is applied, all as one Undo step, and the Log lists each change.
+  Anything else (new or deleted lines, rewritten code, numbers Studio works out) is listed as not applied.
+  A model.py from another project, or from an older version of this one, is refused rather than guessed at.
 
 ## Material library
 

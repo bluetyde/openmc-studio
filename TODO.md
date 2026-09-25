@@ -189,6 +189,12 @@ and the MCNP lattice work; fixes listed under Completed).
   VTK/STL out, and whatever phase-space format we support later. Each entry says what survives the trip and
   what doesn't, since none of these conversions is lossless.
 - **Round trips: edit model.py / model.mcnp outside Studio and bring the edits back** (asked for 2026-09-24):
+  - **model.py part: done** (2026-09-25). Convert ▸ Import edited model.py… (`importScriptPatch`): regenerates
+    the marked script, line-diffs it against the file (common prefix/suffix + LCS), matches each changed line
+    to its twin with only the marked numbers free, applies them through `applyEdit` as one Undo step, and logs
+    each change by object; new/deleted/rewritten lines and unmarked (computed) numbers are listed as not applied;
+    blank lines, CRLF and trailing spaces don't count; unknown studio IDs refuse the file. Tests:
+    `test/test_patch_import.js` (8). **Next:** the model.mcnp side (below), then the shared record format.
   - **Import as a patch (first).** Open an edited model.py (then model.mcnp) onto the project it came from.
     Studio regenerates the file from the current project, diffs it against the imported one, and maps each
     changed line to its Studio object and number: model.py through `studio_ids` and Studio's own line map,

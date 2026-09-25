@@ -73,9 +73,13 @@ and the MCNP lattice work; fixes listed under Completed).
     hard to read values from.
   - Note on cost: the same histories over 100x more voxels give about 10x the relative error, so a 3D map is a
     statistics decision, not a memory one.
-- **VTK export of mesh tallies and geometry** (cheap): `mesh.write_data_to_vtk()` is one call and the official
-  OpenMC plotter exports VTK too. Gives a real 3D flux view in ParaView now, without waiting for the volume
-  renderer in the mesh plan's stage 2. Add STL export of the geometry for CAD viewers while we're there.
+- **VTK export of mesh tallies and geometry**: **done** (2026-09-25). Results > Export for ParaView… (or
+  Export > ParaView (VTK)) zips a run's regular and cylindrical mesh tallies as legacy VTK (mean, std dev,
+  rel. error, per energy bin; per source particle per cm³), tracks.vtk (energy, particle), one STL per
+  material from the run's own project, and a README. `studio/openmc_studio/vtk_export.py` writes VTK itself,
+  since OpenMC's writers need the `vtk` package. Tests: `test/test_vtk_export.py` (reads every file back with
+  VTK's own readers and compares every voxel with `Tally.get_values`), `test/test_paraview_export.js`.
+  Not yet: imported CAD components in the geometry (no STL for them yet).
 - **Overlap and lost-particle check before a run**: **done** (2026-09-24). Physics > Check geometry sends
   model.py to the server (`/api/check-geometry`, `studio/openmc_studio/geometry_check.py`), which (1) locates
   100,000 random points in the world through every universe, fill and lattice and reports any point in no

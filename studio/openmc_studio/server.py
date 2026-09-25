@@ -202,6 +202,32 @@ class Studio:
                 continue
         return out[:200]
 
+    def export_vtk(self, rid, stl_b64, stl_note=""):
+        """Export for ParaView: VTK files (vtk_export.py) plus the page's STL files, in <run>/vtk/ and as a zip."""
+        import base64
+        import io
+        import zipfile
+        from . import vtk_export
+        path = self.run_path(rid)
+        if path is None:
+            raise LookupError("No such run.")
+        if self.active and self.active.id == rid and self.active.status == "running":
+            raise ValueError("The run is still going. Export it when it has finished.")
+        try:
+            stl = {name: base64.b64decode(data, validate=True) for name, data in stl_b64.items()}
+        except ValueError:
+            raise ValueError("stl data is not valid base64.")
+        out = path / "vtk"
+        shutil.rmtree(out, ignore_errors=True)
+        manifest = vtk_export.export_run(path, out, stl=stl, stl_note=stl_note)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for f in sorted(out.iterdir()):
+                z.write(f, f"{rid}-paraview/{f.name}")
+        manifest.update(folder=str(out), zip=base64.b64encode(buf.getvalue()).decode("ascii"),
+                        zip_name=f"{rid}-paraview.zip")
+        return manifest
+
     def run_path(self, rid):
         if not RUN_ID.match(rid or ""):
             return None
@@ -680,6 +706,17 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/runs/([^/]+)/stop$", url.path)
         if m:
             return self._send(200, {"stopped": self.studio.stop(m.group(1))})
+        m = re.match(r"^/api/runs/([^/]+)/export-vtk$", url.path)
+        if m:
+            stl = body.get("stl") or {}
+            if not (isinstance(stl, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in stl.items())):
+                return self._error(400, "stl must map file names to base64 data.")
+            try:
+                return self._send(200, self.studio.export_vtk(m.group(1), stl, str(body.get("stl_note") or "")[:500]))
+            except LookupError as exc:
+                return self._error(404, str(exc))
+            except ValueError as exc:
+                return self._error(400, str(exc))
         return self._error(404, "Not found")
 
     def do_DELETE(self):

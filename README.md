@@ -145,6 +145,22 @@ doesn't need to be in the geometry: model.py multiplies the flux by the gas's cr
   (macroscopic) or 1 / the nuclide's atom fraction (microscopic). MCNP sums reaction R over every
   nuclide in material m, so the export notes when the gas has other nuclides.
 
+## Dose rates
+
+A cell tally can report the **effective dose** a person would receive there (Properties ▸ Dose, or
+Physics ▸ Detector ▸ Dose rate): ICRP-116 or ICRP-74 fluence-to-dose coefficients, for the body facing the
+source from the front, back, either side, turning, or all sides. "Neutrons + photons" lists both and the sum,
+and needs photon transport.
+
+- Set **Settings ▸ Source emission rate** (particles/s, e.g. 1e8 for a small D-T generator) to see µSv/h
+  (mrem/h with imperial units). Without it, Results shows pSv per source particle.
+- Before the run, model.py measures each dosed part's volume with OpenMC's stochastic volume calculation (the
+  dose is the tally divided by it); Results lists the volume, and its error is part of the relative error.
+- This is effective dose, not the ambient dose equivalent H*(10) a survey meter reads.
+- Dose tallies are not written to model.mcnp yet.
+- Source **Strength** is a relative weight between sources: model.py scales the strengths to sum to 1, so every
+  tally is per source particle, as in MCNP.
+
 ## Other options
 
 - **Parts**: sphere, cylinder, box, wedge (right triangular prism), hexagonal prism, cone

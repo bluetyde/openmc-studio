@@ -130,7 +130,21 @@ and the MCNP lattice work; fixes listed under Completed).
 - **Neutron Capture Multiplicity & Coincidence Counting (`FT CAP`)**:
   - Pulse multiplicity distributions, factorial moments, and coincidence time-gating (`gate predelay width`) on neutron capture absorbers ($^3\text{He}$, $^{10}\text{B}$) for safeguards counters (manual §10.2.5.5–§10.2.5.7, Examples 39 & 40; PRINT Table 118).
 
-- **Fluence-to-Dose Conversion (ICRP / ANSI)**:
+- **Dose rates, stage 1: done** (2026-09-25; plan: `Claude Code Test\plans\dose-rates-plan.md`). A cell tally's
+  Dose setting (or the Detector menu's "Dose rate, neutrons" / "neutrons + photons" presets) gives effective dose
+  from `openmc.data.dose_coefficients` (ICRP-116 or -74; AP, PA, LLAT, RLAT, ROT, ISO): one tally per particle
+  with a log-log `EnergyFunctionFilter`, padded down to the lowest transported energy with the first value so
+  low energies count the way MCNP's DE/DF do. model.py runs OpenMC's stochastic volume calculation on each dosed
+  cell before the run and writes `dose.json`; results.py divides by the volume and, with Settings > Source
+  emission rate, shows µSv/h (mrem/h in imperial), otherwise pSv per source particle, with the volume error in
+  the relative error. Test against a hand calculation (point sources in void, `test/test_dose_rates.py`):
+  neutron +2.3% ± 2.4%, photon -0.7% ± 2.8%, ICRP-74 ISO -0.1% ± 2.6%; volume 33.514 ± 0.071 vs 33.510 cm³.
+  Problems refuses dose in eigenvalue mode, photon dose without photon transport, dose plus a detector response,
+  and dose on lattice members. **Found and fixed on the way:** OpenMC multiplies fixed-source tallies by the
+  total source strength, so models whose strengths didn't sum to 1 showed tallies scaled by that sum (and
+  unlike MCNP). model.py now scales the strengths to sum to 1 before the run. **Next:** stage 2 (dose maps)
+  and stage 3 (MCNP `DE`/`DF` + `SD` + rate `FM`); dose tallies stay out of model.mcnp until then.
+- **Fluence-to-Dose Conversion (ICRP / ANSI)**, original notes:
   - Energy-dependent dose response filters (`openmc.data.dose_coefficients`):
     - **ICRP-74 / ICRP-116**: Effective dose for AP, PA, ISO, and ROT irradiation geometries.
     - **ANSI/ANS-6.1.1-1977**: Standard neutron and gamma flux-to-dose conversion factors.

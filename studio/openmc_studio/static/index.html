@@ -671,7 +671,7 @@ const isUntouchedCopy = m => !!m.pristine && m.pristine === matSig(m);
 const DEFAULT_SETTINGS = {name:'Shielding demo', runMode:'fixed source', particles:10000, batches:10, inactive:0, seed:12345,
   maxTracks:50, track:'', photon:false, photonCutoff:1000, fissionNeutrons:true, temperatureDefault:293.6, temperatureMethod:'interpolation',
   entropyMesh:false, entropyNx:10, entropyNy:10, entropyNz:10,
-  worldShape:'box', worldR:100, worldBC:'vacuum', worldFill:'void'};
+  worldShape:'box', worldR:100, worldBC:'vacuum', worldFill:'void', sourceRate:null};
 
 var SOURCE_PRESETS = [
   {
@@ -833,6 +833,24 @@ var DETECTOR_PRESETS = [
     scores: ['(n,gamma)'],
     ebins: '0.0, 5e-7, 20.0',
     desc: 'Thermal (< 0.5 eV) vs. epi-cadmium (> 0.5 eV) radiative capture activation'
+  },
+  {
+    id: 'dose_n',
+    name: 'Dose rate, neutrons',
+    particle: 'neutron',
+    detector: 'none',
+    reaction: 'dose',
+    dose: 'n',
+    desc: 'Effective dose (ICRP-116, front exposure) in the selected part. Set Source emission rate in Settings for µSv/h.'
+  },
+  {
+    id: 'dose_np',
+    name: 'Dose rate, neutrons + photons',
+    particle: 'neutron',
+    detector: 'none',
+    reaction: 'dose',
+    dose: 'np',
+    desc: 'Neutron and photon effective dose, listed separately and summed. Needs photon transport.'
   }
 ];
 
@@ -1467,6 +1485,16 @@ function problems() {
   S.tallies.forEach(t => {
     if (t.kind === 'cell') {
       if (!t.cells.length) add('error', `${t.name}: tick at least one cell to tally.`, 'tally', t.id);
+      if (t.dose) {
+        if (eig) add('error', `${t.name}: dose needs a fixed-source run. An eigenvalue run has no absolute source rate to scale by.`, 'tally', t.id);
+        if (t.dose === 'np' && !st.photon) add('error', `${t.name}: photon dose needs photon transport. Turn on Photons in Settings, or set Dose to Neutrons.`, 'tally', t.id);
+        if (t.detector && t.detector !== 'none') add('error', `${t.name}: a tally can have a dose or a detector response, not both. Both multiply the flux by a function of energy.`, 'tally', t.id);
+        const inLat = t.cells.filter(id => (S.groups || []).some(g => g.lattice && g.lattice.asLattice && latticePlan(g).ok && latticePlan(g).parts.some(p => p.id === id)));
+        if (inLat.length) add('error', `${t.name}: dose on a part inside a lattice isn't supported yet. Untick "Export as RectLattice" (or HexLattice) on its array, or pick another part.`, 'tally', t.id);
+        if (!eig && !(st.sourceRate > 0)) add('info', `${t.name} gives dose per source particle (pSv). Set Source emission rate in Settings to see µSv/h.`, 'settings');
+        if (t.scores.some(sc => sc !== 'flux') || t.ebins.trim()) add('info', `${t.name}: a dose tally scores flux times the dose coefficients; its other scores and energy bins are left out.`, 'tally', t.id);
+        add('info', `${t.name} isn't in model.mcnp yet: MCNP dose cards (DE/DF) come in a later update.`, 'tally', t.id);
+      }
       t.cells.filter(c => c !== 'world' && !partById(c) && !csgCellById(c)).forEach(() => add('error', `${t.name} lists a part that was deleted.`, 'tally', t.id));
     } else if (t.kind === 'surface') {
       const ids = t.surfaces || [];
@@ -2154,8 +2182,42 @@ function buildScript(probs, mark, opts = {}) {
       '',
       'geometry.determine_paths()  # numbers every cell instance, for the CellInstanceFilter bins below', '');
   }
-  const talVars = S.tallies.map(t => {
+  // Dose: ICRP coefficients as an energy function per particle, divided by a cell volume from OpenMC's
+  // volume calculation after the run (results.py). Not written to the MCNP deck yet.
+  const doseTallies = [], doseCells = new Map(), doseOn = opts !== MCNP_OPTS && S.tallies.some(t => t.kind === 'cell' && t.dose);
+  if (doseOn) push('def _dose_filter(particle, geometry, data, lowest):',
+    '    """ICRP effective-dose coefficients (pSv cm^2) as an energy function, log-log like MCNP\'s DE/DF cards.',
+    '    Padded down to the lowest energy transported with the first value, so low energies count the way MCNP',
+    '    counts them (it holds the end values; OpenMC would score zero outside the table)."""',
+    '    e, c = openmc.data.dose_coefficients(particle, geometry=geometry, data_source=data)',
+    '    e, c = list(e), list(c)',
+    '    if lowest < e[0]:',
+    '        e.insert(0, lowest)',
+    '        c.insert(0, c[0])',
+    '    return openmc.EnergyFunctionFilter(e, c, interpolation="log-log")', '');
+  const doseBox = id => {
+    const R = st.worldR, pad = 1e-6 * R, csg = id === 'world' ? null : csgCellById(id), p = partById(id);
+    const b = p ? partBounds(p) : csg ? csg.k.bounds : [-R, -R, -R, R, R, R];
+    return [0, 1, 2].map(i => Math.max(-R, b[i] - pad)).concat([0, 1, 2].map(i => Math.min(R, b[i + 3] + pad)));
+  };
+  const talVars = S.tallies.flatMap(t => {
     owner = {kind:'tally', id:t.id};
+    if (t.kind === 'cell' && t.dose) {
+      if (!doseOn) return [];
+      const ids = t.cells.filter(c => cv[c] && !latMember[c]);
+      ids.forEach(c => doseCells.set(cv[c], doseBox(c)));
+      const data = t.doseData === 'icrp74' ? 'icrp74' : 'icrp116', geom = t.doseGeom || 'AP';
+      return (t.dose === 'np' ? ['neutron', 'photon'] : ['neutron']).map(pt => {
+        const v = name('tally', `${t.name} ${pt} dose`);
+        const lowest = pt === 'photon' ? num(st.photonCutoff || 1000) : '1e-5';
+        push(`${v} = openmc.Tally(name=${pyStr(`${t.name} [${pt} dose]`)})`,
+          `${v}.filters = [openmc.CellFilter([${ids.map(c => cv[c]).join(', ')}]), openmc.ParticleFilter([${pyStr(pt)}]), ` +
+            `_dose_filter(${pyStr(pt)}, ${pyStr(geom)}, ${pyStr(data)}, ${lowest})]`,
+          `${v}.scores = ['flux']  # x dose coefficient = pSv cm per source particle; / cell volume = pSv`, '');
+        doseTallies.push(`${v}.id: {"studio": ${pyStr(t.id)}, "name": ${pyStr(t.name)}, "particle": ${pyStr(pt)}, "data": ${pyStr(data)}, "geometry": ${pyStr(geom)}}`);
+        return v;
+      });
+    }
     const v = name('tally', t.name), filters = [];
     if (t.particle && t.particle !== 'all') {
       filters.push(`openmc.ParticleFilter([${pyStr(t.particle)}])`);
@@ -2214,10 +2276,18 @@ function buildScript(probs, mark, opts = {}) {
     }
     push(`${v} = openmc.Tally(name=${pyStr(t.name)})`, `${v}.filters = [${filters.join(', ')}]`,
       `${v}.scores = [${t.scores.map(pyStr).join(', ')}]`, '');
-    return v;
+    return [v];
   });
   owner = null;
   push(`tallies = openmc.Tallies([${talVars.join(', ')}])`, '');
+  if (doseTallies.length) {
+    const rate = st.sourceRate > 0 ? num(st.sourceRate) : 'None';
+    push('# Dose tallies: tally ID -> what it is. results.py turns them into dose rates.', 'dose_tallies = {',
+      ...doseTallies.map(d => `    ${d},`), '}',
+      '# Cells whose volume the dose needs, each with a box that holds it (cm), for OpenMC\'s volume calculation.',
+      `dose_cells = [${[...doseCells].map(([c, b]) => `(${c}, (${b.slice(0, 3).map(num).join(', ')}), (${b.slice(3).map(num).join(', ')}))`).join(', ')}]`,
+      `SOURCE_RATE = ${rate}  # particles/s (Settings > Source emission rate); None: dose per source particle`, '');
+  }
   if (responses.length) push('# Detector responses for the MCNP export (written as FM cards): tally ID -> response.',
     'detector_responses = {', ...responses.map(r => `    ${r},`), '}', '');
 
@@ -2231,6 +2301,15 @@ function buildScript(probs, mark, opts = {}) {
   }
   push(`settings.seed = ${IS('seed')}  # same seed + same model = the same particle histories`,
     `settings.source = [${srcVars.join(', ')}]`);
+  // OpenMC multiplies fixed-source tallies by the total source strength. Studio's strengths are relative
+  // weights (as in MCNP, whose tallies are per source particle), so they're scaled to sum to 1 here, leaving
+  // the editable values above as typed.
+  if (!eig && (S.sources.length > 1 || S.sources.some(s => +s.strength !== 1))) push(
+    '# OpenMC scales tallies by the total source strength; these strengths are relative weights, so scale',
+    '# them to sum to 1: every tally is then per source particle, as in MCNP.',
+    '_total_strength = sum(s.strength for s in settings.source)',
+    'for _s in settings.source:',
+    '    _s.strength /= _total_strength');
   if (!eig && st.fissionNeutrons === false) {
     push('# Fission is treated as capture, so chains die out in this fixed-source run (MCNP: NONU).',
       'settings.create_fission_neutrons = False');
@@ -2274,6 +2353,16 @@ function buildScript(probs, mark, opts = {}) {
     '    if "--export-xml" in sys.argv:  # OpenMC Studio exports model.xml this way for MCNP translation',
     '        model.export_to_model_xml()',
     '        raise SystemExit(0)',
+    ...(doseTallies.length ? [
+      '    # Dose needs each tallied cell\'s volume: OpenMC\'s stochastic volume calculation, in the box around it.',
+      '    settings.volume_calculations = [openmc.VolumeCalculation([c], 200000, lo, hi) for c, lo, hi in dose_cells]',
+      '    model.calculate_volumes(output=False)',
+      '    dose_volumes = {str(cid): [v.nominal_value, v.std_dev] for vc in settings.volume_calculations for cid, v in vc.volumes.items()}',
+      '    settings.volume_calculations = []',
+      '    with open("dose.json", "w") as _f:',
+      '        _studio_json.dump({"source_rate": SOURCE_RATE, "volumes": dose_volumes,',
+      '                           "tallies": {str(k): v for k, v in dose_tallies.items()}}, _f, indent=1)',
+      '    print("Dose cell volumes (cm3):", {k: f"{v[0]:.5g} +/- {v[1]:.2g}" for k, v in dose_volumes.items()})'] : []),
     `    statepoint = model.run(${wantAll ? 'tracks=True' : ''})`,
     '    print(f"Finished: {statepoint}")');
   if (wantAll || tracks.length) push('    print("Particle tracks written to tracks.h5 (open with openmc.Tracks)")');
@@ -2489,6 +2578,7 @@ function detectorFm(n, t, det, ids, mesh) {
   return [card, note];
 }
 function mcnpTally(t) {
+  if (t.kind === 'cell' && t.dose) return 'c Dose tallies are not in the MCNP deck yet: its DE/DF dose cards come in a later update.';
   const ids = mcnpIds(), out = [];
   const k0 = S.tallies.slice(0, S.tallies.indexOf(t)).reduce((a, x) => a + x.scores.length, 0);
   const eb = t.ebins.trim() ? parseNums(t.ebins).vals : null;
@@ -2860,11 +2950,13 @@ function addDetectorTally(key) {
     responseScore: p.reaction,
     nx: 50, ny: 50, nz: 50, lx: -50, ly: -50, lz: -50, ux: 50, uy: 50, uz: 50
   };
+  if (p.dose) Object.assign(t, {dose:p.dose, doseData:'icrp116', doseGeom:'AP', detector:'none', responseMat:'', scores:['flux']});
   S.tallies.push(t);
   select('tally', t.id);
   renderAll();
   schedule();
-  log('info', `Added detector response tally "${t.name}".`);
+  log('info', p.dose ? `Added dose tally "${t.name}".${S.settings.sourceRate > 0 ? '' : ' Set Source emission rate in Settings to see µSv/h.'}`
+    : `Added detector response tally "${t.name}".`);
 }
 function removeSelected() {
   if (sel.kind === 'group' || sel.kind === 'multi') {
@@ -4425,6 +4517,13 @@ function specFor(kind, o) {
           ['Clear edges', () => { o.ebins = ''; renderProps(); schedule(); }]
         ]}
       ]},
+      {title:'Dose', fields:[
+        F('select', 'dose', 'Dose', {options:() => [['', 'Off'], ['n', 'Neutrons'], ['np', 'Neutrons + photons']], show:() => o.kind === 'cell',
+          hint:'Effective dose from ICRP fluence-to-dose coefficients: what a person standing there would receive, not the H*(10) a survey meter reads. Set Source emission rate in Settings for µSv/h (mrem/h with imperial units).'}),
+        F('select', 'doseData', 'Coefficients', {options:() => [['icrp116', 'ICRP-116 (2010)'], ['icrp74', 'ICRP-74 (1996)']], show:() => o.kind === 'cell' && !!o.dose}),
+        F('select', 'doseGeom', 'Facing the source', {options:() => [['AP', 'Front (AP)'], ['PA', 'Back (PA)'], ['LLAT', 'Left side (LLAT)'], ['RLAT', 'Right side (RLAT)'], ['ROT', 'Turning (ROT)'], ['ISO', 'From all sides (ISO)']],
+          show:() => o.kind === 'cell' && !!o.dose, hint:'Which way the body faces the radiation. Front (AP) gives the highest dose for most energies, so it is the usual conservative choice.'})
+      ]},
       {title:'Detector response', fields:[
         F('select', 'detector', 'Response', {options:() => [
           ['none', 'None (unweighted)'],
@@ -4487,6 +4586,8 @@ function specFor(kind, o) {
       F('select', 'runMode', 'Mode', {options:() => [['fixed source', 'Fixed source (SDEF)'], ['eigenvalue', 'Eigenvalue (KCODE)']]}),
       F('int', 'particles', 'Particles', {unit:'per batch'}),
       F('int', 'batches', 'Batches'),
+      F('num', 'sourceRate', 'Source emission rate', {unit:'particles/s', show:() => st.runMode !== 'eigenvalue',
+        hint:'How many particles the source emits per second, e.g. 1e8 for a small D-T generator. Tallies are per source particle; this turns dose tallies into µSv/h. Leave empty for per-source-particle results.'}),
       F('int', 'inactive', 'Inactive', {show:() => st.runMode === 'eigenvalue', hint:'Batches discarded while the fission source converges, like the skipped cycles in KCODE.'}),
       F('check', 'fissionNeutrons', 'Fission neutrons', {show:() => st.runMode !== 'eigenvalue', text:'Fission makes new neutrons', hint:'Off treats fission as capture (MCNP NONU), so chains die out. Use it for a source-driven answer in a multiplying model, where fixed-source runs otherwise stop with "secondary particle bank growing without bound".'}),
       F('check', 'photon', 'Photons', {text:'Transport photons'}),
@@ -4984,6 +5085,26 @@ async function loadResults(id, switchTab) {
   schedule();
 }
 const relClass = r => r === null ? '' : r < 0.1 ? 'rel-ok' : r < 0.5 ? 'rel-q' : 'rel-bad';
+// A dose entry from results.py in the display unit: µSv/h (mrem/h with imperial units) when the source rate
+// is known, otherwise pSv per source particle. 1 mrem = 10 µSv.
+function doseUnit(t) { return t.source_rate ? (imperial() ? 'mrem/h' : 'µSv/h') : 'pSv per source particle'; }
+function doseValue(t, e) {
+  if (!e) return null;
+  return t.source_rate ? e.sv_per_h * (imperial() ? 1e5 : 1e6) : e.pSv_per_source;
+}
+function renderDose(t) {
+  const unit = doseUnit(t), parts = t.particles, many = parts.length > 1;
+  const cell = e => { const v = doseValue(t, e); return v === null ? '—' : sci(v); };
+  const relCell = e => !e || e.rel_err === null ? '<td class="num">—</td>' : `<td class="num ${relClass(e.rel_err)}">${(100 * e.rel_err).toFixed(1)}%</td>`;
+  const geom = {AP:'front', PA:'back', LLAT:'left side', RLAT:'right side', ROT:'turning', ISO:'all sides'}[t.geometry] || t.geometry;
+  return `<h4>${esc(t.name)}</h4><p class="envline">Effective dose rate, ${esc(t.data.toUpperCase().replace('ICRP', 'ICRP-'))} coefficients, body facing the source from the ${esc(geom)}` +
+    (t.source_rate ? ` · source ${sci(t.source_rate)} particles/s` : ' · no source rate set, so per source particle (Settings > Source emission rate)') + `</p>` +
+    `<div style="overflow-x:auto"><table class="rtable"><thead><tr><th>Cell</th>${many ? parts.map(p => `<th class="num">${esc(p[0].toUpperCase() + p.slice(1))}</th>`).join('') : ''}` +
+    `<th class="num">Dose rate (${esc(unit)})</th><th class="num">Rel. error</th><th class="num">Volume (cm³)</th></tr></thead><tbody>` +
+    t.rows.map(r => `<tr><td>${esc(r.cell)}</td>${many ? parts.map(p => `<td class="num">${cell(r[p])}</td>`).join('') : ''}` +
+      `<td class="num"><b>${cell(r.total)}</b></td>${relCell(r.total)}<td class="num">${r.volume ? `${sci(r.volume[0])} ± ${sci(r.volume[1])}` : '—'}</td></tr>`).join('') +
+    '</tbody></table></div>';
+}
 const sci = v => v === 0 ? '0' : Math.abs(v) >= 1e-2 && Math.abs(v) < 1e4 ? (+v.toPrecision(4)).toString() : v.toExponential(3);
 function renderKeffChart(s) {
   if (!s || !s.k_generation || !s.k_generation.length) return '';
@@ -5081,6 +5202,7 @@ function renderResults() {
     h += renderKeffChart(s);
   }
   R.tallies.forEach(t => {
+    if (t.kind === 'dose') { h += renderDose(t); return; }
     if (t.kind === 'table') {
       const nl = t.rows[0]?.labels.length || 0;
       h += `<h4>${esc(t.name)}</h4><div style="overflow-x:auto"><table class="rtable"><thead><tr>${t.filters.map(f => `<th>${esc(f.replace('Filter', ''))}</th>`).join('')}<th>Score</th><th class="num">Mean</th><th class="num">Rel. error</th></tr></thead><tbody>` +

@@ -81,6 +81,30 @@ class StageForwarder(io.TextIOBase):
             self.buf = "" 
 
 
+def dose_description(ns, folder):
+    """Studio's dose tallies for the export, with the volume of every dosed cell.
+
+    The volumes come from the same OpenMC volume calculation model.py runs before a Studio run (same cells,
+    boxes, samples and seed), so the deck's SD card and Studio's results divide by the same numbers.
+    """
+    tallies = ns.get("dose_tallies")
+    if not tallies:
+        return None
+    import openmc
+    vols = {}
+    cells = ns.get("dose_cells") or []
+    if cells:
+        st = ns["model"].settings
+        st.volume_calculations = [openmc.VolumeCalculation([c], 200000, lo, hi) for c, lo, hi in cells]
+        exe = shutil.which("openmc", path=os.path.dirname(sys.executable) + os.pathsep + os.environ.get("PATH", "")) or "openmc"
+        with tempfile.TemporaryDirectory(dir=folder) as tmp:
+            with contextlib.redirect_stdout(io.StringIO()):
+                ns["model"].calculate_volumes(cwd=tmp, output=False, openmc_exec=exe)
+        vols = {str(cid): [v.nominal_value, v.std_dev] for vc in st.volume_calculations for cid, v in vc.volumes.items()}
+        st.volume_calculations = []
+    return {"tallies": {str(k): v for k, v in tallies.items()}, "volumes": vols, "source_rate": ns.get("SOURCE_RATE")}
+
+
 def geometry_key(model_xml):
     root = ET.parse(model_xml).getroot()
     h = hashlib.sha256()
@@ -214,7 +238,7 @@ def main():
                 report["stage"] = "remediate"
                 emit_progress(job.get("id"), 7, 8, "remediate", "Remediating deck (sources, tallies, settings)...", t0)
                 report.update(remediate(translated, model, runnable, detector_responses=ns.get("detector_responses"),
-                                        studio_ids=ns.get("studio_ids")))
+                                        studio_ids=ns.get("studio_ids"), dose=dose_description(ns, folder)))
                 report["notes"] = prep_notes + report.get("notes", [])
                 add_group_comments(runnable, ns.get("groups"))
 

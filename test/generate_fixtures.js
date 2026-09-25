@@ -151,6 +151,17 @@ write('dose_map', {materials: [], parts: [], groups: [],
       rmin: 10, rmax: 30, zmin: -5, zmax: 5, ox: 0, oy: 0, oz: 0, dose: 'n', doseData: 'icrp116', doseGeom: 'AP'}],
   settings: settings({worldR: 45, particles: 50000, batches: 20, sourceRate: 1e8})});
 
+// 5c5. Dose to MCNP: a water tank round a D-T source, a detector cut by a lead plug listed above it (so its volume
+//      is not a plain sphere and MCNP couldn't compute it), neutron + photon dose on the detector and a dose map.
+//      The MCNP deck must carry the run's own volume (test/test_dose_mcnp.py).
+write('dose_tank', {materials: [water, {...steel, id: 'm_lead', name: 'Lead', density: 11.35, comps: 'Pb:1'}],
+  parts: [part('plug', 'box', 24, 0, 0, {sx: 2, sy: 6, sz: 6}, 'm_lead'), part('det', 'sphere', 25, 0, 0, {r: 3}, 'void'),
+    part('tank', 'box', 0, 0, 0, {sx: 30, sy: 30, sz: 30}, 'm_water')],
+  sources: [{...pointSource(), lines: '14.1:1'}], groups: [],
+  tallies: [{...cellTally('t_det', ['det']), name: 'Detector dose', dose: 'np', doseData: 'icrp116', doseGeom: 'AP'},
+    {...meshTally('t_map', [15, -6, -6], [33, 6, 6], [3, 2, 2]), name: 'Dose map', dose: 'n', doseData: 'icrp74', doseGeom: 'ISO'}],
+  settings: settings({worldR: 40, photon: true, particles: 2000, batches: 5, sourceRate: 5e7})});
+
 // 5d. A multiplying model run as a fixed source: fission is treated as capture (create_fission_neutrons = False,
 //     MCNP NONU), so the chains die out instead of stopping OpenMC with "secondary particle bank growing without
 //     bound". Without the switch this model does not finish.

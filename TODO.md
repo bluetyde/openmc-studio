@@ -151,7 +151,13 @@ and the MCNP lattice work; fixes listed under Completed).
   sigma, mean deviation unbiased), and the VTK export equals Results value for value. **Found and fixed:** every
   Studio cylindrical mesh tally failed to run: 2π rounded to 12 digits (6.28318530718) is above 2π and OpenMC
   refuses the phi grid; a full circle is now `2 * np.pi` (`test_cylindrical_view.js` asserted the old string).
-  **Next:** stage 3 (MCNP `DE`/`DF` + `SD` + rate `FM`); dose tallies stay out of model.mcnp until then.
+  **Stage 3 (MCNP): done** (2026-09-25; exporter `8c3b92f`). Dose tallies go to model.mcnp as `F4:N`/`F4:P` or
+  `FMESH`, `DE`/`DF` written from model.py's own padded filter (LOG left implicit: MCNP's default, and MontePy
+  can't parse the keyword), `SD` with the cell volume from the same OpenMC volume calculation the run does
+  (`mcnp_worker.dose_description`; identical numbers, tested on a plug-cut detector MCNP couldn't volume itself),
+  and the source rate as `FM` / `FACTOR`. `export_mcnp.py --dose dose.json` exports a run folder. Tests:
+  `test/test_dose_mcnp.py`, companion `tests/test_dose_export.py`. **Still open:** run a dose deck in real MCNP and
+  compare with Studio; H*(10) (needs a sourced table); dose on lattice members.
 - **Fluence-to-Dose Conversion (ICRP / ANSI)**, original notes:
   - Energy-dependent dose response filters (`openmc.data.dose_coefficients`):
     - **ICRP-74 / ICRP-116**: Effective dose for AP, PA, ISO, and ROT irradiation geometries.

@@ -66,10 +66,11 @@ and the MCNP lattice work; fixes listed under Completed).
   - Stage 2: **first milestone done** (2026-09-26; plan `Claude Code Test\plans\flux-volume-view-plan.md`).
     In 3D the map toolbar offers Slice / Brightest / Surface (+ level slider) / Hide noisy. `drawVolume3D` marches
     each pixel's ray on its own WebGL2 canvas (R8 3D texture of the log-scaled bytes, NEAREST so values stay
-    voxel-exact; depth readback as a texture for occlusion; the cutaway half-space; step = half a voxel, <= 1024
-    steps) and composites into the overlay; `volumeRayCPU` is the test oracle. Checked live on a 40³ map of the
-    demo. Tests: `test/test_volume_view_browser.cjs` (6). **Still open:** coarse marching while orbiting (not needed
-    yet at 40³), cylindrical maps, soft emission-absorption ("glow"), maps over 256 per side (downsample).
+    voxel-exact; depth readback as a texture for occlusion; the cutaway clipped exactly; rays step voxel to voxel,
+    so no voxel is skipped, and maps with x + y + z over 4,096 or wider than the GPU's 3D textures fall back to the
+    slice with a note) and composites into the overlay; `volumeRayCPU` is the test oracle. Checked live on a 40³
+    map of the demo. Tests: `test/test_volume_view_browser.cjs`, `test/test_volume_view.js`. **Still open:** coarse
+    marching while orbiting (not needed yet at 40³), cylindrical maps, soft emission-absorption ("glow").
   - Stage 3: functional expansion tallies (`SpatialLegendreFilter`, `ZernikeFilter`, ...) for a smooth flux
     field with real error bars instead of a million voxels. Experiment on the pile first; MCNP has no
     equivalent, so the export must refuse it with a reason.

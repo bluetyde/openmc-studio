@@ -316,6 +316,9 @@ input[type=checkbox]{accent-color:var(--accent)}
           <span class="layers" id="layers" hidden>
             <label class="chk"><input type="checkbox" id="showMesh" checked> <span id="meshLabel">Flux map</span></label>
             <select id="meshPick" aria-label="Mesh tally to show"></select>
+            <select id="volMode" hidden aria-label="How the map is shown in 3D" title="In 3D: the slice plane only, the brightest value along each line of sight, or a surface where the map reaches a level"><option value="slice">Slice</option><option value="mip">Brightest</option><option value="iso">Surface</option></select>
+            <label class="chk" id="volLevelWrap" hidden title="Surface where the map reaches this percentage of its peak">at <input type="range" id="volLevel" min="1" max="90" value="10" style="width:70px"> <span id="volLevelTxt">10</span>% of peak</label>
+            <label class="chk" id="volNoisyWrap" hidden title="Leave out voxels whose relative error is over 50%"><input type="checkbox" id="volNoisy"> Hide noisy</label>
             <label class="chk"><input type="checkbox" id="showTracks" checked> Tracks</label>
             <button class="tbtn" type="button" id="replayBtn" hidden>Replay neutron</button>
             <button class="tbtn" type="button" id="clearOverlayBtn" title="Clear simulation overlay (tracks and flux map) from the viewport">Clear</button>
@@ -8341,7 +8344,8 @@ function draw3D() {
     V3.previewNotice = lines;
   } else V3.previewNotice = null;
   // flux map on the slice plane, then tracks
-  if (meshT) drawMesh3D(ctx, B, meshT, W, H);
+  syncVolumeControls(meshT);
+  if (meshT && (VOLVIEW.mode === 'slice' || !drawVolume3D(ctx, B, meshT, W, H))) drawMesh3D(ctx, B, meshT, W, H);
   if (showTr) drawTracks3D(ctx, B, res);
   // sources
   V3.sources = [];
@@ -8476,6 +8480,179 @@ function drawMesh3D(ctx, B, t, W, H) {
   meshColorbar(ctx, W, t, M);
 }
 
+/* ───────── 3D volume view of a flux or dose map ───────── */
+// In 3D a map is normally drawn on the slice plane only. Brightest (the largest value along each pixel's ray) and
+// Surface (where the map first reaches a level) march every ray through the whole map instead. They run on a small
+// WebGL2 canvas of their own, so the main renderer's state is never touched, and the result is drawn into the
+// overlay like the slice is: the same log colour scale and legend, hidden by geometry in front (the depth readback
+// the slice overlay uses) and clipped by the cutaway. Regular meshes only; a cylindrical map stays a slice.
+const VOLVIEW = {mode:'slice', level:10, hideNoisy:false};
+try { Object.assign(VOLVIEW, JSON.parse(localStorage.getItem('openmc-studio-volview') || '{}')); } catch (e) {}
+const saveVolView = () => { try { localStorage.setItem('openmc-studio-volview', JSON.stringify(VOLVIEW)); } catch (e) {} };
+$('#volMode').value = VOLVIEW.mode; $('#volLevel').value = VOLVIEW.level; $('#volLevelTxt').textContent = VOLVIEW.level; $('#volNoisy').checked = VOLVIEW.hideNoisy;
+$('#volMode').addEventListener('change', e => { VOLVIEW.mode = e.target.value; saveVolView(); schedule(); });
+$('#volLevel').addEventListener('input', e => { VOLVIEW.level = +e.target.value; $('#volLevelTxt').textContent = VOLVIEW.level; saveVolView(); schedule(); });
+$('#volNoisy').addEventListener('change', e => { VOLVIEW.hideNoisy = e.target.checked; saveVolView(); schedule(); });
+// Voxel values as bytes: 0 = nothing scored (or a hidden noisy voxel), 1..255 = the legend's log scale.
+function volumeData(t, hideNoisy) {
+  const v = t.values[t.scores[0]], rel = (t.rel_err || {})[t.scores[0]] || [];
+  let mn = Infinity, mx = 0;
+  for (const x of v) if (x > 0) { if (x < mn) mn = x; if (x > mx) mx = x; }
+  const lmn = Math.log10(mn), span = Math.max(Math.log10(mx) - lmn, 1e-9), data = new Uint8Array(v.length);
+  if (mx > 0) v.forEach((x, i) => { if (x > 0 && !(hideNoisy && rel[i] > 0.5)) data[i] = 1 + Math.round(254 * (Math.log10(x) - lmn) / span); });
+  return {data, mn, mx, lmn, span};
+}
+// The byte a Surface level (a percentage of the peak) corresponds to.
+const volumeLevelByte = (V, pct) => Math.max(1, Math.min(255, 1 + Math.round(254 * (Math.log10(V.mx * pct / 100) - V.lmn) / V.span)));
+// Reference marcher, the shader's maths one ray at a time (tests compare the two). Returns the byte seen, or 0.
+function volumeRayCPU(V, t, origin, dir, tmax, mode, levelByte, cut) {
+  const lo = t.lower, hi = t.upper, n = t.dims, len = Math.hypot(...dir), rd = dir.map(d => d / len);
+  let tn = 0, tf = Infinity;
+  for (let k = 0; k < 3; k++) {
+    const a = (lo[k] - origin[k]) / rd[k], b = (hi[k] - origin[k]) / rd[k];
+    tn = Math.max(tn, Math.min(a, b)); tf = Math.min(tf, Math.max(a, b));
+  }
+  tf = Math.min(tf, tmax);
+  if (!(tf > tn)) return 0;
+  let step = Math.min(...[0, 1, 2].map(k => (hi[k] - lo[k]) / n[k])) / 2;
+  if ((tf - tn) / step > 1024) step = (tf - tn) / 1024;
+  let best = 0;
+  for (let s = tn + step / 2; s <= tf; s += step) {
+    const q = origin.map((o, k) => o + rd[k] * s);
+    if (cut && (q[cut.axis] - cut.at) * cut.side > 0) continue;
+    const ijk = [0, 1, 2].map(k => Math.min(n[k] - 1, Math.max(0, Math.floor((q[k] - lo[k]) / (hi[k] - lo[k]) * n[k]))));
+    const b = V.data[ijk[0] + n[0] * (ijk[1] + n[1] * ijk[2])];
+    if (mode === 'iso') { if (b >= levelByte) return b; } else if (b > best) best = b;
+  }
+  return mode === 'iso' ? 0 : best;
+}
+const VOL_FS = `#version 300 es
+precision highp float; precision highp sampler3D;
+uniform sampler3D uVol; uniform sampler2D uDepth, uRamp;
+uniform vec3 uPos, uF, uR, uU, uLo, uHi, uCells;
+uniform vec2 uSize;
+uniform float uFocal, uTMax, uDepthOn, uMode, uLevel, uCut, uCutAxis, uCutAt, uCutSide;
+out vec4 o;
+float vol(vec3 q) { return texture(uVol, (q - uLo) / (uHi - uLo)).r * 255.0; }
+void main() {
+  vec2 p = gl_FragCoord.xy;
+  vec3 d = uF + uR * ((p.x - 0.5 * uSize.x) / uFocal) + uU * ((p.y - 0.5 * uSize.y) / uFocal);
+  vec3 rd = normalize(d);
+  vec3 a = (uLo - uPos) / rd, b = (uHi - uPos) / rd, tn = min(a, b), tf = max(a, b);
+  float t0 = max(max(tn.x, tn.y), max(tn.z, 0.0)), t1 = min(min(tf.x, tf.y), tf.z);
+  if (uDepthOn > 0.5) {  // geometry in front hides the map (24-bit distance along the ray; white = nothing hit)
+    vec4 g = texelFetch(uDepth, ivec2(p), 0);
+    if (any(lessThan(g.rgb, vec3(0.999)))) {
+      float dist = (g.r * 255.0 * 65536.0 + g.g * 255.0 * 256.0 + g.b * 255.0) / 16777214.0 * uTMax;
+      t1 = min(t1, dist + 0.5 + 0.004 * dist);
+    }
+  }
+  if (t1 <= t0) discard;
+  vec3 cell = (uHi - uLo) / uCells;
+  float step = 0.5 * min(min(cell.x, cell.y), cell.z);
+  if ((t1 - t0) / step > 1024.0) step = (t1 - t0) / 1024.0;
+  float best = 0.0, hitT = -1.0;
+  for (int i = 0; i < 1024; i++) {
+    float t = t0 + (float(i) + 0.5) * step;
+    if (t > t1) break;
+    vec3 q = uPos + rd * t;
+    int ax = int(uCutAxis + 0.5);
+    if (uCut > 0.5 && (q[ax] - uCutAt) * uCutSide > 0.0) continue;
+    float v = vol(q);
+    if (uMode > 1.5) { if (v >= uLevel - 0.5) { hitT = t; best = v; break; } }
+    else best = max(best, v);
+  }
+  if (best < 0.5) discard;
+  vec3 c = texture(uRamp, vec2((best - 1.0) / 254.0, 0.5)).rgb;
+  if (uMode > 1.5) {  // shade the surface by its slope, so it reads as a shape
+    vec3 q = uPos + rd * hitT, h = 0.75 * cell;
+    vec3 gr = vec3(vol(q + vec3(h.x, 0, 0)) - vol(q - vec3(h.x, 0, 0)), vol(q + vec3(0, h.y, 0)) - vol(q - vec3(0, h.y, 0)),
+                   vol(q + vec3(0, 0, h.z)) - vol(q - vec3(0, 0, h.z)));
+    float lit = length(gr) > 0.0 ? abs(dot(normalize(gr), rd)) : 1.0;
+    o = vec4(c * (0.35 + 0.65 * lit), 1.0);
+  } else o = vec4(c * 0.85, 0.85);  // premultiplied
+}`;
+function volumeGL() {
+  if (V3.volGL !== undefined) return V3.volGL;
+  const cv = document.createElement('canvas'), gl = cv.getContext('webgl2', {premultipliedAlpha:true, preserveDrawingBuffer:true});
+  if (!gl) return (V3.volGL = null);
+  const mk = (type, src) => { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh)); return sh; };
+  try {
+    const prog = gl.createProgram();
+    gl.attachShader(prog, mk(gl.VERTEX_SHADER, '#version 300 es\nin vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }'));
+    gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, VOL_FS));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const U = {};
+    ['uVol', 'uDepth', 'uRamp', 'uPos', 'uF', 'uR', 'uU', 'uLo', 'uHi', 'uCells', 'uSize', 'uFocal', 'uTMax', 'uDepthOn', 'uMode',
+     'uLevel', 'uCut', 'uCutAxis', 'uCutAt', 'uCutSide'].forEach(n => { U[n] = gl.getUniformLocation(prog, n); });
+    const tex = () => { const t = gl.createTexture(); return t; };
+    const ramp = tex(), rampPx = new Uint8Array(256 * 4);
+    for (let i = 0; i < 256; i++) rampPx.set([...ramp_(i / 255), 255], 4 * i);
+    gl.bindTexture(gl.TEXTURE_2D, ramp);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, rampPx);
+    [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER].forEach(k => gl.texParameteri(gl.TEXTURE_2D, k, gl.LINEAR));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    return (V3.volGL = {cv, gl, prog, buf, U, ramp, vol:tex(), depth:tex(), volKey:null});
+  } catch (e) { console.warn('3D volume view unavailable:', e.message); return (V3.volGL = null); }
+}
+function ramp_(f) { return ramp(VIRIDIS, f); }
+// Draws the map as a volume into the overlay. Returns false when it can't (then the slice is drawn instead).
+function drawVolume3D(ctx, B, t, W, H) {
+  if (t.mesh_type === 'cylindrical' || !t.lower) return false;
+  const G = volumeGL();
+  if (!G) return false;
+  const {gl, U} = G, D = V3.depth, cw = D ? D.w : W, ch = D ? D.h : H;
+  const key = `${t.name}|${t.values[t.scores[0]].length}|${VOLVIEW.hideNoisy}`;
+  if (G.volKey !== key || G.volT !== t) {
+    G.V = volumeData(t, VOLVIEW.hideNoisy);
+    gl.bindTexture(gl.TEXTURE_3D, G.vol);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.R8, t.dims[0], t.dims[1], t.dims[2], 0, gl.RED, gl.UNSIGNED_BYTE, G.V.data);
+    [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER].forEach(k => gl.texParameteri(gl.TEXTURE_3D, k, gl.NEAREST));
+    [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T, gl.TEXTURE_WRAP_R].forEach(k => gl.texParameteri(gl.TEXTURE_3D, k, gl.CLAMP_TO_EDGE));
+    G.volKey = key; G.volT = t;
+  }
+  if (!(G.V.mx > 0)) return false;
+  if (D) {
+    gl.bindTexture(gl.TEXTURE_2D, G.depth);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, D.w, D.h, 0, gl.RGBA, gl.UNSIGNED_BYTE, D.buf);
+    [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER].forEach(k => gl.texParameteri(gl.TEXTURE_2D, k, gl.NEAREST));
+  }
+  if (G.cv.width !== cw || G.cv.height !== ch) { G.cv.width = cw; G.cv.height = ch; }
+  gl.viewport(0, 0, cw, ch);
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.useProgram(G.prog);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_3D, G.vol); gl.uniform1i(U.uVol, 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, G.depth); gl.uniform1i(U.uDepth, 1);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, G.ramp); gl.uniform1i(U.uRamp, 2);
+  gl.uniform3fv(U.uPos, B.pos); gl.uniform3fv(U.uF, B.f); gl.uniform3fv(U.uR, B.r); gl.uniform3fv(U.uU, B.u);
+  gl.uniform3fv(U.uLo, t.lower); gl.uniform3fv(U.uHi, t.upper); gl.uniform3fv(U.uCells, t.dims);
+  gl.uniform2f(U.uSize, cw, ch); gl.uniform1f(U.uFocal, B.focal * cw / W);
+  gl.uniform1f(U.uTMax, D ? D.tmax : 0); gl.uniform1f(U.uDepthOn, D ? 1 : 0);
+  gl.uniform1f(U.uMode, VOLVIEW.mode === 'iso' ? 2 : 1); gl.uniform1f(U.uLevel, volumeLevelByte(G.V, VOLVIEW.level));
+  const cut = $('#cutaway').checked, ax = {xy:2, xz:1, yz:0}[view.plane];
+  gl.uniform1f(U.uCut, cut ? 1 : 0); gl.uniform1f(U.uCutAxis, ax); gl.uniform1f(U.uCutAt, view.slice);
+  gl.uniform1f(U.uCutSide, B.pos[ax] >= view.slice ? 1 : -1);
+  gl.bindBuffer(gl.ARRAY_BUFFER, G.buf);
+  const loc = gl.getAttribLocation(G.prog, 'p');
+  gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  ctx.drawImage(G.cv, 0, 0, W, H);
+  meshColorbar(ctx, W, t, {mn:G.V.mn, mx:G.V.mx});
+  return true;
+}
+// The 3D-only controls: how to show the map, the Surface level, and hiding noisy voxels.
+function syncVolumeControls(meshT) {
+  const on = view.mode === '3d' && !!meshT && meshT.mesh_type !== 'cylindrical';
+  const set = (id, hide) => { const e = document.getElementById(id); if (e && e.hidden !== hide) e.hidden = hide; };
+  set('volMode', !on); set('volLevelWrap', !on || VOLVIEW.mode !== 'iso'); set('volNoisyWrap', !on || VOLVIEW.mode === 'slice');
+}
 function adapter3D() {
   const {B} = V3.geom, c = toolTarget() ? targetCenter(toolTarget()) : CAM.target;
   const depth = Math.max(1e-3, v3dot(v3sub(c, B.pos), B.f)), pxPerCm = B.focal / depth;

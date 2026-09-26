@@ -63,8 +63,13 @@ and the MCNP lattice work; fixes listed under Completed).
     guess said 32% and the run measured a 23% median). The million-voxel warning carries the same numbers. The
     viewport says when the map on show is edge-on or the slice is outside it, and the layer list names each
     map's plane and thickness. Tests: `test/test_mesh_maps.js`, `flux_3d` in `test/test_generated_models.py`.
-  - Stage 2: a volume view for 3D maps (brightest-along-ray, isosurface), marched per pixel so resolution
-    doesn't cost frames. Today a 3D mesh is tallied in full but drawn one slice at a time.
+  - Stage 2: **first milestone done** (2026-09-26; plan `Claude Code Test\plans\flux-volume-view-plan.md`).
+    In 3D the map toolbar offers Slice / Brightest / Surface (+ level slider) / Hide noisy. `drawVolume3D` marches
+    each pixel's ray on its own WebGL2 canvas (R8 3D texture of the log-scaled bytes, NEAREST so values stay
+    voxel-exact; depth readback as a texture for occlusion; the cutaway half-space; step = half a voxel, <= 1024
+    steps) and composites into the overlay; `volumeRayCPU` is the test oracle. Checked live on a 40³ map of the
+    demo. Tests: `test/test_volume_view_browser.cjs` (6). **Still open:** coarse marching while orbiting (not needed
+    yet at 40³), cylindrical maps, soft emission-absorption ("glow"), maps over 256 per side (downsample).
   - Stage 3: functional expansion tallies (`SpatialLegendreFilter`, `ZernikeFilter`, ...) for a smooth flux
     field with real error bars instead of a million voxels. Experiment on the pile first; MCNP has no
     equivalent, so the export must refuse it with a reason.

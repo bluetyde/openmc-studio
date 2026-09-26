@@ -22,6 +22,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from . import __version__
+from . import provenance
 
 STATIC = Path(__file__).parent / "static"
 MAX_BODY = 25 * 1024 * 1024
@@ -56,6 +57,13 @@ class Run:
             self.ended = time.time()
             self.cond.notify_all()
         (self.path / "meta.json").write_text(json.dumps(self.meta(), indent=2))
+        try:  # the outcome, and hashes of what the run wrote, beside what produced it
+            outputs = sorted(f.name for f in self.path.iterdir() if f.suffix == ".h5" or f.name in ("dose.json", "tallies.out"))
+            provenance.update(self.path, outcome={"status": self.status, "returncode": code,
+                                                  "seconds": round(self.ended - self.started, 1)},
+                              outputs={f: provenance.sha256(self.path / f) for f in outputs})
+        except OSError:
+            pass
 
 
 PROJECT_TAG = "@studio-project-v1"
@@ -102,6 +110,7 @@ class Studio:
             (path / "project.json").write_text(json.dumps(project, indent=2), encoding="utf-8")
             run = Run(rid, path, name or slug)
             (path / "meta.json").write_text(json.dumps(run.meta(), indent=2))
+            provenance.write(path, "run", project, files=("model.py", "project.json"))
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
             run.proc = subprocess.Popen([sys.executable, "model.py"], cwd=path, env=env, stdout=subprocess.PIPE,
@@ -132,6 +141,9 @@ class Studio:
         if report.get("ok") and runnable.is_file():  # the deck is a project file too: Open project reads it back
             text = runnable.read_text(encoding="utf-8").rstrip()
             runnable.write_text(text + "\n" + "\n".join(project_block(project, "c ")) + "\n", encoding="utf-8")
+        provenance.write(folder, "mcnp-export", project, exporter=self.mcnp._project(),
+                         files=sorted(f.name for f in folder.iterdir() if f.is_file() and f.name != "provenance.json"),
+                         extra={"validated": bool(report.get("ok")), "deck": runnable.name if runnable.is_file() else None})
         return report
 
     def check_geometry(self, script, world, points, particles):

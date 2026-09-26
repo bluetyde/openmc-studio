@@ -27,6 +27,7 @@ __pycache__/
 .venv/
 scratch/
 test/generated/
+test/results/
 
 # ── macOS clutter on exFAT drives ──
 .DS_Store

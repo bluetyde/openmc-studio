@@ -1,7 +1,12 @@
 # TODO
 
-What's next for OpenMC Studio, roughly in priority order. Updated 2026-09-19 (review of `c44381e..be160fe`
-and the MCNP lattice work; fixes listed under Completed).
+What's next for OpenMC Studio, roughly in priority order. Updated 2026-09-26.
+
+**What works today, what is refused and what is planned is in [docs/SUPPORT.md](docs/SUPPORT.md)**, one table
+per area with the test behind each entry; start there. This file is the working backlog: open items first,
+then the packages, then **Completed** and dated "done" notes, which are history (a later change may have
+replaced what they describe; SUPPORT.md is current). Design plans are in [docs/design/](docs/design/).
+Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summary in `test/results/`).
 
 ## Open items carried over
 
@@ -47,13 +52,13 @@ and the MCNP lattice work; fixes listed under Completed).
 - **3D Caliper & Dimension Measurement Tool**:
   - Interactive distance measurement in the 3D WebGL viewport and 2D slice views.
   - Click two points to measure distance in cm, inspect minimum clearance/gap, check wall thickness, and display coordinate readouts.
-- **STL / OBJ Geometry Exporter**:
-  - Tessellate and export 3D geometry to `.stl` for 3D printing physical reactor models (senior design, lab demos) or `.obj` for rendering in Blender/CAD.
+- **OBJ Geometry Exporter**: STL export is done (Export STL…, `test/test_stl_export.js`); `.obj` (with material
+  groups, for Blender) is still open. Imported CAD exports its display meshes only.
 - **Advanced Graphing Suite**:
   - **Lethargy Flux Spectrum**: Plot flux per unit lethargy $\phi(u) = E \cdot \phi(E)$ vs. $\log_{10} E$, presenting the thermal Maxwellian peak, $1/E$ slowing-down resonance region, and fission spectrum on equal footing.
   - **1D Spatial Line Cuts**: Extract 1D radial or axial flux profiles from 2D/3D mesh tallies with shaded $\pm 1\sigma$ Monte Carlo uncertainty bands.
   - **Reaction Rate & Absorption Breakdown**: Interactive pie and stacked bar charts detailing neutron fate (% absorbed in fuel vs moderator vs poison vs leakage).
-- **Mesh maps: slabs, 3D and how to look at them** (full plan: `Claude Code Test\plans\mesh-maps-plan.md`):
+- **Mesh maps: slabs, 3D and how to look at them** (full plan: [docs/design/mesh-maps-plan.md](docs/design/mesh-maps-plan.md)):
   - A mesh tally is a **slab**: one axis has a single bin, so it looks like a sliver from any other view. The
     bins and corners are already editable in the tally properties; what's missing is saying so.
   - Stage 1: **done** (2026-09-24). Tally properties have a Map control (XY / XZ / YZ slab or 3D box; going 3D
@@ -63,7 +68,7 @@ and the MCNP lattice work; fixes listed under Completed).
     guess said 32% and the run measured a 23% median). The million-voxel warning carries the same numbers. The
     viewport says when the map on show is edge-on or the slice is outside it, and the layer list names each
     map's plane and thickness. Tests: `test/test_mesh_maps.js`, `flux_3d` in `test/test_generated_models.py`.
-  - Stage 2: **first milestone done** (2026-09-26; plan `Claude Code Test\plans\flux-volume-view-plan.md`).
+  - Stage 2: **first milestone done** (2026-09-26; plan [docs/design/flux-volume-view-plan.md](docs/design/flux-volume-view-plan.md)).
     In 3D the map toolbar offers Slice / Brightest / Surface (+ level slider) / Hide noisy. `drawVolume3D` marches
     each pixel's ray on its own WebGL2 canvas (R8 3D texture of the log-scaled bytes, NEAREST so values stay
     voxel-exact; depth readback as a texture for occlusion; the cutaway clipped exactly; rays step voxel to voxel,
@@ -136,7 +141,7 @@ and the MCNP lattice work; fixes listed under Completed).
 - **Neutron Capture Multiplicity & Coincidence Counting (`FT CAP`)**:
   - Pulse multiplicity distributions, factorial moments, and coincidence time-gating (`gate predelay width`) on neutron capture absorbers ($^3\text{He}$, $^{10}\text{B}$) for safeguards counters (manual §10.2.5.5–§10.2.5.7, Examples 39 & 40; PRINT Table 118).
 
-- **Dose rates, stage 1: done** (2026-09-25; plan: `Claude Code Test\plans\dose-rates-plan.md`). A cell tally's
+- **Dose rates, stage 1: done** (2026-09-25; plan: [docs/design/dose-rates-plan.md](docs/design/dose-rates-plan.md)). A cell tally's
   Dose setting (or the Detector menu's "Dose rate, neutrons" / "neutrons + photons" presets) gives effective dose
   from `openmc.data.dose_coefficients` (ICRP-116 or -74; AP, PA, LLAT, RLAT, ROT, ISO): one tally per particle
   with a log-log `EnergyFunctionFilter`, padded down to the lowest transported energy with the first value so
@@ -285,7 +290,7 @@ and the MCNP lattice work; fixes listed under Completed).
     cross-check), `cad/primitives.py` (support-surface recognition, scale-aware tolerances), `cad/validate.py`
     (rebuild through Studio's own part mapping; bounds, symmetric difference, boundary distances, band-aware point
     probes, all in a local frame), `cad/report.py` (every solid accepted/rejected/failed, overlaps), `inspect` and
-    `native` job modes, and **Convert > Import CAD…**: engine probe, inventory, mode choice (CSG shown, disabled),
+    `native` job modes, and **Convert > Import CAD…**: engine probe, inventory, mode choice (CSG shown, disabled at that stage; enabled since),
     preview, explicit partial import, one-step undo, pending materials that block runs until chosen (or Void on
     purpose), import records kept in the project. Tests: `test/test_cad_native_engine.py` (34 FreeCAD-written cases
     + 5 files from an independent non-OCCT writer, units mm/cm/m/inch, 12 near misses, assemblies, teeth check),
@@ -436,7 +441,10 @@ every speed claim below is from the manual or from reasoning, never from a timin
   - Safe extraction of `sp.k_generation`, `sp.n_inactive`, `sp.entropy`, and `sp.k_combined` in `results.py`.
 - **Surface Current Tallies & Material Filters**:
   - Added `surface` tally filter with `current` score using `openmc.SurfaceFilter` and MCNP `F1:N`/`F1:P`.
+    (Photon current actually exported as `F1:N` until 2026-09-25; tested since: exporter
+    `tests/test_review_semantics.py`.)
   - Added material tally filter using `openmc.MaterialFilter` to evaluate reaction rates across distributed cells.
+    OpenMC only: the MCNP exporter refuses a `MaterialFilter`, and dose tallies refuse it in Problems.
 - **Boundary Conditions (Periodic & White)**:
   - Supported `periodic` and `white` boundary types with automatic pairing of opposing planar surfaces (`.periodic_surface = ...`).
 - **Fusion Plasma Source (`openmc.stats.muir`)**:

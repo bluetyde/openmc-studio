@@ -1,4 +1,5 @@
-"""Run with the companion exporter's src directory on PYTHONPATH."""
+"""Needs the companion exporter: OPENMC_MCNP_PROJECT (or its src directory on PYTHONPATH)."""
+import os
 import pathlib
 import sys
 import tempfile
@@ -6,6 +7,8 @@ import unittest
 from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "studio"))
+if os.environ.get("OPENMC_MCNP_PROJECT"):
+    sys.path.insert(0, str(pathlib.Path(os.environ["OPENMC_MCNP_PROJECT"]) / "src"))
 from openmc_studio.mcnp_worker import add_group_comments
 from deck_format import overlong_lines
 

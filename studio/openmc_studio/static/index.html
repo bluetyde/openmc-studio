@@ -3247,14 +3247,14 @@ async function saveFile(filename, data, note) {
 // comment in model.py, an MCNP comment card in model.mcnp (under 128 columns). Neither OpenMC nor MCNP reads them.
 // Opening such a file restores the exact project, then takes back any hand edits to the file (importScriptPatch).
 const PROJECT_TAG = '@studio-project-v1';
-function projectBlock(prefix) {
-  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(S))));
+function projectBlock(prefix, project = S) {
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(project))));
   if (b64.length > 8e6) return [`${prefix}${PROJECT_TAG} not embedded: the project is over 6 MB. Save the project file with it.`];
   const out = [`${prefix}${PROJECT_TAG} OpenMC Studio project (${b64.length} characters below): Studio reopens this file as the project.`];
   for (let i = 0; i < b64.length; i += 76) out.push(`${prefix}${PROJECT_TAG}: ${b64.slice(i, i + 76)}`);
   return out;
 }
-const withProject = (text, prefix) => text.replace(/\s+$/, '') + '\n' + projectBlock(prefix).join('\n') + '\n';
+const withProject = (text, prefix, project = S) => text.replace(/\s+$/, '') + '\n' + projectBlock(prefix, project).join('\n') + '\n';
 const withoutProject = text => text.split(/\r?\n/).filter(l => !l.includes(PROJECT_TAG)).join('\n');
 // The embedded project, or null. Throws if a block is there but damaged.
 function readProjectBlock(text) {
@@ -5522,10 +5522,74 @@ function describeRef(ref) {
   const what = ref.key || {comp:'composition', line:'energy line', ebin:'energy edge', halfh:'height'}[ref.t] || ref.t;
   return `${who}: ${what}`;
 }
+// Plane edits in one import move faces together. Each face is tied to its part while the file still describes
+// the part, the new positions are gathered per part, and only the final bounds are checked and written
+// (commit). One face at a time would check against half-moved parts: moving a box from x in [-1,1] to [2,4]
+// would refuse the first face for crossing the old opposite one, then apply the second alone.
+function planeBatch() {
+  const recs = new Map();  // part -> Map(key -> {n, c0, lo, hi, edits:Set})
+  const faces = (n, old) => {
+    const out = [];
+    for (const p of S.parts) {
+      if (p.shape === 'sphere') continue;
+      const M = partFrame(p).M, c = [p.x, p.y, p.z];
+      for (let k = 0; k < 3; k++) {
+        if (p.shape === 'cylinder' && k < 2) continue;
+        const col = [M[0][k], M[1][k], M[2][k]], par = col[0] * n[0] + col[1] * n[1] + col[2] * n[2];
+        if (Math.abs(Math.abs(par) - 1) > 1e-9) continue;
+        const key = (p.shape === 'box' || p.shape === 'wedge') ? ['sx', 'sy', 'sz'][k] : 'h';
+        const cn = n[0] * c[0] + n[1] * c[1] + n[2] * c[2], half = p[key] / 2;
+        const side = nearly(cn + half, old) ? 'hi' : nearly(cn - half, old) ? 'lo' : null;
+        if (!side) continue;
+        if (!recs.has(p)) recs.set(p, new Map());
+        const byKey = recs.get(p);
+        if (!byKey.has(key)) byKey.set(key, {n, cn, lo:cn - half, hi:cn + half, edits:new Set()});
+        out.push({rec:byKey.get(key), side});
+      }
+    }
+    return out;
+  };
+  return {
+    pin(ref, edit) {
+      const n = ref.t === 'plane' ? ['x', 'y', 'z'].map(a => a === ref.ax ? 1 : 0) : ref.n;
+      const owned = faces(n, ref.value), st = S.settings;
+      const world = ref.t === 'plane' && st.worldShape === 'box' && (same(ref.value, st.worldR) || same(ref.value, -st.worldR));
+      return raw => {
+        const v = Number(String(raw).trim());
+        if (!Number.isFinite(v)) return 'Enter a number.';
+        if (world && !(Math.abs(v) > 0)) return 'The world boundary needs a non-zero half-width.';
+        owned.forEach(f => { f.rec[f.side] = v; f.rec.edits.add(edit); });
+        if (world) st.worldR = Math.abs(v);
+        return owned.length || world ? null : 'Nothing uses that plane any more.';
+      };
+    },
+    // Check each part's final bounds and write them; returns Map(edit -> why it wasn't applied).
+    commit() {
+      const bad = new Map();
+      for (const [p, byKey] of recs) {
+        const moved = [...byKey].filter(([, r]) => r.edits.size);
+        const wrong = moved.find(([, r]) => !(r.hi > r.lo));
+        if (wrong) {
+          moved.forEach(([, r]) => r.edits.forEach(e => bad.set(e, `${p.name}: its faces would cross (${fmtNum(wrong[1].lo)} to ${fmtNum(wrong[1].hi)}), so this part was left as it was.`)));
+          continue;
+        }
+        const c = [p.x, p.y, p.z];
+        moved.forEach(([key, r]) => {
+          const shift = (r.lo + r.hi) / 2 - r.cn;
+          p[key] = tidy(r.hi - r.lo);
+          r.n.forEach((ni, i) => { c[i] += ni * shift; });
+        });
+        ['x', 'y', 'z'].forEach((a, i) => { p[a] = tidy(c[i]); });
+      }
+      return bad;
+    },
+  };
+}
 // A sphere or cylinder edit finds its parts by their current centre and radius, so once an earlier edit in
 // the same import changes one of those (x0, then r), the later one would find nothing. Tie each edit to its
-// parts while the file still describes them, then apply.
-function pinRef(ref) {
+// parts while the file still describes them, then apply. Plane edits go through the import's planeBatch.
+function pinRef(ref, batch, edit) {
+  if (batch && (ref.t === 'plane' || ref.t === 'gplane')) return batch.pin(ref, edit);
   if (ref.t === 'sphere') {
     const parts = S.parts.filter(p => p.shape === 'sphere' && same(p.x, ref.x) && same(p.y, ref.y) && same(p.z, ref.z) && same(p.r, ref.r));
     const st = S.settings, world = st.worldShape === 'sphere' && same(ref.r, st.worldR) && !ref.x && !ref.y && !ref.z;
@@ -5560,7 +5624,7 @@ function planLinePatch(marked, map, edited, what) {
   const plain = marked.map(l => l.replace(MARK_RE, '$2').trimEnd());
   const diff = lineDiff(plain, edited);
   if (!diff) return {refused:`This ${what} is too different from the project to line up. Was it written for another project?`};
-  const edits = [], skipped = [];
+  const edits = [], skipped = [], batch = planeBatch();
   for (let k = 0; k < diff.length;) {
     if (diff[k].op === 'same') { k++; continue; }
     const dels = [], ins = [];
@@ -5572,7 +5636,9 @@ function planLinePatch(marked, map, edited, what) {
       tpl.refs.forEach((r, g) => {
         const ref = map[r];
         if (!ref || Number(got[g + 1]) === Number(tpl.orig[g])) return;
-        edits.push({ref, apply:pinRef(ref), label:describeRef(ref), from:tpl.orig[g], to:got[g + 1], line:ins[q].b + 1});
+        const e = {ref, label:describeRef(ref), from:tpl.orig[g], to:got[g + 1], line:ins[q].b + 1};
+        e.apply = pinRef(ref, batch, e);
+        edits.push(e);
       });
     }
     // Blank lines carry nothing Studio stores (in model.mcnp they separate blocks, and the deck is written anew
@@ -5580,7 +5646,7 @@ function planLinePatch(marked, map, edited, what) {
     ins.slice(pairs).filter(x => edited[x.b].trim()).forEach(x => skipped.push({line:x.b + 1, why:'a new line (Studio adds parts, cells and cards itself)', text:edited[x.b]}));
     dels.slice(pairs).filter(x => plain[x.a].trim()).forEach(x => skipped.push({line:null, why:'a line that was deleted (delete the object in Studio instead)', text:plain[x.a]}));
   }
-  return {edits, skipped};
+  return {edits, skipped, commit:batch.commit};
 }
 const fileLines = (text, tidy = l => l) => withoutProject(text).replace(/\r\n?/g, '\n').replace(/\n+$/, '').split('\n').map(l => tidy(l).trimEnd());
 // What an edited model.py would change: {edits:[{ref, from, to, line}], skipped:[{line, why, text}], refused}
@@ -5625,10 +5691,10 @@ function importScriptPatch(text, fileName = 'model.py') {
   const applied = [], failed = [];
   if (plan.edits.length) {
     HISTORY.boundary = true;
-    plan.edits.forEach(e => {
-      const err = e.apply(e.to);
-      (err ? failed : applied).push({...e, err});
-    });
+    const errs = new Map();
+    plan.edits.forEach(e => { const err = e.apply(e.to); if (err) errs.set(e, err); });
+    if (plan.commit) plan.commit().forEach((err, e) => { if (!errs.has(e)) errs.set(e, err); });
+    plan.edits.forEach(e => (errs.has(e) ? failed : applied).push({...e, err:errs.get(e) || null}));
     HISTORY.boundary = true;
     schedule();
   }
@@ -6247,7 +6313,7 @@ async function sendLive(force) {
   if (P.some(p => p.sev === 'error')) return;
   const built = buildScript(P, false, MCNP_OPTS), script = built.text;
   if (!force && script === LIVE.sentScript) return;
-  const seq = ++LIVE.seq, ctx = mcnpContext(P, built);
+  const seq = ++LIVE.seq, ctx = mcnpContext(P, built), snapshot = JSON.parse(JSON.stringify(S));  // the project this deck is from
   LIVE.pending = true; LIVE.failure = null; LIVE.attemptedScript = script;
   renderMcnp(P);
   const slow = !LIVE.report || !LIVE.sentScript || geometryPart(LIVE.sentScript) !== geometryPart(script);
@@ -6280,7 +6346,7 @@ async function sendLive(force) {
   if (r.superseded) { LIVE.failure = {error:'This export was superseded. Refresh to retry.'}; renderMcnp(problems()); return; }
   if (r.deck) {
     MCNP_EDITOR.previous = MCNP_EDITOR.deck; MCNP_EDITOR.deck = r.deck;
-    LIVE.sentScript = script; LIVE.ctx = ctx; LIVE.report = r;
+    LIVE.sentScript = script; LIVE.ctx = ctx; LIVE.report = r; LIVE.deckProject = snapshot;
   } else {
     LIVE.failure = r;
     if (!LIVE.report) LIVE.report = r;
@@ -6412,9 +6478,19 @@ $('#copyMcnp').addEventListener('click', async () => {
   if (!d) return;
   try { await navigator.clipboard.writeText(d); log('ok', 'Copied the MCNP input.'); } catch (e) { log('warn', 'Copy was blocked. Select the text and press Ctrl+C.'); }
 });
-$('#saveMcnp').addEventListener('click', () => {
+// The deck on show with the project it was translated from (not the project now: edits made since may still be
+// translating, or have failed), so a saved deck and its embedded project always describe the same model.
+function savedMcnp() {
   const r = LIVE.report;
-  if (r && r.deck) saveFile(`${r.name || 'model'}.mcnp`, withProject(r.deck, 'c '), r.ok ? '' : 'Note: this deck did not validate.');
+  if (!r || !r.deck) return null;
+  const current = LIVE.sentScript === mcnpScript(problems()) && !LIVE.pending && !LIVE.failure;
+  const notes = [r.ok ? '' : 'Note: this deck did not validate.',
+    current ? '' : 'It is the deck from before your latest changes (they are still translating, or the translation failed), with the project as it was then. Save again once the model.mcnp tab says Validated to include them.'];
+  return {name:`${r.name || 'model'}.mcnp`, text:LIVE.deckProject ? withProject(r.deck, 'c ', LIVE.deckProject) : r.deck, note:notes.filter(Boolean).join(' '), current};
+}
+$('#saveMcnp').addEventListener('click', () => {
+  const s = savedMcnp();
+  if (s) saveFile(s.name, s.text, s.note);
 });
 
 /* split view */
@@ -8345,7 +8421,9 @@ function draw3D() {
   } else V3.previewNotice = null;
   // flux map on the slice plane, then tracks
   syncVolumeControls(meshT);
+  V3.volNote = '';
   if (meshT && (VOLVIEW.mode === 'slice' || !drawVolume3D(ctx, B, meshT, W, H))) drawMesh3D(ctx, B, meshT, W, H);
+  if (V3.volNote) { ctx.font = '12px system-ui, sans-serif'; ctx.fillStyle = '#e6c07b'; ctx.fillText(V3.volNote, 10, H - 12); }
   if (showTr) drawTracks3D(ctx, B, res);
   // sources
   V3.sources = [];
@@ -8504,27 +8582,45 @@ function volumeData(t, hideNoisy) {
 }
 // The byte a Surface level (a percentage of the peak) corresponds to.
 const volumeLevelByte = (V, pct) => Math.max(1, Math.min(255, 1 + Math.round(254 * (Math.log10(V.mx * pct / 100) - V.lmn) / V.span)));
+// Rays step voxel to voxel (Amanatides & Woo), so every voxel a ray crosses is read exactly once; fixed-length steps
+// would jump over thin voxels once a ray is long. A ray crosses at most nx + ny + nz voxels, so maps up to that many
+// are drawn exactly, and bigger ones are refused (the slice is drawn, with a note) rather than drawn with gaps.
+const VOL_MAX_STEPS = 4096;
 // Reference marcher, the shader's maths one ray at a time (tests compare the two). Returns the byte seen, or 0.
 function volumeRayCPU(V, t, origin, dir, tmax, mode, levelByte, cut) {
-  const lo = t.lower, hi = t.upper, n = t.dims, len = Math.hypot(...dir), rd = dir.map(d => d / len);
-  let tn = 0, tf = Infinity;
+  const lo = t.lower, hi = t.upper, n = t.dims, len = Math.hypot(...dir), rd = dir.map(d => d / len || 1e-12);
+  let t0 = 0, t1 = Infinity;
   for (let k = 0; k < 3; k++) {
     const a = (lo[k] - origin[k]) / rd[k], b = (hi[k] - origin[k]) / rd[k];
-    tn = Math.max(tn, Math.min(a, b)); tf = Math.min(tf, Math.max(a, b));
+    t0 = Math.max(t0, Math.min(a, b)); t1 = Math.min(t1, Math.max(a, b));
   }
-  tf = Math.min(tf, tmax);
-  if (!(tf > tn)) return 0;
-  let step = Math.min(...[0, 1, 2].map(k => (hi[k] - lo[k]) / n[k])) / 2;
-  if ((tf - tn) / step > 1024) step = (tf - tn) / 1024;
-  let best = 0;
-  for (let s = tn + step / 2; s <= tf; s += step) {
-    const q = origin.map((o, k) => o + rd[k] * s);
-    if (cut && (q[cut.axis] - cut.at) * cut.side > 0) continue;
-    const ijk = [0, 1, 2].map(k => Math.min(n[k] - 1, Math.max(0, Math.floor((q[k] - lo[k]) / (hi[k] - lo[k]) * n[k]))));
+  t1 = Math.min(t1, tmax);
+  if (cut) {  // the cutaway removes the half-space (q[axis] - at) * side > 0: clip the ray to the kept side
+    const oc = (origin[cut.axis] - cut.at) * cut.side, dc = rd[cut.axis] * cut.side, tc = -oc / dc;
+    if (dc > 0) t1 = Math.min(t1, tc); else t0 = Math.max(t0, tc);
+  }
+  if (!(t1 > t0)) return 0;
+  const cell = [0, 1, 2].map(k => (hi[k] - lo[k]) / n[k]);
+  const s0 = t0 + Math.min(1e-4 * Math.min(...cell), (t1 - t0) / 2);  // just inside, so a voxel face at t0 picks the voxel ahead
+  const ijk = [0, 1, 2].map(k => Math.min(n[k] - 1, Math.max(0, Math.floor((origin[k] + rd[k] * s0 - lo[k]) / cell[k]))));
+  const stp = rd.map(r => r > 0 ? 1 : -1);
+  const tNext = [0, 1, 2].map(k => (lo[k] + (ijk[k] + (stp[k] > 0 ? 1 : 0)) * cell[k] - origin[k]) / rd[k]);
+  const tDelta = [0, 1, 2].map(k => cell[k] / Math.abs(rd[k]));
+  let tc = t0, best = 0;
+  for (let i = 0; i < VOL_MAX_STEPS && tc < t1; i++) {
     const b = V.data[ijk[0] + n[0] * (ijk[1] + n[1] * ijk[2])];
     if (mode === 'iso') { if (b >= levelByte) return b; } else if (b > best) best = b;
+    const a = tNext[0] <= tNext[1] && tNext[0] <= tNext[2] ? 0 : tNext[1] <= tNext[2] ? 1 : 2;
+    tc = tNext[a]; ijk[a] += stp[a]; tNext[a] += tDelta[a];
+    if (ijk[a] < 0 || ijk[a] >= n[a]) break;
   }
   return mode === 'iso' ? 0 : best;
+}
+// Why a map can't be drawn as a volume (then it is drawn on the slice), or '' when it can.
+function volumeRefusal(t, max3d) {
+  if (t.dims.some(d => d > max3d)) return `The map is ${t.dims.join(' × ')}; this GPU's 3D textures stop at ${max3d} a side, so it is shown on the slice.`;
+  if (t.dims[0] + t.dims[1] + t.dims[2] > VOL_MAX_STEPS) return `The map is ${t.dims.join(' × ')}: too fine to march every voxel, so it is shown on the slice.`;
+  return '';
 }
 const VOL_FS = `#version 300 es
 precision highp float; precision highp sampler3D;
@@ -8538,6 +8634,7 @@ void main() {
   vec2 p = gl_FragCoord.xy;
   vec3 d = uF + uR * ((p.x - 0.5 * uSize.x) / uFocal) + uU * ((p.y - 0.5 * uSize.y) / uFocal);
   vec3 rd = normalize(d);
+  rd = mix(rd, vec3(1e-12), vec3(equal(rd, vec3(0.0))));  // as volumeRayCPU: no exact zeros to divide by
   vec3 a = (uLo - uPos) / rd, b = (uHi - uPos) / rd, tn = min(a, b), tf = max(a, b);
   float t0 = max(max(tn.x, tn.y), max(tn.z, 0.0)), t1 = min(min(tf.x, tf.y), tf.z);
   if (uDepthOn > 0.5) {  // geometry in front hides the map (24-bit distance along the ray; white = nothing hit)
@@ -8547,20 +8644,28 @@ void main() {
       t1 = min(t1, dist + 0.5 + 0.004 * dist);
     }
   }
+  if (uCut > 0.5) {  // clip the ray to the kept side of the cutaway
+    int ax = int(uCutAxis + 0.5);
+    float oc = (uPos[ax] - uCutAt) * uCutSide, dc = rd[ax] * uCutSide, tc = -oc / dc;
+    if (dc > 0.0) t1 = min(t1, tc); else t0 = max(t0, tc);
+  }
   if (t1 <= t0) discard;
   vec3 cell = (uHi - uLo) / uCells;
-  float step = 0.5 * min(min(cell.x, cell.y), cell.z);
-  if ((t1 - t0) / step > 1024.0) step = (t1 - t0) / 1024.0;
-  float best = 0.0, hitT = -1.0;
-  for (int i = 0; i < 1024; i++) {
-    float t = t0 + (float(i) + 0.5) * step;
-    if (t > t1) break;
-    vec3 q = uPos + rd * t;
-    int ax = int(uCutAxis + 0.5);
-    if (uCut > 0.5 && (q[ax] - uCutAt) * uCutSide > 0.0) continue;
-    float v = vol(q);
-    if (uMode > 1.5) { if (v >= uLevel - 0.5) { hitT = t; best = v; break; } }
+  ivec3 n = ivec3(uCells + 0.5);
+  float s0 = t0 + min(1e-4 * min(min(cell.x, cell.y), cell.z), 0.5 * (t1 - t0));
+  ivec3 ijk = clamp(ivec3(floor((uPos + rd * s0 - uLo) / cell)), ivec3(0), n - 1);
+  ivec3 stp = ivec3(greaterThan(rd, vec3(0.0))) * 2 - 1;
+  vec3 tNext = (uLo + (vec3(ijk) + vec3(greaterThan(rd, vec3(0.0)))) * cell - uPos) / rd, tDelta = cell / abs(rd);
+  float best = 0.0, hitT = -1.0, tc = t0;
+  for (int i = 0; i < ${VOL_MAX_STEPS}; i++) {  // voxel to voxel, every voxel on the ray read once
+    if (tc >= t1) break;
+    float v = texelFetch(uVol, ijk, 0).r * 255.0;
+    int k = tNext.x <= tNext.y && tNext.x <= tNext.z ? 0 : tNext.y <= tNext.z ? 1 : 2;
+    float tOut = tNext[k];
+    if (uMode > 1.5) { if (v >= uLevel - 0.5) { hitT = 0.5 * (tc + min(tOut, t1)); best = v; break; } }
     else best = max(best, v);
+    tc = tOut; ijk[k] += stp[k]; tNext[k] += tDelta[k];
+    if (ijk[k] < 0 || ijk[k] >= n[k]) break;
   }
   if (best < 0.5) discard;
   vec3 c = texture(uRamp, vec2((best - 1.0) / 254.0, 0.5)).rgb;
@@ -8607,6 +8712,8 @@ function drawVolume3D(ctx, B, t, W, H) {
   const G = volumeGL();
   if (!G) return false;
   const {gl, U} = G, D = V3.depth, cw = D ? D.w : W, ch = D ? D.h : H;
+  V3.volNote = volumeRefusal(t, gl.getParameter(gl.MAX_3D_TEXTURE_SIZE));
+  if (V3.volNote) return false;
   const key = `${t.name}|${t.values[t.scores[0]].length}|${VOLVIEW.hideNoisy}`;
   if (G.volKey !== key || G.volT !== t) {
     G.V = volumeData(t, VOLVIEW.hideNoisy);

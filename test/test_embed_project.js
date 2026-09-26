@@ -68,6 +68,44 @@ test('a saved deck carries the project too, and its import ignores the block', a
   assert.deepEqual([r.refused, r.edits.length, r.skipped.length], [undefined, 0, 0]);
 });
 
+// Review: Save .mcnp paired the last deck with the project as it is now, so saving while an edit was still
+// translating (or after it failed) wrote a deck and a project from different revisions.
+async function translateWithEditDuringIt(edit) {
+  sb.__deck = fs.readFileSync(path.join(FIX, 'shielding_demo.mcnp'), 'utf8');
+  sb.__project = fs.readFileSync(path.join(FIX, 'shielding_demo.openmc-studio.json'), 'utf8');
+  run(`S = normalizeProject(JSON.parse(__project)); LOCAL.on = true; LIVE.report = null; LIVE.deckProject = null;
+    renderMcnp = () => {}; setMcnpStatus = () => {}; pollMcnpProgress = () => {}; stopMcnpProgress = () => {}; liveMcnpTick = () => {};
+    api = () => new Promise(res => { window.__answer = res; });`);
+  const sent = sb.sendLive(true), want = projectJson();
+  run(edit);                                                       // the user edits while MCNPy works
+  run(`window.__answer({ok: true, deck: __deck, name: 'shielding_demo'})`);
+  await sent;
+  return want;
+}
+test('a deck saved while newer edits are translating carries the project it was made from', async () => {
+  const want = await translateWithEditDuringIt('S.settings.particles = 333;');
+  run('LIVE.pending = true;');                                     // the next translation is under way
+  const s = sb.savedMcnp(), st = sb.readProjectBlock(s.text).settings;
+  assert.equal(JSON.stringify(sb.readProjectBlock(s.text)), want);
+  assert.notEqual(st.particles, 333);
+  assert.equal(st.particles * st.batches, +s.text.match(/^NPS\s+(\d+)/m)[1], 'the deck and its project agree (NPS = particles x batches)');
+  assert.equal(s.current, false);
+  assert.match(s.note, /before your latest changes/);
+});
+test('...and after that translation failed', async () => {
+  const want = await translateWithEditDuringIt('S.settings.particles = 333;');
+  run("LIVE.pending = false; LIVE.failure = {error: 'MCNPy stopped'};");
+  const s = sb.savedMcnp();
+  assert.equal(JSON.stringify(sb.readProjectBlock(s.text)), want);
+  assert.match(s.note, /translation failed/);
+});
+test('a deck saved when it is up to date carries the current project, with no note', async () => {
+  await translateWithEditDuringIt('');
+  const s = sb.savedMcnp();
+  assert.equal(JSON.stringify(sb.readProjectBlock(s.text)), projectJson());
+  assert.deepEqual([s.current, s.note], [true, '']);
+});
+
 test('damaged or missing blocks are reported, and the open project is left alone', async () => {
   const before = projectJson();
   const text = run('savedScript()').replace(/(@studio-project-v1: )(\S)/, '$1!');

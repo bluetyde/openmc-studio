@@ -110,6 +110,36 @@ const fs = require('fs'), path = require('path'), assert = require('assert');
       assert.notDeepEqual(r.a.slice(0, 3), r.b.slice(0, 3), 'the colour on the centre ray changes');
     });
 
+    await check('a thin hot voxel on a long ray is drawn, as the CPU reference sees it (review: skipped at 1,024 steps)', async () => {
+      const r = await page.evaluate(() => {
+        const keep = [__t, __B];
+        const n = 2048, v = new Array(n).fill(0);
+        v[1500] = 1; v[0] = 1e-3;  // one hot voxel 1 cm thick, 1,500 cm down the ray
+        __t = {name:'thin', kind:'mesh', mesh_type:'regular', dims:[n, 1, 1], lower:[0, -20, -20], upper:[n, 20, 20],
+          scores:['flux'], values:{flux:v}, rel_err:{flux:new Array(n).fill(0.05)}};
+        __B = {pos:[-1, 0.02, 0.02], f:[1, 0, 0], r:[0, 1, 0], u:[0, 0, 1], focal:1e6};
+        VOLVIEW.mode = 'mip'; VOLVIEW.hideNoisy = false;
+        const max3d = document.createElement('canvas').getContext('webgl2').getParameter(0x8073);  // MAX_3D_TEXTURE_SIZE
+        const out = max3d >= n ? {gpu:__draw().px, cpu:__cpu('mip')} : {max3d};
+        [__t, __B] = keep;
+        return out;
+      });
+      if (r.max3d) { console.log(`    (this GPU's 3D textures stop at ${r.max3d}; checked by test_volume_view.js only)`); return; }
+      assert.equal(r.cpu, 255);
+      assert.ok(near(r.gpu.slice(0, 3), (await ramp(255)).map(c => Math.round(c * 0.85))), `${r.gpu}`);
+    });
+
+    await check('a map too big to march exactly falls back to the slice, with a note', async () => {
+      const r = await page.evaluate(() => {
+        const t = {...__t, dims:[2000, 2000, 200]};
+        V3.volGL = undefined;
+        const cv = document.createElement('canvas'); cv.width = __W; cv.height = __H;
+        return {ok:drawVolume3D(cv.getContext('2d'), __B, t, __W, __H), note:V3.volNote};
+      });
+      assert.equal(r.ok, false);
+      assert.match(r.note, /too fine to march every voxel|3D textures stop at/);
+    });
+
     await check('the 3D controls appear only in 3D with a regular map', async () => {
       const r = await page.evaluate(() => {
         view.mode = 'slice'; syncVolumeControls(__t); const inSlice = $('#volMode').hidden;

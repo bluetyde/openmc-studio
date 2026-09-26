@@ -752,11 +752,11 @@ if (!pyPresets.includes('openmc.stats.Discrete([661700.0]')) {
   console.error('FAILED: Python export missing Cs-137 discrete gamma line');
   process.exit(1);
 }
-if (!pyPresets.includes('src_source_ambe.energy = openmc.stats.Tabular(')) {
+if (!pyPresets.includes('src_source_ambe.energy = _histogram(') || !pyPresets.includes('p / (hi - lo) for p, lo, hi in zip(probs, edges, edges[1:])')) {
   console.error('FAILED: Python export missing Am-Be Tabular distribution');
   process.exit(1);
 }
-if (!pyPresets.includes('src_source_pube.energy = openmc.stats.Tabular(')) {
+if (!pyPresets.includes('src_source_pube.energy = _histogram(')) {
   console.error('FAILED: Python export missing Pu-Be Tabular distribution');
   process.exit(1);
 }

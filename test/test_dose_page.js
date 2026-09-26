@@ -130,5 +130,16 @@ test('dose maps: colorbar and Results line in µSv/h, mrem/h or pSv per source p
   assert.deepEqual(run("meshDisplay({})"), {f: 1, unit: ''}, 'flux maps are untouched');
 });
 
+test('a material filter on a dose tally is an error, not silently dropped (review), from a preset or a converted tally', () => {
+  run("addDetectorTally('dose_n')");
+  assert.equal(run('S.tallies[0].materialFilter'), '', 'the preset starts with no material filter');
+  // an ordinary flux tally with a material filter, then turned into a dose tally
+  run("S.tallies[0].dose = ''; S.tallies[0].materialFilter = S.materials[1].id; S.tallies[0].dose = 'n';");
+  const P = doseProblems();
+  assert.ok(P.some(([s, t]) => s === 'error' && /can't use a material filter/.test(t)), JSON.stringify(P));
+  run("S.tallies[0].materialFilter = ''");
+  assert.ok(!doseProblems().some(([, t]) => /material filter/.test(t)));
+});
+
 if (failed) { console.log(`test_dose_page: ${failed} FAILED`); process.exit(1); }
 console.log('test_dose_page: PASS');

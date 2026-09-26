@@ -172,7 +172,8 @@ and needs photon transport.
 - **Parts**: sphere, cylinder, box, wedge (right triangular prism), hexagonal prism, cone
   (truncated) and ellipsoid.
 - **Sources**: energy as lines, Watt, Maxwell, uniform, tabulated (paste MCNP SI/SP cards) or a
-  Muir fusion spectrum (MCNP `SP -4`).
+  Muir fusion spectrum (MCNP `SP -4`). A tabulated spectrum's values are the probability of each bin, as on an
+  MCNP `SP D` card; model.py divides them by the bin widths, since OpenMC's histogram takes densities.
 - **Tallies**: cells, Cartesian or cylindrical mesh, and surface current (the current leaving the
   chosen parts). OpenMC signs it by the surface's sense: + through a part's +x/+y/+z faces, - through the
   others. In model.mcnp each (surface, part) bin is its own F1 tally, with a `C 0 1` card for the direction and

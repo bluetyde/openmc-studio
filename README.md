@@ -240,6 +240,10 @@ model.py or model.mcnp on the right.
   or deleted lines or cards, rewritten code, numbers Studio works out) is listed as not applied. A file from
   another project, or from an older version of this one, is refused rather than guessed at. A deck is lined up
   against the model.mcnp tab, so let the tab finish translating (Validated) before importing one.
+- **A saved model.py or model.mcnp is also a project file.** Save model.py (or Copy it) and Save in the
+  model.mcnp tab append the whole project as comment lines (`# @studio-project-v1: …` / `c @studio-project-v1: …`),
+  which OpenMC and MCNP ignore. Export ▸ Open project opens either file: the exact project comes back, and any
+  numbers edited in the file since it was saved are taken back as above.
 
 ## Material library
 

@@ -220,11 +220,14 @@ and the MCNP lattice work; fixes listed under Completed).
     Studio's line map instead), so one record format and one importer serve both files. Numbers that exist
     in only one file (MCNP isotope fractions expanded from an element, GQ for a rotated part, NPS; track
     settings in model.py) can't cross over; the report says what to change instead.
-  - **Then embed the whole project** in both files (model.py: a data block; MCNP: percent-encoded comment
-    records like the ID links, which MCNP ignores), so either file alone reopens the exact project, the way
-    `.openmc-studio.json` does. Store a fingerprint of the generated text so hand edits made afterwards are
-    detected and offered as a patch instead of being overwritten. Today the ID comments are links only
-    ("card X came from object Y"); they don't carry the objects, so the deck alone can't rebuild the project.
+  - **Embedded project: done** (2026-09-25). Saved/copied model.py and the model.mcnp tab's Save end with the
+    project as comment lines (`@studio-project-v1`, base64 JSON, 76 per line; MCNP lines under 128 columns;
+    over 6 MB it isn't embedded and says so). Export ▸ Open project accepts .py/.mcnp: `openProjectText` restores
+    the exact project, then runs the patch import on the file, so edits made after saving come back (no
+    fingerprint needed: the file is compared with what the restored project generates). A deck waits for the
+    model.mcnp tab to translate first. The live tabs and run folders don't carry the block; the patch import
+    ignores it. Tests: `test/test_embed_project.js` (8); a saved model.py with the block runs in OpenMC.
+    Not done: the Export ▸ MCNP input deck written by the server (it has the project.json beside it).
   - **STEP: keep names and materials.** STEP export writes one unnamed compound today, so even part names
     are lost. Write each part as its own named solid (PRODUCT name = the Studio name), put Studio data
     (material, density, id) in the product description, and also write a small sidecar JSON beside the

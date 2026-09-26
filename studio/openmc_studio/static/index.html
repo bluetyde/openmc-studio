@@ -389,7 +389,7 @@ input[type=checkbox]{accent-color:var(--accent)}
   </div>
 </div>
 </div>
-<input type="file" id="openFile" accept=".json,application/json" hidden>
+<input type="file" id="openFile" accept=".json,.py,.mcnp,.i,.inp,.txt,application/json,text/plain" hidden>
 <input type="file" id="patchFile" accept=".py,.mcnp,.i,.inp,.txt,text/x-python,text/plain" hidden>
 <div class="menu" id="matMenu" hidden role="menu"></div>
 <div class="menu" id="sourceMenu" hidden role="menu"></div>
@@ -3239,8 +3239,28 @@ async function saveFile(filename, data, note) {
     else log('error', `Couldn't save ${filename}: ${(e && e.message) || 'the viewer refused the file'}.`);
   }
 }
+/* ───────── Round trips: the whole project travels inside a saved model.py or model.mcnp ───────── */
+// Saved (not live) files end with the project as comment lines, base64 of its JSON, 76 characters a line: a Python
+// comment in model.py, an MCNP comment card in model.mcnp (under 128 columns). Neither OpenMC nor MCNP reads them.
+// Opening such a file restores the exact project, then takes back any hand edits to the file (importScriptPatch).
+const PROJECT_TAG = '@studio-project-v1';
+function projectBlock(prefix) {
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(S))));
+  if (b64.length > 8e6) return [`${prefix}${PROJECT_TAG} not embedded: the project is over 6 MB. Save the project file with it.`];
+  const out = [`${prefix}${PROJECT_TAG} OpenMC Studio project (${b64.length} characters below): Studio reopens this file as the project.`];
+  for (let i = 0; i < b64.length; i += 76) out.push(`${prefix}${PROJECT_TAG}: ${b64.slice(i, i + 76)}`);
+  return out;
+}
+const withProject = (text, prefix) => text.replace(/\s+$/, '') + '\n' + projectBlock(prefix).join('\n') + '\n';
+const withoutProject = text => text.split(/\r?\n/).filter(l => !l.includes(PROJECT_TAG)).join('\n');
+// The embedded project, or null. Throws if a block is there but damaged.
+function readProjectBlock(text) {
+  const parts = [...text.matchAll(/^\s*(?:#|c)\s+@studio-project-v1:\s*(\S+)\s*$/gim)].map(m => m[1]);
+  if (!parts.length) return null;
+  return JSON.parse(decodeURIComponent(escape(atob(parts.join('')))));
+}
 async function copyScript() {
-  const text = generate(problems());
+  const text = savedScript();
   try { await navigator.clipboard.writeText(text); log('ok', `Copied model.py (${text.split('\n').length} lines).`); return; } catch (e) {}
   const ta = document.createElement('textarea');
   ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
@@ -3249,7 +3269,8 @@ async function copyScript() {
   ta.remove();
   log(ok ? 'ok' : 'warn', ok ? 'Copied model.py.' : 'Copy was blocked here. Open the model.py tab, select the text and press Ctrl+C.');
 }
-const saveScript = () => IN_ARTIFACT ? saveFile('model.py.txt', generate(problems()), 'Rename it to model.py before running.') : saveFile('model.py', generate(problems()));
+const savedScript = () => withProject(generate(problems()), '# ');
+const saveScript = () => IN_ARTIFACT ? saveFile('model.py.txt', savedScript(), 'Rename it to model.py before running.') : saveFile('model.py', savedScript(), 'The project travels inside it: Open project reopens this file.');
 const saveProject = () => saveFile(`${(S.settings.name || 'project').replace(/[^\w-]+/g, '_')}.openmc-studio.json`, JSON.stringify(S, null, 2));
 
 /* ───────── 3D STL Geometry Export ───────── */
@@ -3989,19 +4010,35 @@ function openCadExportMenu(btn) {
 }
 
 function openProject(file) {
-
   const r = new FileReader();
-  r.onload = () => {
-    try {
-      const o = JSON.parse(r.result);
-      if (!validProject(o)) throw new Error(projectProblem(o));
-      normalizeProject(o);
-      S = o; sel = {kind:'settings'};
-      clearResults();
-      log('ok', `Opened ${file.name}.`); renderAll();
-    } catch (e) { log('error', `${file.name} isn't an OpenMC Studio project: ${e.message}.`); }
-  };
+  r.onload = () => openProjectText(r.result, file.name);
   r.readAsText(file);
+}
+function loadProject(o) {
+  if (!validProject(o)) throw new Error(projectProblem(o));
+  normalizeProject(o);
+  S = o; sel = {kind:'settings'};
+  clearResults();
+  renderAll();
+}
+async function openProjectText(text, name) {
+  let o;
+  try { o = JSON.parse(text); } catch (e) {
+    try { o = readProjectBlock(text); } catch (err) { log('error', `${esc(name)}: its embedded project is damaged (${esc(err.message)}).`); return; }
+    if (!o) { log('error', `${esc(name)} isn't an OpenMC Studio project, and has no project inside it (a model.py or model.mcnp saved by Studio carries one).`); return; }
+  }
+  try { loadProject(o); } catch (e) { log('error', `${esc(name)} isn't an OpenMC Studio project: ${esc(e.message)}.`); return; }
+  if (!/@studio-project-v1/.test(text)) { log('ok', `Opened ${esc(name)}.`); return; }
+  log('ok', `Opened the project saved inside ${esc(name)}.`);
+  // then take back what was edited in the file itself since it was saved
+  const deck = /@studio-(map-)?v1/.test(text);
+  if (deck) {  // a deck is lined up against the model.mcnp tab: wait for it to translate the project just opened
+    const fresh = () => { const P = problems(); return LOCAL.on && LIVE.report && LIVE.report.deck && LIVE.sentScript === mcnpScript(P) && !LIVE.failure && !LIVE.pending; };
+    if (!LOCAL.on) { log('info', 'Hand edits in the deck can be taken back with the local Studio server running (Import edited model.py / .mcnp).'); return; }
+    for (let i = 0; i < 120 && !fresh(); i++) { if (i === 0) sendLive(true); await new Promise(res => setTimeout(res, 1000)); }
+  }
+  const plan = deck ? planMcnpPatch(text) : planScriptPatch(text);
+  if (plan.refused || plan.edits.length || plan.skipped.length) importScriptPatch(text, name);
 }
 function runModel() {
   if (LOCAL.on) return localRun();
@@ -5542,7 +5579,7 @@ function planLinePatch(marked, map, edited, what) {
   }
   return {edits, skipped};
 }
-const fileLines = (text, tidy = l => l) => text.replace(/\r\n?/g, '\n').replace(/\n+$/, '').split('\n').map(l => tidy(l).trimEnd());
+const fileLines = (text, tidy = l => l) => withoutProject(text).replace(/\r\n?/g, '\n').replace(/\n+$/, '').split('\n').map(l => tidy(l).trimEnd());
 // What an edited model.py would change: {edits:[{ref, from, to, line}], skipped:[{line, why, text}], refused}
 function planScriptPatch(text) {
   if (!/generated by OpenMC Studio/.test(text) || !/studio_ids = \{/.test(text))
@@ -6374,7 +6411,7 @@ $('#copyMcnp').addEventListener('click', async () => {
 });
 $('#saveMcnp').addEventListener('click', () => {
   const r = LIVE.report;
-  if (r && r.deck) saveFile(`${r.name || 'model'}.mcnp`, r.deck, r.ok ? '' : 'Note: this deck did not validate.');
+  if (r && r.deck) saveFile(`${r.name || 'model'}.mcnp`, withProject(r.deck, 'c '), r.ok ? '' : 'Note: this deck did not validate.');
 });
 
 /* split view */

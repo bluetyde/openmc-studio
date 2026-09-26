@@ -2543,12 +2543,12 @@ function commitCsgImport(report, fileName, choice = {}) {
 }
 // Commit an imported MCNP deck (server mcnp_import.py: openmc_mcnp_adapter, flattened, checked point by point
 // against OpenMC). Like a CSG import it becomes a new project: the deck's cells are read-only imported components,
-// its materials are added (by name, so re-importing reuses them), parts, groups and tallies go, and sources and
-// settings carry over, because the deck's own source and tallies aren't imported yet (the Log lists them).
+// its materials are added (by name, so re-importing reuses them), parts and groups go, and sources, settings and
+// tallies come from the deck where supported.
 function commitMcnpImport(report, fileName) {
   if (!report || !report.ok || !Array.isArray(report.components) || !report.components.length) throw new Error('The import report has no geometry.');
   HISTORY.boundary = true;
-  const ids = new Set([...S.materials, ...S.sources].map(o => o.id));
+  const ids = new Set([...S.materials, ...S.sources, ...(S.tallies || [])].map(o => o.id));
   const fresh = prefix => { let id; do { id = newId(prefix); } while (ids.has(id)); ids.add(id); return id; };
   const importId = fresh('i');
   const mats = [...S.materials], byMcnp = {};
@@ -2563,24 +2563,108 @@ function commitMcnpImport(report, fileName) {
     units:'cm', ir:1, bounds:c.bounds_cm, surfaces:clone(c.surfaces), display:c.display ? clone(c.display) : null,
     cells:c.cells.map(cell => ({id:fresh('c'), name:cell.name, region:clone(cell.region), material:byMcnp[cell.material_mcnp] || 'void',
       mcnpCell:cell.mcnp_cell}))}));
-  const left = Object.entries(report.not_imported || {}).map(([k, n]) => `${k}${n > 1 ? ` ×${n}` : ''}`);
-  S = normalizeProject({...S, schema:SCHEMA_VERSION, parts:[], groups:[], tallies:[], materials:mats,
-    settings:{...S.settings, name:String(fileName).replace(/\.[^.]+$/, '')},
+
+  let sources;
+  const nSrcImported = Array.isArray(report.sources) ? report.sources.length : 0;
+  if (nSrcImported > 0) {
+    sources = report.sources.map(src => ({...newSource(fresh('s'), src.name, src.particle), ...src}));
+  } else {
+    sources = S.sources;
+    log('info', "The deck's source wasn't imported; the project keeps its current source.");
+  }
+
+  const settings = {...S.settings, name:String(fileName).replace(/\.[^.]+$/, '')};
+  const rs = report.run_settings || {};
+  ['runMode', 'particles', 'inactive', 'batches', 'photon'].forEach(k => {
+    if (rs[k] !== undefined) settings[k] = rs[k];
+  });
+  if (rs.nps !== undefined) {
+    const batches = settings.batches;
+    settings.particles = Math.max(1, Math.round(rs.nps / batches));
+    if (rs.nps % batches !== 0) {
+      log('info', `NPS ${rs.nps} is not a multiple of batches (${batches}); set particles per batch to ${settings.particles}.`);
+    }
+  }
+
+  if (report.bounds_cm) {
+    const b = report.bounds_cm, need = Math.max(...b.map(Math.abs)) * 1.1;
+    const want = settings.worldShape === 'box' ? need : need * Math.sqrt(3);
+    if (want > settings.worldR) { const step = Math.pow(10, Math.floor(Math.log10(want))) / 2; settings.worldR = Math.ceil(want / step) * step; }
+  }
+  const worldR = settings.worldR;
+
+  const cellsByMcnp = new Map();
+  for (const comp of components) {
+    for (const cell of comp.cells) {
+      if (cell.mcnpCell != null) {
+        if (!cellsByMcnp.has(cell.mcnpCell)) cellsByMcnp.set(cell.mcnpCell, []);
+        cellsByMcnp.get(cell.mcnpCell).push(cell.id);
+      }
+    }
+  }
+
+  const defTally = (kind, name) => ({
+    id: fresh('t'), name: name || (kind === 'mesh' ? 'Mesh tally' : 'Cell tally'), kind,
+    cells: [], surfaces: [], scores: ['flux'], ebins: '',
+    nx: 50, ny: 50, nz: 50, lx: -worldR, ly: -worldR, lz: -worldR, ux: worldR, uy: worldR, uz: worldR
+  });
+
+  const tallies = [];
+  (report.tallies || []).forEach(t => {
+    if (t.kind === 'cell') {
+      const mapped = [];
+      let ok = true;
+      for (const mc of (t.cells_mcnp || [])) {
+        const matches = cellsByMcnp.get(mc) || [];
+        if (matches.length === 0) {
+          log('warn', `cell ${mc} isn't an imported material cell (void, outside, or not in the deck)`);
+          ok = false;
+          break;
+        } else if (matches.length > 1) {
+          log('warn', `cell ${mc} is repeated in a lattice or universe (${matches.length} times); tallies over repeated cells aren't imported yet`);
+          ok = false;
+          break;
+        } else {
+          mapped.push(matches[0]);
+        }
+      }
+      if (!ok) return;
+      const tObj = {...defTally('cell', t.name), ...t, cells: mapped};
+      delete tObj.cells_mcnp;
+      delete tObj.fm_material;
+      tallies.push(tObj);
+    } else if (t.kind === 'mesh') {
+      const tObj = {...defTally('mesh', t.name), ...t};
+      delete tObj.cells_mcnp;
+      delete tObj.fm_material;
+      tallies.push(tObj);
+    }
+  });
+
+  (report.not_imported || []).forEach(item => {
+    log('warn', `Not imported: ${esc(item.card)} (line ${item.line}): ${esc(item.reason)}`);
+  });
+  (report.import_notes || []).forEach(note => {
+    log('info', esc(note));
+  });
+
+  S = normalizeProject({...S, schema:SCHEMA_VERSION, parts:[], groups:[], tallies, materials:mats,
+    sources, settings,
     csg:{components},
     imports:[{id:importId, file:String(fileName), sha256:report.source_sha256, at:new Date().toISOString(), mode:'mcnp',
       adapter:report.adapter, versions:report.versions || null, units:'cm', cells:report.cells, check:report.check,
-      outside:report.outside_cells || [], voidCells:report.void_cells || 0, notImported:report.not_imported || {}, omitted:[]}]});
-  const b = report.bounds_cm, need = Math.max(...b.map(Math.abs)) * 1.1;
-  const want = S.settings.worldShape === 'box' ? need : need * Math.sqrt(3);
-  if (want > S.settings.worldR) { const step = Math.pow(10, Math.floor(Math.log10(want))) / 2; S.settings.worldR = Math.ceil(want / step) * step; }
+      outside:report.outside_cells || [], voidCells:report.void_cells || 0, notImported:report.not_imported || [], omitted:[]}]});
+
   sel = {kind:'settings'};
   renderAll();
+
+  const chkStr = report.check ? `; checked against OpenMC's reading of the deck at ${report.check.agree.toLocaleString()} of ${report.check.points.toLocaleString()} points` : '';
   log('ok', `Imported ${esc(fileName)}: ${report.cells} cell${report.cells === 1 ? '' : 's'} in ${components.length} component${components.length === 1 ? '' : 's'}, ` +
-    `${(report.materials || []).length} material${(report.materials || []).length === 1 ? '' : 's'}; checked against OpenMC's reading of the deck at ` +
-    `${report.check.agree.toLocaleString()} of ${report.check.points.toLocaleString()} points. Undo returns to the previous project.`);
+    `${(report.materials || []).length} material${(report.materials || []).length === 1 ? '' : 's'}, ` +
+    `${nSrcImported} source${nSrcImported === 1 ? '' : 's'}, ` +
+    `${tallies.length} tall${tallies.length === 1 ? 'y' : 'ies'}${chkStr}. Undo returns to the previous project.`);
   if ((report.outside_cells || []).length) log('info', `Cell${report.outside_cells.length === 1 ? '' : 's'} ${report.outside_cells.join(', ')} (importance 0, the outside) became Studio's world boundary.`);
   if (report.void_cells) log('info', `${report.void_cells} void cell${report.void_cells === 1 ? ' is' : 's are'} left to Studio's world, which is void wherever no part is.`);
-  if (left.length) log('warn', `Not imported from the deck (yet): ${esc(left.join(', '))}. Sources and tallies are Studio's own: the project keeps its current source and has no tallies.`);
   return components;
 }
 async function importMcnpDeck(text, fileName) {

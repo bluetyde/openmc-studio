@@ -254,7 +254,18 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
     survived; otherwise parts stay "needs a material" as now.
   - Tests: an edited radius, density and batch count come back exactly; an unsupported edit is reported;
     a file from another project is refused; STEP export -> import keeps names and materials.
-- **Import an MCNP deck** (`openmc_mcnp_adapter` converts MCNP models to OpenMC):
+- **Import an MCNP deck: geometry and materials done** (2026-09-26; research and converter comparison in
+  [docs/design/mcnp-import-research.md](docs/design/mcnp-import-research.md): openmc_mcnp_adapter was exact on every deck it read,
+  csg2csg failed on 4 of 6). `mcnp_import.py` flattens universes, lattices and fill transforms into imported-CSG
+  cells, checks them against `openmc.lib` at every cell, and builds voxel preview meshes; Convert > Import MCNP
+  deck commits them (`commitMcnpImport`). Tests: `test/test_mcnp_import_gate.cjs` (model.py vs the deck in
+  OpenMC), `test/test_mcnp_import.py`. **Next:** sources (`SDEF`, `SI`/`SP`, `NPS`/`KCODE`) and tallies (`F4`, `E`,
+  `FM`, `FMESH`, `F1`) parsed by Studio; hexagonal lattices (upstream in the adapter, or Studio's own step).
+  **Known issue:** the live model.mcnp tab re-translates the flattened cells through MCNPy, which is slow for big
+  imports: the NE403 pile (266 cells) was still translating after 10 minutes (2026-09-26). Cause not yet
+  measured; candidates are MCNPy's per-cell cost and the long flattened regions. A fix could write an imported
+  deck's cells back without re-translating them.
+  Original notes:
   - We already write MCNP decks *and* check them against the OpenMC model point by point. Import closes the
     loop: read a hand-written deck (e.g. the user's NE403 graphite deck) into Studio's scene graph, then run
     the existing geometry check to prove the round trip.

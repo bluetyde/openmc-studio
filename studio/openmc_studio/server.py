@@ -172,6 +172,33 @@ class Studio:
             result["folder"] = str(folder)
         return result
 
+    def import_mcnp(self, text, name):
+        """Import MCNP deck: mcnp_import.py (openmc_mcnp_adapter, flattening, the point check against OpenMC) on a
+        copy of the deck in ~/OpenMC-runs/mcnp-imports/<time>-<name>/, in its own process. Returns its report."""
+        slug = re.sub(r"[^a-z0-9]+", "-", (name or "deck").lower()).strip("-")[:40] or "deck"
+        folder = self.root / "mcnp-imports" / (time.strftime("%Y%m%d-%H%M%S") + "-" + slug)
+        folder.mkdir(parents=True, exist_ok=False)
+        (folder / "deck.mcnp").write_text(text, encoding="utf-8")
+        env = os.environ.copy()
+        env["PATH"] = os.path.dirname(sys.executable) + os.pathsep + env.get("PATH", "")
+        try:
+            r = subprocess.run([sys.executable, str(Path(__file__).with_name("mcnp_import.py")), "deck.mcnp", "report.json"],
+                               cwd=folder, env=env, capture_output=True, text=True, timeout=1200)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "error": f"The import took over 20 minutes and was stopped. Its files are in {folder}."}
+        try:
+            report = json.loads((folder / "report.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            tail = "\n".join(((r.stdout or "") + (r.stderr or "")).strip().splitlines()[-8:])
+            if "openmc_mcnp_adapter" in tail and "No module" in tail:
+                return {"ok": False, "error": "Importing MCNP decks needs openmc_mcnp_adapter in Studio's Python "
+                                              "environment (see INSTRUCTIONS.md)."}
+            return {"ok": False, "error": f"The import stopped unexpectedly:\n{tail}"}
+        report["folder"] = str(folder)
+        provenance.write(folder, "mcnp-import", files=("deck.mcnp", "report.json"),
+                         extra={"ok": report.get("ok"), "cells": report.get("cells"), "check": report.get("check")})
+        return report
+
     def mcnp_live(self, script, name, seq, client=""):
         """Live model.mcnp tab: same worker, one reused folder; stale requests are skipped."""
         slug = re.sub(r"[^a-z0-9]+", "-", (name or "model").lower()).strip("-")[:40] or "model"
@@ -689,6 +716,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(400, "No script.")
             return self._send(200, self.studio.mcnp_live(script, str(body.get("name") or "model"), int(body.get("seq") or 0),
                                                          str(body.get("client") or "")[:64]))
+        if url.path == "/api/import-mcnp":
+            text = body.get("text")
+            if not isinstance(text, str) or not text.strip():
+                return self._error(400, "No deck to import.")
+            return self._send(200, self.studio.import_mcnp(text, str(body.get("name") or "deck")))
         if url.path == "/api/check-geometry":
             script, world = body.get("script"), body.get("world")
             if not isinstance(script, str) or not script.strip():

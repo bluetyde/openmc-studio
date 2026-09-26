@@ -169,6 +169,25 @@ and needs photon transport.
 - Source **Strength** is a relative weight between sources: model.py scales the strengths to sum to 1, so every
   tally is per source particle, as in MCNP.
 
+## Importing MCNP decks
+
+**Convert ▸ Import MCNP deck…** opens a deck Studio didn't write (a classmate's, a textbook's) as a new project.
+It needs the local server and `openmc_mcnp_adapter` (INSTRUCTIONS.md).
+
+- The deck is read by [openmc_mcnp_adapter](https://github.com/openmc-dev/openmc_mcnp_adapter) (the OpenMC
+  developers' converter). Its universes, `LAT=1` lattices and fill transformations (`TRCL`, `*FILL`) are laid
+  out cell by cell, and the result is checked against OpenMC's own reading of the deck at thousands of points,
+  including inside every cell. If anything disagrees, nothing is imported and the Log says where.
+- Cells come in as read-only imported geometry, like a CAD import: one component per top-level cell and
+  material, drawn exactly in slices and as a voxel preview in 3D. Materials come in by name (from the comment
+  line above each `M` card), with the deck's own fractions, density and S(α,β).
+- The importance-0 outside cell becomes Studio's world boundary, and void cells are left to the world (it is
+  void wherever nothing else is).
+- **Not imported yet:** sources, tallies and run settings. The Log lists every card that was left out; the
+  project keeps its current source and starts with no tallies. Hexagonal lattices (`LAT=2`) and tori are
+  refused with the reason.
+- A deck Studio saved itself carries its project, and opens as that project instead.
+
 ## Other options
 
 - **Parts**: sphere, cylinder, box, wedge (right triangular prism), hexagonal prism, cone

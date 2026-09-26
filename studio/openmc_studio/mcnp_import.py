@@ -285,24 +285,6 @@ def material_names(text):
     return names
 
 
-def unsupported_cards(text):
-    """Data cards the import leaves out, by name, with a count (sources, tallies, run settings, ...)."""
-    blocks = re.split(r"\n\s*\n", text.replace("\r\n", "\n").strip())
-    data = blocks[2] if len(blocks) > 2 else ""
-    seen = {}
-    for line in data.splitlines():
-        s = line.strip()
-        if not s or s[0] in "cC" and (len(s) == 1 or s[1] == " ") or line.startswith("     "):
-            continue
-        name = re.match(r"^\*?([A-Za-z]+)", s)
-        if not name:
-            continue
-        n = name.group(1).upper()
-        if re.match(r"^(M|MT|MX|TR|MODE|IMP)$", n):
-            continue
-        seen[n] = seen.get(n, 0) + 1
-    return seen
-
 
 def studio_material(mat, index, names):
     """A Studio material from the deck's. The deck's own fractions and density are kept when Studio can hold them
@@ -543,14 +525,16 @@ def import_deck(path):
                            "cells": [{"name": c["name"], "region": c["region"], "mcnp_cell": c["id"],
                                       "material_mcnp": mid} for c in k["cells"]],
                            "display": meshes[(top, mid, chunk)]})
-    ignored = unsupported_cards(text)
+    from openmc_studio import mcnp_cards_in
+    cards = mcnp_cards_in.parse(text)
     import openmc_mcnp_adapter as oma
     return {"ok": True, "source_sha256": sha, "adapter": "openmc_mcnp_adapter",
             "versions": {"openmc": openmc.__version__, "openmc_mcnp_adapter": getattr(oma, "__version__", None)},
             "materials": list(mats.values()), "components": components, "bounds_cm": bounds,
             "cells": len(flat), "outside_cells": sorted(set(skipped)), "void_cells": len(void_cells),
             "empty_placements": empty, "check": check,
-            "not_imported": ignored, "notes": notes}
+            "sources": cards["sources"], "tallies": cards["tallies"], "run_settings": cards["settings"],
+            "not_imported": cards["refused"], "import_notes": cards["notes"], "notes": notes}
 
 
 def _used(node, out):

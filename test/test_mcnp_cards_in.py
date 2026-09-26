@@ -522,6 +522,19 @@ class TestMcnpCardsIn(unittest.TestCase):
         self.assertTrue({"F4:N", "FMESH34", "FMESH44", "SDEF"} <= refused, refused)
         self.assertEqual(res["sources"], [])
 
+    def test_sp_first_value_not_a_number_refused(self):
+        data = "SDEF ERG=D1 POS=0 0 0\nSI1 H 0 1\nSP1 abc 1\n"
+        res = mcnp_cards_in.parse(make_deck(data))
+        self.assertEqual(res["sources"], [])
+        self.assertIn({"card": "SDEF", "line": res["refused"][0]["line"],
+                       "reason": "SP1 value 'abc' isn't a number"}, res["refused"])
+
+    def test_sp_empty_refused(self):
+        data = "SDEF ERG=D1 POS=0 0 0\nSI1 H 0 1\nSP1\n"
+        res = mcnp_cards_in.parse(make_deck(data))
+        self.assertEqual(res["sources"], [])
+        self.assertTrue(any(r["reason"] == "SP1 has no values" for r in res["refused"]), res["refused"])
+
     def test_kcode_bad_values_refused(self):
         res = mcnp_cards_in.parse(make_deck("KCODE 1000 1.0 x 50\n"))
         self.assertTrue(any(r["card"].upper() == "KCODE" for r in res["refused"]))

@@ -74,8 +74,10 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
     voxel-exact; depth readback as a texture for occlusion; the cutaway clipped exactly; rays step voxel to voxel,
     so no voxel is skipped, and maps with x + y + z over 4,096 or wider than the GPU's 3D textures fall back to the
     slice with a note) and composites into the overlay; `volumeRayCPU` is the test oracle. Checked live on a 40³
-    map of the demo. Tests: `test/test_volume_view_browser.cjs`, `test/test_volume_view.js`. **Still open:** coarse
-    marching while orbiting (not needed yet at 40³), cylindrical maps, soft emission-absorption ("glow").
+    map of the demo. Tests: `test/test_volume_view_browser.cjs`, `test/test_volume_view.js`. **Extras done**
+    (2026-09-26): cylindrical maps in 3D (rays walk cell to cell through the rings, angle half-planes and z planes,
+    holes and part turns included; checked against brute force and pixel by pixel on the GPU), **Glow**
+    (emission-absorption, strength slider), and half-resolution drawing while the camera moves.
   - Stage 3: functional expansion tallies (`SpatialLegendreFilter`, `ZernikeFilter`, ...) for a smooth flux
     field with real error bars instead of a million voxels. Experiment on the pile first; MCNP has no
     equivalent, so the export must refuse it with a reason.

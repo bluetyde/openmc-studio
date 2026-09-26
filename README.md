@@ -201,7 +201,9 @@ neutron tracks and the world boundary.
   **Brightest** shows the largest value along each line of sight through the whole map, and **Surface** draws the
   shape where the map reaches a percentage of its peak (the slider), shaded so it reads as a surface. Parts in
   front hide it and Cutaway opens it up, as for the geometry; **Hide noisy** leaves out voxels with more than 50%
-  error. Same colour scale and legend as the slice. Box maps only; a cylindrical map stays a slice.
+  error. Same colour scale and legend as the slice. Every voxel on a line of sight is read, however thin, so a
+  single hot voxel is never skipped; a map too fine for that (more than 4,096 voxels along x + y + z, or wider
+  than the GPU's 3D textures) is shown on the slice with a note. Box maps only; a cylindrical map stays a slice.
 - **Cutaway** cuts the model open at the slice plane (XY / XZ / YZ and the position box),
   removing the half facing you, so cross-sections show their materials.
 - After a run, the **Flux map** is painted on the slice plane and **Tracks** are drawn

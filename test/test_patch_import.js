@@ -72,6 +72,32 @@ test('a sphere\'s centre and radius edited together both apply (review: the seco
   assert.deepEqual([q.x, q.r], [x + 4, r0 + 1]);
 });
 
+// A box alone on its x planes, at x in [-1, 1]: model.py writes XPlane(-1) and XPlane(1) for it.
+function loneBox() {
+  run(`(() => { const b = S.parts.find(p => p.shape === 'box'); b.x = 0; b.sx = 2; b.rot = [0, 0, 0]; b.rx = b.ry = b.rz = 0;
+    S.parts.filter(p => p !== b && p.shape === 'box').forEach(p => { p.x = 40; }); })()`);
+  return run("S.parts.find(p => p.shape === 'box').id");
+}
+const xPlane = v => r => r.t === 'plane' && r.ax === 'x' && Math.abs(r.value - v) < 1e-9;
+for (const [lo, hi] of [[2, 4], [-4, -2], [-3, 5]]) {
+  test(`a box moved in model.py to x in [${lo}, ${hi}] keeps both faces (review: one face applied alone)`, () => {
+    const id = loneBox(), q0 = run(`JSON.stringify(S.parts.find(p => p.id === '${id}'))`);
+    const text = editedScript([{pick: xPlane(-1), to: String(lo)}, {pick: xPlane(1), to: String(hi)}]);
+    const r = sb.importScriptPatch(text);
+    assert.deepEqual([r.applied.length, r.failed.length], [2, 0], JSON.stringify(r.failed.map(f => f.err)));
+    const q = run(`S.parts.find(p => p.id === '${id}')`), was = JSON.parse(q0);
+    assert.deepEqual([q.x, q.sx], [(lo + hi) / 2, hi - lo]);
+    assert.deepEqual([q.y, q.z, q.sy, q.sz], [was.y, was.z, was.sy, was.sz], 'the other axes stay put');
+  });
+}
+test('faces that would cross leave the box as it was, and both edits are listed', () => {
+  const id = loneBox(), before = run(`JSON.stringify(S.parts.find(p => p.id === '${id}'))`);
+  const r = sb.importScriptPatch(editedScript([{pick: xPlane(-1), to: '3'}, {pick: xPlane(1), to: '2'}]));
+  assert.deepEqual([r.applied.length, r.failed.length], [0, 2]);
+  assert.match(r.failed[0].err, /faces would cross/);
+  assert.equal(run(`JSON.stringify(S.parts.find(p => p.id === '${id}'))`), before);
+});
+
 test('what can\'t come back is listed, and the rest still applies', () => {
   let text = editedScript([{pick: isParticles, to: '777'}]);
   const lines = text.split('\n');

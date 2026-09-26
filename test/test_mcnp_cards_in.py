@@ -473,10 +473,69 @@ class TestMcnpCardsIn(unittest.TestCase):
         self.assertEqual(t["rmin"], 0.0)
         self.assertEqual(t["rmax"], 10.0)
         self.assertEqual(t["nz"], 10)
-        self.assertEqual(t["zmin"], -5.0)
+        # MCNP 6.3 FMESH note 4: cylindrical JMESH heights are relative to
+        # ORIGIN, so this mesh spans z = -5 .. 0 (Studio's z grid is too).
+        self.assertEqual(t["zmin"], 0.0)
         self.assertEqual(t["zmax"], 5.0)
+        self.assertEqual(t["oz"], -5.0)
         self.assertEqual(t["nphi"], 2)
         self.assertAlmostEqual(t["phimax"], math.pi)
+
+    def test_1g_fmesh_cyl_jmesh_relative_to_origin(self):
+        data = (
+            "FMESH24 GEOM=CYL ORIGIN=1 2 100\n"
+            "     IMESH=4 IINTS=2 JMESH=20 40 JINTS=2 2 KMESH=1 KINTS=4\n"
+        )
+        t = mcnp_cards_in.parse(make_deck(data))["tallies"][0]
+        self.assertEqual((t["ox"], t["oy"], t["oz"]), (1.0, 2.0, 100.0))
+        self.assertEqual((t["nz"], t["zmin"], t["zmax"]), (4, 0.0, 40.0))
+
+    # ── One bad card refuses that card only ────────────────────────────────
+
+    def test_bad_nps_refused(self):
+        for body in ("NPS abc", "NPS 0", "NPS 2.5", "NPS"):
+            res = mcnp_cards_in.parse(make_deck(body + "\n"))
+            self.assertNotIn("nps", res["settings"], body)
+            self.assertTrue(any(r["card"].upper() == "NPS" for r in res["refused"]), body)
+
+    def test_nps_float_notation_accepted(self):
+        res = mcnp_cards_in.parse(make_deck("NPS 1e6\n"))
+        self.assertEqual(res["settings"]["nps"], 1000000)
+
+    def test_malformed_tokens_refuse_only_their_card(self):
+        data = (
+            "NPS 5000\n"
+            "F4:N 1\n"
+            "E4 R 1 2\n"                     # R with nothing before it
+            "F14:N 1\n"
+            "E14 0.1 1\n"
+            "FMESH34 GEOM=XYZ ORIGIN=0 0 0\n"
+            "     IMESH=10 IINTS=0 JMESH=10 JINTS=1 KMESH=10 KINTS=1\n"   # zero intervals
+            "FMESH44 GEOM=XYZ ORIGIN=0 0 zz\n"
+            "     IMESH=10 JMESH=10 KMESH=10\n"
+            "SDEF POS=0 0 1x ERG=1\n"
+        )
+        res = mcnp_cards_in.parse(make_deck(data))
+        self.assertEqual(res["settings"]["nps"], 5000)
+        self.assertEqual([t["mcnp_card"] for t in res["tallies"]], ["F14:N"])
+        refused = {r["card"].upper() for r in res["refused"]}
+        self.assertTrue({"F4:N", "FMESH34", "FMESH44", "SDEF"} <= refused, refused)
+        self.assertEqual(res["sources"], [])
+
+    def test_kcode_bad_values_refused(self):
+        res = mcnp_cards_in.parse(make_deck("KCODE 1000 1.0 x 50\n"))
+        self.assertTrue(any(r["card"].upper() == "KCODE" for r in res["refused"]))
+        self.assertNotIn("runMode", res["settings"])
+
+    def test_ksrc_without_a_point_refused(self):
+        res = mcnp_cards_in.parse(make_deck("KCODE 1000 1.0 10 50\nKSRC 1 2\n"))
+        self.assertTrue(any(r["card"].upper() == "KSRC" for r in res["refused"]))
+        self.assertEqual(res["sources"], [])
+
+    def test_cell_tally_carries_its_card_name(self):
+        res = mcnp_cards_in.parse(make_deck("F4:N 1\nFC4 Core flux\n"))
+        t = res["tallies"][0]
+        self.assertEqual((t["name"], t["mcnp_card"]), ("Core flux", "F4:N"))
 
     def test_1g_fmesh_nonuniform_refused(self):
         data = (

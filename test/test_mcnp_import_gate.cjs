@@ -70,9 +70,14 @@ check('shielding demo: 4 material cells, materials by name, what isn\'t imported
   const r = commitAndCompare('shielding_demo.mcnp', {cells:4});
   assert.deepEqual(run('S.materials.filter(m => /^MCNP M/.test(m.ref)).map(m => m.name).sort()'),
     ['Concrete, ordinary (NIST)', 'He-3 detector gas (4 atm)', 'Lead', 'Polyethylene, non-borated']);
-  assert.ok(r.not_imported.SDEF && r.not_imported.NPS);
-  assert.ok(run('window.__log').some(([k, m]) => k === 'warn' && /Not imported from the deck/.test(m)));
-  assert.equal(run('S.tallies.length'), 0);
+  assert.deepEqual(r.not_imported.map(x => x.card), ['F34:N']);
+  assert.ok(run('window.__log').some(([k, m]) => k === 'warn' && /Not imported: F34:N/.test(m)));
+  const src = run('S.sources');
+  assert.equal(src.length, 1);
+  assert.deepEqual([src[0].space, src[0].energy, src[0].lines], ['point', 'lines', '14.1:1']);
+  assert.deepEqual(run('S.tallies.map(t => [t.kind, t.name])'),
+    [['cell', 'Detector spectrum (flux)'], ['cell', 'Detector spectrum ((n,p))'], ['mesh', 'FMESH24']]);
+  assert.ok(run('S.tallies.filter(t => t.kind === "cell").every(t => t.cells.length === 1)'));
 });
 
 check('graphite pile: a translated LAT=1 fill laid out element by element', () => {

@@ -332,6 +332,16 @@ OpenMC/
 `cross_sections.xml` uses paths relative to itself, so the library works wherever
 the drive is mounted.
 
+- **What's supported**: [docs/SUPPORT.md](docs/SUPPORT.md) lists, per feature, what the editor, model.py and the
+  MCNP export do, what is refused, and the test behind each entry. Design plans are in `docs/design/`.
+- **Tests**: `node test/run_all.cjs quick` (Node only, about a minute), `browser`, `physics` (OpenMC runs and
+  the MCNP export; set `OPENMC_PYTHON`, `OPENMC_CROSS_SECTIONS`, `OPENMC_MCNP_PROJECT`) or `full` (adds the CAD
+  job). Anything that can't run is reported as NOT RUN, never skipped quietly; the summary is saved in
+  `test/results/last-run.md`.
+- **Run records**: every run folder and every MCNP export folder has a `provenance.json`: Studio and exporter
+  commits, OpenMC/Python/MontePy versions, the nuclear data's SHA-256, the run settings and seed, how results
+  are normalized, and hashes of the inputs and outputs.
+
 ## Git
 
 This folder is the repo [`github.com/bluetyde/openmc-studio`](https://github.com/bluetyde/openmc-studio). The nuclear

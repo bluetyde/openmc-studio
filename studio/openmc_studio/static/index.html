@@ -1516,8 +1516,6 @@ function problems() {
       if (t.detector && t.detector !== 'none') add('error', `${t.name}: a tally can have a dose or a detector response, not both. Both multiply the flux by a function of energy.`, 'tally', t.id);
       // Dose is per cell volume, and the MCNP export has no material filter to match, so it isn't applied silently.
       if (t.kind === 'cell' && t.materialFilter) add('error', `${t.name}: a dose tally can't use a material filter (dose is averaged over each whole cell). Set Material filter to None, or pick the cells made of that material.`, 'tally', t.id);
-      const inLat = t.kind !== 'cell' ? [] : t.cells.filter(id => (S.groups || []).some(g => g.lattice && g.lattice.asLattice && latticePlan(g).ok && latticePlan(g).parts.some(p => p.id === id)));
-      if (inLat.length) add('error', `${t.name}: dose on a part inside a lattice isn't supported yet. Untick "Export as RectLattice" (or HexLattice) on its array, or pick another part.`, 'tally', t.id);
       if (!eig && !(st.sourceRate > 0)) add('info', `${t.name} gives dose per source particle (pSv). Set Source emission rate in Settings to see µSv/h.`, 'settings');
       if (t.scores.some(sc => sc !== 'flux') || t.ebins.trim()) add('info', `${t.name}: a dose tally scores flux times the dose coefficients; its other scores and energy bins are left out.`, 'tally', t.id);
     }
@@ -2246,9 +2244,19 @@ function buildScript(probs, mark, opts = {}) {
     owner = {kind:'tally', id:t.id};
     if ((t.kind === 'cell' || t.kind === 'mesh') && t.dose) {
       if (!doseOn) return [];
-      const mesh = t.kind === 'mesh', ids = mesh ? [] : t.cells.filter(c => cv[c] && !latMember[c]);
-      ids.forEach(c => doseCells.set(cv[c], doseBox(c)));
-      const where = mesh ? meshFilter(t) : `openmc.CellFilter([${ids.map(c => cv[c]).join(', ')}])`;
+      const mesh = t.kind === 'mesh', ids = mesh ? [] : t.cells.filter(c => cv[c] || latMember[c]);
+      // A part inside a lattice is its lattice's unit cell in one element: a (cell, instance) bin, and a volume
+      // measured in the box around that one element's part, so only that instance is counted.
+      const inLat = ids.some(c => latMember[c]);
+      const bin = c => { const m = latMember[c], p = partById(c); return m ? {cell:m.cell, inst:`_instance(${m.cell}, ${m.lat}, (${num(p.x)}, ${num(p.y)}, ${num(p.z)}))`} : {cell:cv[c], inst:'0'}; };
+      ids.forEach(c => {
+        const b = bin(c), key = latMember[c] ? `f"{${b.cell}.id}/{${b.inst}}"` : `str(${b.cell}.id)`;
+        const label = latMember[c] ? (partById(c) || {}).name : null;
+        doseCells.set(key, {cell:b.cell, box:doseBox(c), label});
+      });
+      const where = mesh ? meshFilter(t) : inLat
+        ? `openmc.CellInstanceFilter([${ids.map(c => { const b = bin(c); return `(${b.cell}, ${b.inst})`; }).join(', ')}])`
+        : `openmc.CellFilter([${ids.map(c => cv[c]).join(', ')}])`;
       const data = t.doseData === 'icrp74' ? 'icrp74' : 'icrp116', geom = t.doseGeom || 'AP';
       return (t.dose === 'np' ? ['neutron', 'photon'] : ['neutron']).map(pt => {
         const v = name('tally', `${t.name} ${pt} dose`);
@@ -2303,8 +2311,9 @@ function buildScript(probs, mark, opts = {}) {
     const rate = st.sourceRate > 0 ? num(st.sourceRate) : 'None';
     push('# Dose tallies: tally ID -> what it is. results.py turns them into dose rates.', 'dose_tallies = {',
       ...doseTallies.map(d => `    ${d},`), '}',
-      '# Cells whose volume the dose needs, each with a box that holds it (cm), for OpenMC\'s volume calculation.',
-      `dose_cells = [${[...doseCells].map(([c, b]) => `(${c}, (${b.slice(0, 3).map(num).join(', ')}), (${b.slice(3).map(num).join(', ')}))`).join(', ')}]`,
+      '# Cells whose volume the dose needs: (key, cell, box lower corner, upper corner in cm, label), for OpenMC\'s',
+      '# volume calculation. A part inside a lattice is keyed "cell/instance" and measured in its own box.',
+      `dose_cells = [${[...doseCells].map(([k, {cell, box:b, label}]) => `(${k}, ${cell}, (${b.slice(0, 3).map(num).join(', ')}), (${b.slice(3).map(num).join(', ')}), ${label == null ? 'None' : pyStr(label)})`).join(', ')}]`,
       `SOURCE_RATE = ${rate}  # particles/s (Settings > Source emission rate); None: dose per source particle`, '');
   }
   if (responses.length) push('# Detector responses for the MCNP export (written as FM cards): tally ID -> response.',
@@ -2376,12 +2385,14 @@ function buildScript(probs, mark, opts = {}) {
       '    # Dose needs each tallied cell\'s volume: OpenMC\'s stochastic volume calculation, in the box around it.',
       '    dose_volumes = {}  # dose maps need none: a voxel\'s volume is exact',
       '    if dose_cells:',
-      '        settings.volume_calculations = [openmc.VolumeCalculation([c], 200000, lo, hi) for c, lo, hi in dose_cells]',
+      '        settings.volume_calculations = [openmc.VolumeCalculation([c], 200000, lo, hi) for _, c, lo, hi, _ in dose_cells]',
       '        model.calculate_volumes(output=False)',
-      '        dose_volumes = {str(cid): [v.nominal_value, v.std_dev] for vc in settings.volume_calculations for cid, v in vc.volumes.items()}',
+      '        dose_volumes = {k: [vc.volumes[c.id].nominal_value, vc.volumes[c.id].std_dev]',
+      '                        for (k, c, _, _, _), vc in zip(dose_cells, settings.volume_calculations)}',
       '        settings.volume_calculations = []',
       '    with open("dose.json", "w") as _f:',
       '        _studio_json.dump({"source_rate": SOURCE_RATE, "volumes": dose_volumes,',
+      '                           "labels": {k: label for k, _, _, _, label in dose_cells if label},',
       '                           "tallies": {str(k): v for k, v in dose_tallies.items()}}, _f, indent=1)',
       '    if dose_volumes:',
       '        print("Dose cell volumes (cm3):", {k: f"{v[0]:.5g} +/- {v[1]:.2g}" for k, v in dose_volumes.items()})'] : []),
@@ -2608,11 +2619,11 @@ function mcnpDoseTally(t, k0) {
   const table = `${t.doseData === 'icrp74' ? 'ICRP-74' : 'ICRP-116'} ${t.doseGeom || 'AP'}`;
   parts.forEach((p, i) => {
     const n = 10 * (k0 + i) + 4;
-    const base = mcnpTally({...t, dose:'', detector:'none', scores:['flux'], ebins:'', particle:p}, k0 + i).split('\n').filter(l => !/^c /.test(l));
+    const full = mcnpTally({...t, dose:'', detector:'none', scores:['flux'], ebins:'', particle:p}, k0 + i).split('\n');
     if (t.kind === 'mesh') {
-      out.push(...base);
+      out.push(...full.filter(l => !/^c /.test(l)));
       if (rate) out.push(`     FACTOR=${mcnpNum(rate * 3600e-12)}`);
-    } else out.push(base[0]);
+    } else out.push(...full.filter(l => l.startsWith(`F${n}:`) || l.startsWith(`c F${n}`)));  // lattice parts: the chain-bin note
     out.push(`FC${n} ${t.name}: ${p} effective dose, ${unit} (${table})`,
       `c DE${n} LOG / DF${n} LOG: the ${table} table (pSv cm2), as in model.py`);
     if (t.kind === 'cell') {

@@ -197,3 +197,30 @@ write('fission_off', {materials: [{id: 'm_heu', name: 'HEU', color: '#c8b273', d
     tallies: [cellTally('t_pins', ['pin_0_0', 'pin_1_0', 'pin_-2_1', 'probe'])],
     settings: settings({worldR: 30, particles: 20000, batches: 5})}, {flatTwin: true});
 }
+
+// 6b. Dose on parts inside lattices, rectangular and hexagonal, with a plain probe in the same tally: each lattice
+//     part is a (unit cell, instance) bin whose volume is measured in its own box. The flat twin doses the same
+//     parts as ordinary cells; test/test_dose_rates.py checks the volumes against the shapes and compares the two.
+{
+  const parts = [];
+  for (let ix = 0; ix < 3; ix++) for (let iy = 0; iy < 2; iy++)
+    parts.push(part(`rod_${ix}_${iy}`, 'cylinder', -10 + 10 * ix, -5 + 10 * iy, 20, {r: 2, h: 12}, 'm_steel', 'g_rods'));
+  parts.push(part('probe', 'box', 20, 0, 20, {sx: 4, sy: 4, sz: 4}, 'm_steel'), part('tank', 'box', 0, 0, 20, {sx: 50, sy: 40, sz: 30}, 'm_water'));
+  write('dose_lattice', {materials: [water, steel], parts, sources: [{...pointSource(-5, 0, 20), lines: '14.1:1'}],
+    groups: [{id: 'g_rods', name: 'Rods', parent: null, x: 0, y: 0, z: 20, lattice: {nx: 3, ny: 2, nz: 1, dx: 10, dy: 10, dz: 12, fill: 'auto', asLattice: true}}],
+    tallies: [{...cellTally('t_dose', ['rod_0_0', 'rod_2_1', 'probe']), dose: 'n', doseData: 'icrp116', doseGeom: 'AP'}],
+    settings: settings({worldR: 40, particles: 20000, batches: 10, sourceRate: 1e8})}, {flatTwin: true});
+}
+{
+  const parts = [], p = 3;
+  for (let x = -2; x <= 2; x++) for (let a = -2; a <= 2; a++) {
+    if (Math.max(Math.abs(x), Math.abs(a), Math.abs(x + a)) > 2) continue;
+    parts.push(part(`pin_${x}_${a}`, 'cylinder', +(5 + Math.sqrt(3) / 2 * p * x).toFixed(12), +(-4 + (0.5 * x + a) * p).toFixed(12), 3,
+      {r: 1.1, h: 30}, 'm_steel', 'g_hex'));
+  }
+  parts.push(part('pool', 'box', 5, -4, 3, {sx: 40, sy: 40, sz: 40}, 'm_water'));
+  write('dose_hex', {materials: [water, steel], parts, sources: [{...pointSource(5, -4, 3), lines: '14.1:1'}],
+    groups: [{id: 'g_hex', name: 'Hex pins', parent: null, x: 5, y: -4, z: 3, lattice: {type: 'hex', rings: 3, pitch: p, orientation: 'y', fill: 'auto', asLattice: true}}],
+    tallies: [{...cellTally('t_dose', ['pin_0_0', 'pin_1_0', 'pin_-2_1']), dose: 'n', doseData: 'icrp116', doseGeom: 'AP'}],
+    settings: settings({worldR: 30, particles: 20000, batches: 10})}, {flatTwin: true});
+}

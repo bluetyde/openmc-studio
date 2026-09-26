@@ -92,15 +92,17 @@ def dose_description(ns, folder):
         return None
     import openmc
     vols = {}
-    cells = ns.get("dose_cells") or []
+    # (key, cell, lo, hi, label); older model.py files wrote (cell, lo, hi), keyed by the cell's ID
+    cells = [e if len(e) == 5 else (str(e[0].id), e[0], e[1], e[2], None) for e in ns.get("dose_cells") or []]
     if cells:
         st = ns["model"].settings
-        st.volume_calculations = [openmc.VolumeCalculation([c], 200000, lo, hi) for c, lo, hi in cells]
+        st.volume_calculations = [openmc.VolumeCalculation([c], 200000, lo, hi) for _, c, lo, hi, _ in cells]
         exe = shutil.which("openmc", path=os.path.dirname(sys.executable) + os.pathsep + os.environ.get("PATH", "")) or "openmc"
         with tempfile.TemporaryDirectory(dir=folder) as tmp:
             with contextlib.redirect_stdout(io.StringIO()):
                 ns["model"].calculate_volumes(cwd=tmp, output=False, openmc_exec=exe)
-        vols = {str(cid): [v.nominal_value, v.std_dev] for vc in st.volume_calculations for cid, v in vc.volumes.items()}
+        vols = {k: [vc.volumes[c.id].nominal_value, vc.volumes[c.id].std_dev]
+                for (k, c, _, _, _), vc in zip(cells, st.volume_calculations)}
         st.volume_calculations = []
     return {"tallies": {str(k): v for k, v in tallies.items()}, "volumes": vols, "source_rate": ns.get("SOURCE_RATE")}
 

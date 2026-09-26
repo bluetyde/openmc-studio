@@ -156,6 +156,8 @@ and needs photon transport.
   (mrem/h with imperial units). Without it, Results shows pSv per source particle.
 - Before the run, model.py measures each dosed part's volume with OpenMC's stochastic volume calculation (the
   dose is the tally divided by it); Results lists the volume, and its error is part of the relative error.
+  A part inside a lattice works too: it is measured on its own, in its own lattice element. A dose tally can't
+  have a material filter (the dose is averaged over each whole part).
 - **Dose maps:** turn on Dose on a mesh tally (box or cylindrical) and its map shows dose rate instead of
   flux, with the colorbar in µSv/h (or mrem/h). Voxel volumes are exact, so no volume step is needed. Export for
   ParaView writes it as `<particle>_dose_Sv_per_h_*` arrays.

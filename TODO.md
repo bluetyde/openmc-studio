@@ -145,8 +145,8 @@ and the MCNP lattice work; fixes listed under Completed).
   emission rate, shows µSv/h (mrem/h in imperial), otherwise pSv per source particle, with the volume error in
   the relative error. Test against a hand calculation (point sources in void, `test/test_dose_rates.py`):
   neutron +2.3% ± 2.4%, photon -0.7% ± 2.8%, ICRP-74 ISO -0.1% ± 2.6%; volume 33.514 ± 0.071 vs 33.510 cm³.
-  Problems refuses dose in eigenvalue mode, photon dose without photon transport, dose plus a detector response,
-  and dose on lattice members. **Found and fixed on the way:** OpenMC multiplies fixed-source tallies by the
+  Problems refuses dose in eigenvalue mode, photon dose without photon transport, dose plus a detector response
+  and (since 2026-09-25) a material filter. **Found and fixed on the way:** OpenMC multiplies fixed-source tallies by the
   total source strength, so models whose strengths didn't sum to 1 showed tallies scaled by that sum (and
   unlike MCNP). model.py now scales the strengths to sum to 1 before the run.
   **Stage 2 (dose maps): done** (2026-09-25). A mesh tally (regular or cylindrical) with Dose is a dose map:
@@ -163,7 +163,12 @@ and the MCNP lattice work; fixes listed under Completed).
   (`mcnp_worker.dose_description`; identical numbers, tested on a plug-cut detector MCNP couldn't volume itself),
   and the source rate as `FM` / `FACTOR`. `export_mcnp.py --dose dose.json` exports a run folder. Tests:
   `test/test_dose_mcnp.py`, companion `tests/test_dose_export.py`. **Still open:** run a dose deck in real MCNP and
-  compare with Studio; H*(10) (needs a sourced table); dose on lattice members.
+  compare with Studio; H*(10) (needs a sourced table).
+  **Dose on lattice members: done** (2026-09-26). A part inside a RectLattice/HexLattice is a (unit cell, instance)
+  bin; its volume is measured in the box around that one part and keyed "cell/instance" in dose.json (with the
+  part's name as its label). The MCNP deck tallies it as a chain bin with that volume on SD. Tests:
+  `DoseInLattices` in `test/test_dose_rates.py` (volumes vs the shapes; lattice vs flat twin doses agree, rect and
+  hex), `DoseInLatticeToMcnp` in `test/test_dose_mcnp.py`, companion `DoseInLattice` in `tests/test_dose_export.py`.
 - **Fluence-to-Dose Conversion (ICRP / ANSI)**, original notes:
   - Energy-dependent dose response filters (`openmc.data.dose_coefficients`):
     - **ICRP-74 / ICRP-116**: Effective dose for AP, PA, ISO, and ROT irradiation geometries.

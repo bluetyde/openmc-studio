@@ -54,7 +54,7 @@ test('model.py: one tally per particle, padded log-log coefficients, volumes and
   assert.match(py, /openmc\.ParticleFilter\(\["neutron"\]\), _dose_filter\("neutron", "AP", "icrp116", 1e-5\)\]/);
   assert.match(py, /openmc\.ParticleFilter\(\["photon"\]\), _dose_filter\("photon", "AP", "icrp116", 2000\.0\)\]/);
   assert.match(py, /SOURCE_RATE = 2\.5e7 /);
-  assert.match(py, /dose_cells = \[\(cell_\w+, \(/);
+  assert.match(py, /dose_cells = \[\(str\((cell_\w+)\.id\), \1, \([^)]*\), \([^)]*\), None\)\]/);
   assert.match(py, /model\.calculate_volumes\(output=False\)/);
   assert.match(py, /"dose\.json"/);
 });
@@ -128,6 +128,24 @@ test('dose maps: colorbar and Results line in µSv/h, mrem/h or pSv per source p
   assert.deepEqual(run("meshDisplay({unit:'Sv/h'})"), {f: 1e5, unit: 'mrem/h'});
   assert.deepEqual(run("meshDisplay({unit:'pSv/source'})"), {f: 1, unit: 'pSv per source particle'});
   assert.deepEqual(run("meshDisplay({})"), {f: 1, unit: ''}, 'flux maps are untouched');
+});
+
+test('dose on parts inside a lattice: no Problems error, (cell, instance) bins and a "cell/instance" volume each', () => {
+  run(`S.groups = [{id:'g', name:'Rods', parent:null, x:0, y:0, z:0, lattice:{nx:2, ny:1, nz:1, dx:10, dy:10, dz:10, fill:'auto', asLattice:true}}];
+    S.parts = [{...S.parts[0], id:'r0', name:'Rod A', shape:'cylinder', r:1, h:4, x:-5, y:0, z:0, group:'g', material:S.materials[0].id},
+      {...S.parts[0], id:'r1', name:'Rod B', shape:'cylinder', r:1, h:4, x:5, y:0, z:0, group:'g', material:S.materials[0].id},
+      {...S.parts[0], id:'tank', name:'Tank', shape:'box', sx:40, sy:40, sz:40, x:0, y:0, z:0, group:undefined, material:S.materials[1].id}];
+    normalizeProject(S); sel = {kind:'part', id:'r1'}; addDetectorTally('dose_n');`);
+  assert.deepEqual(run('S.tallies[0].cells'), ['r1']);
+  assert.ok(!doseProblems().some(([s]) => s === 'error'), JSON.stringify(doseProblems()));
+  const py = run('generate(problems())');
+  assert.match(py, /openmc\.CellInstanceFilter\(\[\(cell_unit_\w+, _instance\(cell_unit_\w+, lattice_\w+, \(5\.0, 0\.0, 0\.0\)\)\)\]\)/);
+  assert.match(py, /dose_cells = \[\(f"\{cell_unit_\w+\.id\}\/\{_instance\([^"]*\)\}", cell_unit_\w+, \(3\.99\d+, -1\.0\d+, -2\.0\d+\), \(6\.0\d+, 1\.0\d+, 2\.0\d+\), "Rod B"\)\]/);
+  assert.match(py, /"labels": \{k: label for k, _, _, _, label in dose_cells if label\}/);
+  const panel = run('mcnpTally(S.tallies[0])');
+  assert.match(panel, /^c F4: the export writes each part inside a lattice as a bin/m, panel);
+  assert.match(panel, /^c F4:N \(Rod B in its lattice\)$/m, panel);
+  assert.match(panel, /^FC4 /m);
 });
 
 test('a material filter on a dose tally is an error, not silently dropped (review), from a preset or a converted tally', () => {

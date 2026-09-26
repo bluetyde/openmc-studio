@@ -190,5 +190,51 @@ class DoseMaps(unittest.TestCase):
         self.assertFalse(list(self.work.glob("volume_*.h5")))
 
 
+class DoseInLattices(unittest.TestCase):
+    """Dose on parts inside a RectLattice and a HexLattice (fixtures dose_lattice, dose_hex and their flat twins).
+
+    Each lattice part is its lattice's unit cell in one element: a (cell, instance) bin, whose volume is measured in
+    the box around that part only. The flat twin writes the same parts as ordinary cells, so its doses are the same
+    physics: they must agree within the Monte Carlo error, and every volume must match the shape's own.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not (GEN / "dose_lattice.py").exists():
+            raise RuntimeError("run `node test/generate_fixtures.js` first")
+        cls.runs = {n: run_fixture(n)[1] for n in ("dose_lattice", "dose_lattice_flat", "dose_hex", "dose_hex_flat")}
+
+    def rows(self, name):
+        d = [t for t in self.runs[name]["tallies"] if t["kind"] == "dose"]
+        self.assertEqual(len(d), 1, [t.get("name") for t in self.runs[name]["tallies"]])
+        return {r["cell"].replace(" [unit]", ""): r for r in d[0]["rows"]}
+
+    def test_rows_are_named_after_the_parts(self):
+        self.assertEqual(sorted(self.rows("dose_lattice")), ["probe", "rod_0_0", "rod_2_1"])
+        self.assertEqual(sorted(self.rows("dose_hex")), ["pin_-2_1", "pin_0_0", "pin_1_0"])
+        self.assertTrue(all("instance" in r for r in self.rows("dose_hex").values()))
+
+    def test_each_instance_volume_is_its_own_part(self):
+        want = {"rod_0_0": math.pi * 4 * 12, "rod_2_1": math.pi * 4 * 12, "probe": 64.0,
+                "pin_0_0": math.pi * 1.21 * 30, "pin_1_0": math.pi * 1.21 * 30, "pin_-2_1": math.pi * 1.21 * 30}
+        for name in ("dose_lattice", "dose_hex"):
+            for part, r in self.rows(name).items():
+                v, dv = r["volume"]
+                self.assertLess(abs(v - want[part]), 4 * dv + 1e-9, f"{name} {part}: {v} +/- {dv}, shape {want[part]}")
+
+    def test_lattice_and_flat_doses_agree(self):
+        for name in ("dose_lattice", "dose_hex"):
+            lat, flat = self.rows(name), self.rows(name + "_flat")
+            self.assertEqual(sorted(lat), sorted(flat))
+            for part in lat:
+                a, b = lat[part]["total"], flat[part]["total"]
+                ka = "sv_per_h" if a["sv_per_h"] is not None else "pSv_per_source"
+                x, y = a[ka], b[ka]
+                sigma = math.hypot(x * a["rel_err"], y * b["rel_err"])
+                self.assertGreater(x, 0, f"{name} {part}")
+                self.assertLess(abs(x - y), 4.5 * sigma, f"{name} {part}: lattice {x:.4g}, flat {y:.4g} (sigma {sigma:.3g})")
+                self.assertLess(a["rel_err"], 0.2, f"{name} {part}: {a['rel_err']}")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -2614,14 +2614,16 @@ function commitMcnpImport(report, fileName) {
     if (t.kind === 'cell') {
       const mapped = [];
       let ok = true;
+      const card = t.mcnp_card || t.name;
+      const label = t.name && t.name !== card ? `${esc(card)} ("${esc(t.name)}")` : esc(card);
       for (const mc of (t.cells_mcnp || [])) {
         const matches = cellsByMcnp.get(mc) || [];
         if (matches.length === 0) {
-          log('warn', `cell ${mc} isn't an imported material cell (void, outside, or not in the deck)`);
+          log('warn', `Tally ${label} not imported: cell ${mc} isn't an imported material cell (void, outside, or not in the deck)`);
           ok = false;
           break;
         } else if (matches.length > 1) {
-          log('warn', `cell ${mc} is repeated in a lattice or universe (${matches.length} times); tallies over repeated cells aren't imported yet`);
+          log('warn', `Tally ${label} not imported: cell ${mc} is repeated in a lattice or universe (${matches.length} times); tallies over repeated cells aren't imported yet`);
           ok = false;
           break;
         } else {
@@ -2631,6 +2633,7 @@ function commitMcnpImport(report, fileName) {
       if (!ok) return;
       const tObj = {...defTally('cell', t.name), ...t, cells: mapped};
       delete tObj.cells_mcnp;
+      delete tObj.mcnp_card;
       delete tObj.fm_material;
       tallies.push(tObj);
     } else if (t.kind === 'mesh') {

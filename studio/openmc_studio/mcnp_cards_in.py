@@ -11,6 +11,15 @@ ALLOWED_FMESH_KEYS = {'GEOM', 'ORIGIN', 'IMESH', 'IINTS', 'JMESH', 'JINTS', 'KME
 SILENT_CARD_RE = re.compile(r'^(M\d+|MT\d+|MX\d+|\*?TR\d+|IMP:.*|VOL|AREA|PRINT|PRDMP)$', re.IGNORECASE)
 
 
+# Malformed numbers or shortcuts raise these; parse() turns them into a refusal
+# of the one card instead of failing the whole import.
+BAD_INPUT = (ValueError, IndexError, ZeroDivisionError, OverflowError)
+
+
+def _unreadable(card, e):
+    return {"card": card["name"], "line": card["line"], "reason": f"couldn't read the card ({e})"}
+
+
 class ParseRefusal(Exception):
     def __init__(self, card, line, reason):
         super().__init__(reason)
@@ -312,12 +321,13 @@ def parse(text: str) -> dict:
     if nps_card is not None:
         try:
             nps_vals = expand_shortcuts(nps_card["body"].split())
-            if nps_vals:
-                settings["nps"] = int(nps_vals[0])
+            if not nps_vals or not nps_vals[0] >= 1 or not float(nps_vals[0]).is_integer():
+                raise ParseRefusal(nps_card["name"], nps_card["line"], "NPS must be a positive whole number")
+            settings["nps"] = int(nps_vals[0])
         except ParseRefusal as e:
             refused.append({"card": nps_card["name"], "line": nps_card["line"], "reason": e.reason})
-        except Exception:
-            pass
+        except BAD_INPUT as e:
+            refused.append(_unreadable(nps_card, e))
 
     # 1e. Run settings: KCODE & KSRC
     if kcode_card is not None:
@@ -339,6 +349,8 @@ def parse(text: str) -> dict:
             # Source from KSRC or origin
             if ksrc_card is not None:
                 ksrc_vals = expand_shortcuts(ksrc_card["body"].split())
+                if len(ksrc_vals) < 3:
+                    raise ParseRefusal(ksrc_card["name"], ksrc_card["line"], "KSRC needs x y z for at least one point")
                 if len(ksrc_vals) >= 3:
                     x0, y0, z0 = ksrc_vals[0], ksrc_vals[1], ksrc_vals[2]
                     n_pts = len(ksrc_vals) // 3
@@ -357,7 +369,9 @@ def parse(text: str) -> dict:
                     "angle": "isotropic", "energy": "watt", "wa": 0.988, "wb": 2.249
                 })
         except ParseRefusal as e:
-            refused.append({"card": kcode_card["name"], "line": kcode_card["line"], "reason": e.reason})
+            refused.append({"card": e.card or kcode_card["name"], "line": e.line or kcode_card["line"], "reason": e.reason})
+        except BAD_INPUT as e:
+            refused.append(_unreadable(kcode_card, e))
 
     # 1d. Source: SDEF
     dists_used = set()
@@ -373,6 +387,8 @@ def parse(text: str) -> dict:
                 dists_used.update(used)
             except ParseRefusal as e:
                 refused.append({"card": e.card or sc["name"], "line": e.line or sc["line"], "reason": e.reason})
+            except BAD_INPUT as e:
+                refused.append(_unreadable(sc, e))
 
     # 1f. Cell tallies
     for t_num, card in cell_tallies.items():
@@ -385,6 +401,8 @@ def parse(text: str) -> dict:
             tallies.append(tally)
         except ParseRefusal as e:
             refused.append({"card": card["name"], "line": card["line"], "reason": e.reason})
+        except BAD_INPUT as e:
+            refused.append(_unreadable(card, e))
 
     # 1g. Mesh tallies
     for t_num, card in fmesh_cards.items():
@@ -394,6 +412,8 @@ def parse(text: str) -> dict:
             tallies.append(tally)
         except ParseRefusal as e:
             refused.append({"card": card["name"], "line": card["line"], "reason": e.reason})
+        except BAD_INPUT as e:
+            refused.append(_unreadable(card, e))
 
     # Orphan companion cards (not associated with any cell tally or mesh tally)
     known_tallies = set(cell_tallies.keys()) | set(fmesh_cards.keys())
@@ -885,7 +905,8 @@ def _parse_cell_tally(card, comps, notes):
         "particle": particle,
         "scores": scores,
         "ebins": ebins,
-        "name": name
+        "name": name,
+        "mcnp_card": card["name"]
     }
     if fm_material is not None:
         out["fm_material"] = fm_material
@@ -1006,7 +1027,8 @@ def _parse_mesh_tally(card, comps):
             raise ParseRefusal(card["name"], card["line"], "cylindrical FMESH requires VEC=1 0 0")
 
         nr, rmin, rmax = expand_fine_mesh(0.0, pairs.get('IMESH', []), pairs.get('IINTS', []))
-        nz, zmin, zmax = expand_fine_mesh(origin[2], pairs.get('JMESH', []), pairs.get('JINTS', []))
+        # JMESH heights are measured from ORIGIN along AXS, like Studio's z grid.
+        nz, zmin, zmax = expand_fine_mesh(0.0, pairs.get('JMESH', []), pairs.get('JINTS', []))
         nphi, kmin, kmax = expand_fine_mesh(0.0, pairs.get('KMESH', []), pairs.get('KINTS', []))
         if kmax > 1.0 + 1e-9:
             raise ParseRefusal(card["name"], card["line"], "cylindrical FMESH K revolution must be <= 1")

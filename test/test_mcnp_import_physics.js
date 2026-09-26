@@ -78,6 +78,7 @@ test('commitMcnpImport imports sources, settings, tallies and logs refusals', ()
       {
         kind: 'cell',
         name: 'Tally on 5',
+        mcnp_card: 'F4',
         cells_mcnp: [5],
         particle: 'neutron',
         scores: ['flux'],
@@ -86,6 +87,7 @@ test('commitMcnpImport imports sources, settings, tallies and logs refusals', ()
       {
         kind: 'cell',
         name: 'Tally on 7',
+        mcnp_card: 'F14',
         cells_mcnp: [7],
         particle: 'neutron',
         scores: ['flux'],
@@ -94,6 +96,7 @@ test('commitMcnpImport imports sources, settings, tallies and logs refusals', ()
       {
         kind: 'cell',
         name: 'Tally on 9',
+        mcnp_card: 'F24',
         cells_mcnp: [9],
         particle: 'neutron',
         scores: ['flux'],
@@ -152,6 +155,7 @@ test('commitMcnpImport imports sources, settings, tallies and logs refusals', ()
   assert.deepEqual(cellTally.cells, [expectedCellId]);
   assert.strictEqual(cellTally.cells_mcnp, undefined, 'cells_mcnp should be dropped');
   assert.strictEqual(cellTally.fm_material, undefined, 'fm_material should be dropped');
+  assert.strictEqual(cellTally.mcnp_card, undefined, 'mcnp_card should be dropped');
 
   // 4. Tallies on 7 and 9 are refused with the two reasons and logged
   assert.ok(!tallies.some(t => t.name === 'Tally on 7'), 'Tally on 7 should be refused');
@@ -161,11 +165,11 @@ test('commitMcnpImport imports sources, settings, tallies and logs refusals', ()
   const warnLogs = logs.filter(([k]) => k === 'warn').map(([, m]) => m);
 
   assert.ok(
-    warnLogs.some(m => m.includes("cell 7 is repeated in a lattice or universe (2 times); tallies over repeated cells aren't imported yet")),
+    warnLogs.some(m => m.includes('Tally F14 ("Tally on 7") not imported: ') && m.includes("cell 7 is repeated in a lattice or universe (2 times); tallies over repeated cells aren't imported yet")),
     'Refusal for repeated cell 7 must be logged'
   );
   assert.ok(
-    warnLogs.some(m => m.includes("cell 9 isn't an imported material cell (void, outside, or not in the deck)")),
+    warnLogs.some(m => m.includes('Tally F24 ("Tally on 9") not imported: ') && m.includes("cell 9 isn't an imported material cell (void, outside, or not in the deck)")),
     'Refusal for missing cell 9 must be logged'
   );
 

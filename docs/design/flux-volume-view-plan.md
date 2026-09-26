@@ -2,7 +2,8 @@
 
 > **Status (2026-09-26):** milestone 1 done (Slice / Brightest / Surface / Hide noisy). Since then rays step
 > voxel to voxel instead of half a voxel at a time (a fixed step skipped thin voxels), and maps too fine for that
-> fall back to the slice with a note. Still open: coarse marching while orbiting, cylindrical maps, glow.
+> fall back to the slice with a note. Since 2026-09-26 also: cylindrical maps, Glow, and half-resolution drawing
+> while the camera moves. Nothing in this plan is open.
 
 Task I. Studio branch `claude/volume-view`. Written 2026-09-25. Builds on stage 1 (done): 3D box maps are now
 easy to make.

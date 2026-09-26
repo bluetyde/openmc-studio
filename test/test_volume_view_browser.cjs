@@ -140,14 +140,110 @@ const fs = require('fs'), path = require('path'), assert = require('assert');
       assert.match(r.note, /too fine to march every voxel|3D textures stop at/);
     });
 
-    await check('the 3D controls appear only in 3D with a regular map', async () => {
+    // Many pixels at once: each GPU pixel against volumeRayCPU for the ray through that pixel's centre.
+    await page.evaluate(() => {
+      window.__many = (t, B, mode, level, pts) => {
+        const keep = [__t, __B]; __t = t; __B = B;
+        V3.volGL = undefined;
+        const cv = document.createElement('canvas'); cv.width = __W; cv.height = __H;
+        const ok = drawVolume3D(cv.getContext('2d'), B, t, __W, __H), G = V3.volGL;
+        const V = volumeData(t, false), px = new Uint8Array(4), out = [];
+        for (const [x, y] of pts) {
+          G.gl.readPixels(x, y, 1, 1, G.gl.RGBA, G.gl.UNSIGNED_BYTE, px);
+          const fx = (x + 0.5 - __W / 2) / B.focal, fy = (y + 0.5 - __H / 2) / B.focal;
+          const d = [0, 1, 2].map(k => B.f[k] + B.r[k] * fx + B.u[k] * fy);
+          const lv = mode === 'iso' ? volumeLevelByte(V, level) : level;
+          out.push({gpu:Array.from(px), cpu:volumeRayCPU(V, t, B.pos, d, Infinity, mode, lv)});
+        }
+        [__t, __B] = keep;
+        return {ok, out, note:V3.volNote};
+      };
+      // a cylindrical map about (2, -1): 6 rings from r = 3 to 15, a half turn in 8 bins, 4 z layers; values by cell
+      const nr = 6, np = 8, nz = 4, lin = (a, b, n) => Array.from({length:n + 1}, (_, i) => a + (b - a) * i / n);
+      const v = [];
+      for (let k = 0; k < nz; k++) for (let j = 0; j < np; j++) for (let i = 0; i < nr; i++) v.push((i + 1) * (j % 3 + 1) * (k + 1) * 1e-3);
+      window.__cyl = {name:'cyl', kind:'mesh', mesh_type:'cylindrical', dims:[nr, np, nz], origin:[2, -1, 0],
+        r_grid:lin(3, 15, nr), phi_grid:lin(0.3, 0.3 + Math.PI, np), z_grid:lin(-8, 8, nz),
+        scores:['flux'], values:{flux:v}, rel_err:{flux:v.map(() => 0.05)}};
+      // a camera at pos looking at target, z up
+      window.__lookAt = (pos, target, focal) => {
+        const nrm = v => { const l = Math.hypot(...v); return v.map(x => x / l); };
+        const f = nrm(target.map((x, k) => x - pos[k])), r = nrm([f[1], -f[0], 0]);
+        const u = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+        return {pos, f, r, u, focal};
+      };
+      window.__oblique = __lookAt([-30, -40, 25], [2, -1, 0], 260);
+      // a box map with a smooth peak (six decades), so a glow has something to show everywhere
+      const m = 12, g = [];
+      for (let k = 0; k < m; k++) for (let j = 0; j < m; j++) for (let i = 0; i < m; i++)
+        g.push(Math.exp(-((i - 5.5) ** 2 + (j - 5.5) ** 2 + (k - 5.5) ** 2) / 10));
+      window.__smooth = {name:'smooth', kind:'mesh', mesh_type:'regular', dims:[m, m, m], lower:[-10, -10, -10], upper:[10, 10, 10],
+        scores:['flux'], values:{flux:g}, rel_err:{flux:g.map(() => 0.05)}};
+    });
+    const grid = [];
+    for (let y = 8; y < 160; y += 16) for (let x = 6; x < 200; x += 16) grid.push([x, y]);
+    const agree = (r, rgb) => r.out.filter(({gpu, cpu}) => rgb(cpu) === null ? gpu[3] === 0 : gpu[3] > 0 && gpu.slice(0, 3).every((c, k) => Math.abs(c - rgb(cpu)[k]) <= 4));
+
+    await check('cylindrical maps: Brightest on the GPU matches the reference, pixel by pixel, from an oblique camera', async () => {
+      await page.evaluate(() => { VOLVIEW.mode = 'mip'; VOLVIEW.hideNoisy = false; });
+      const r = await page.evaluate(pts => __many(__cyl, __oblique, 'mip', 0, pts), grid);
+      assert.ok(r.ok, r.note);
+      const colours = await page.evaluate(() => Array.from({length:256}, (_, b) => b ? ramp(VIRIDIS, (b - 1) / 254).map(c => Math.round(c * 0.85)) : null));
+      const hits = r.out.filter(o => o.cpu > 0).length;
+      assert.ok(hits > 20 && hits < r.out.length, `the map covers part of the view (${hits} of ${r.out.length})`);
+      const ok = agree(r, b => colours[b]);
+      assert.ok(ok.length >= r.out.length - 2, `${ok.length} of ${r.out.length} pixels agree`);
+    });
+
+    await check('cylindrical maps: Surface hits where the reference does', async () => {
+      await page.evaluate(() => { VOLVIEW.mode = 'iso'; VOLVIEW.level = 40; });
+      const r = await page.evaluate(pts => __many(__cyl, __oblique, 'iso', 40, pts), grid);
+      const same = r.out.filter(({gpu, cpu}) => (gpu[3] > 0) === (cpu > 0)).length;
+      assert.ok(r.out.some(o => o.cpu > 0) && r.out.some(o => !o.cpu));
+      assert.ok(same >= r.out.length - 2, `${same} of ${r.out.length}`);
+    });
+
+    await check('Glow: GPU colour and coverage match the reference (box and cylindrical maps)', async () => {
+      await page.evaluate(() => { VOLVIEW.mode = 'glow'; VOLVIEW.glow = 40; });
+      for (const which of ['box', 'cyl']) {
+        const r = await page.evaluate(([pts, which]) => which === 'box'
+          ? __many(__smooth, __lookAt([-40, -35, 30], [0, 0, 0], 260), 'glow', 40, pts)
+          : __many(__cyl, __oblique, 'glow', 40, pts), [grid, which]);
+        let good = 0, lit = 0;
+        for (const {gpu, cpu} of r.out) {
+          if (cpu[3] > 0.01) lit++;
+          const want = cpu.map(c => Math.round(c * 255));
+          if (gpu.every((c, k) => Math.abs(c - want[k]) <= 6)) good++;
+        }
+        assert.ok(lit > 10, `${which}: ${lit} lit pixels`);
+        assert.ok(good >= r.out.length - 3, `${which}: ${good} of ${r.out.length} pixels agree`);
+      }
+    });
+
+    await check('while the camera moves the volume is drawn at half resolution, then in full', async () => {
+      const r = await page.evaluate(() => {
+        VOLVIEW.mode = 'mip';
+        const size = () => { const G = V3.volGL; return [G.cv.width, G.cv.height]; };
+        V3.volGL = undefined;
+        const cv = document.createElement('canvas'); cv.width = __W; cv.height = __H;
+        V3.drag = {mode:'orbit'}; drawVolume3D(cv.getContext('2d'), __B, __t, __W, __H); const moving = size(); const coarse = V3.volCoarse;
+        V3.drag = null; V3.wheelAt = 0; drawVolume3D(cv.getContext('2d'), __B, __t, __W, __H); const still = size();
+        V3.wheelAt = Date.now(); drawVolume3D(cv.getContext('2d'), __B, __t, __W, __H); const wheel = size(); V3.wheelAt = 0;
+        return {moving, still, wheel, coarse};
+      });
+      assert.deepEqual(r.moving, [100, 80]); assert.deepEqual(r.wheel, [100, 80]); assert.deepEqual(r.still, [200, 160]);
+      assert.equal(r.coarse, true);
+    });
+
+    await check('the 3D controls appear only in 3D, for box and cylindrical maps; Glow has its strength slider', async () => {
       const r = await page.evaluate(() => {
         view.mode = 'slice'; syncVolumeControls(__t); const inSlice = $('#volMode').hidden;
         view.mode = '3d'; syncVolumeControls(__t); const in3d = $('#volMode').hidden;
         syncVolumeControls({...__t, mesh_type:'cylindrical'}); const cyl = $('#volMode').hidden;
-        return {inSlice, in3d, cyl};
+        VOLVIEW.mode = 'glow'; syncVolumeControls(__t); const glow = $('#volGlowWrap').hidden, level = $('#volLevelWrap').hidden;
+        return {inSlice, in3d, cyl, glow, level};
       });
-      assert.deepEqual(r, {inSlice:true, in3d:false, cyl:true});
+      assert.deepEqual(r, {inSlice:true, in3d:false, cyl:false, glow:false, level:true});
     });
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }

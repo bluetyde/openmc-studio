@@ -316,8 +316,9 @@ input[type=checkbox]{accent-color:var(--accent)}
           <span class="layers" id="layers" hidden>
             <label class="chk"><input type="checkbox" id="showMesh" checked> <span id="meshLabel">Flux map</span></label>
             <select id="meshPick" aria-label="Mesh tally to show"></select>
-            <select id="volMode" hidden aria-label="How the map is shown in 3D" title="In 3D: the slice plane only, the brightest value along each line of sight, or a surface where the map reaches a level"><option value="slice">Slice</option><option value="mip">Brightest</option><option value="iso">Surface</option></select>
+            <select id="volMode" hidden aria-label="How the map is shown in 3D" title="In 3D: the slice plane only, the brightest value along each line of sight, a surface where the map reaches a level, or a soft glowing cloud"><option value="slice">Slice</option><option value="mip">Brightest</option><option value="iso">Surface</option><option value="glow">Glow</option></select>
             <label class="chk" id="volLevelWrap" hidden title="Surface where the map reaches this percentage of its peak">at <input type="range" id="volLevel" min="1" max="90" value="10" style="width:70px"> <span id="volLevelTxt">10</span>% of peak</label>
+            <label class="chk" id="volGlowWrap" hidden title="How strongly the cloud glows and hides what is behind it">strength <input type="range" id="volGlow" min="1" max="100" value="30" style="width:70px"></label>
             <label class="chk" id="volNoisyWrap" hidden title="Leave out voxels whose relative error is over 50%"><input type="checkbox" id="volNoisy"> Hide noisy</label>
             <label class="chk"><input type="checkbox" id="showTracks" checked> Tracks</label>
             <button class="tbtn" type="button" id="replayBtn" hidden>Replay neutron</button>
@@ -8594,15 +8595,18 @@ function drawMesh3D(ctx, B, t, W, H) {
 }
 
 /* ───────── 3D volume view of a flux or dose map ───────── */
-// In 3D a map is normally drawn on the slice plane only. Brightest (the largest value along each pixel's ray) and
-// Surface (where the map first reaches a level) march every ray through the whole map instead. They run on a small
+// In 3D a map is normally drawn on the slice plane only. Brightest (the largest value along each pixel's ray),
+// Surface (where the map first reaches a level) and Glow (a soft cloud: each voxel glows in its colour and dims what
+// is behind it, more so the higher its value) march every ray through the whole map instead. They run on a small
 // WebGL2 canvas of their own, so the main renderer's state is never touched, and the result is drawn into the
 // overlay like the slice is: the same log colour scale and legend, hidden by geometry in front (the depth readback
-// the slice overlay uses) and clipped by the cutaway. Regular meshes only; a cylindrical map stays a slice.
-const VOLVIEW = {mode:'slice', level:10, hideNoisy:false};
+// the slice overlay uses) and clipped by the cutaway. Box and cylindrical maps alike.
+const VOLVIEW = {mode:'slice', level:10, glow:30, hideNoisy:false};
 try { Object.assign(VOLVIEW, JSON.parse(localStorage.getItem('openmc-studio-volview') || '{}')); } catch (e) {}
 const saveVolView = () => { try { localStorage.setItem('openmc-studio-volview', JSON.stringify(VOLVIEW)); } catch (e) {} };
 $('#volMode').value = VOLVIEW.mode; $('#volLevel').value = VOLVIEW.level; $('#volLevelTxt').textContent = VOLVIEW.level; $('#volNoisy').checked = VOLVIEW.hideNoisy;
+$('#volGlow').value = VOLVIEW.glow;
+$('#volGlow').addEventListener('input', e => { VOLVIEW.glow = +e.target.value; saveVolView(); schedule(); });
 $('#volMode').addEventListener('change', e => { VOLVIEW.mode = e.target.value; saveVolView(); schedule(); });
 $('#volLevel').addEventListener('input', e => { VOLVIEW.level = +e.target.value; $('#volLevelTxt').textContent = VOLVIEW.level; saveVolView(); schedule(); });
 $('#volNoisy').addEventListener('change', e => { VOLVIEW.hideNoisy = e.target.checked; saveVolView(); schedule(); });
@@ -8617,63 +8621,205 @@ function volumeData(t, hideNoisy) {
 }
 // The byte a Surface level (a percentage of the peak) corresponds to.
 const volumeLevelByte = (V, pct) => Math.max(1, Math.min(255, 1 + Math.round(254 * (Math.log10(V.mx * pct / 100) - V.lmn) / V.span)));
-// Rays step voxel to voxel (Amanatides & Woo), so every voxel a ray crosses is read exactly once; fixed-length steps
-// would jump over thin voxels once a ray is long. A ray crosses at most nx + ny + nz voxels, so maps up to that many
-// are drawn exactly, and bigger ones are refused (the slice is drawn, with a note) rather than drawn with gaps.
+// Rays walk the map cell to cell, so every voxel a ray crosses is read exactly once; fixed-length steps would jump
+// over thin voxels once a ray is long. A box map is walked with Amanatides & Woo steps. A cylindrical map (r, phi, z
+// about an origin, z the axis) is walked the same way in its own coordinates: from where the ray is, the next of the
+// cell's own boundaries it meets (the inner or outer cylinder, the two half-planes of its angle bin, the two z
+// planes) is where the next cell starts; the hole inside the smallest radius and an angle range short of a full turn
+// are crossed as cells with nothing in them. A ray crosses each boundary at most once or twice, so a map with fewer
+// than VOL_MAX_STEPS of them is drawn exactly; a bigger one is refused (the slice is drawn, with a note).
 const VOL_MAX_STEPS = 4096;
-// Reference marcher, the shader's maths one ray at a time (tests compare the two). Returns the byte seen, or 0.
-function volumeRayCPU(V, t, origin, dir, tmax, mode, levelByte, cut) {
-  const lo = t.lower, hi = t.upper, n = t.dims, len = Math.hypot(...dir), rd = dir.map(d => d / len || 1e-12);
+// The cylindrical map's grid: origin, radius / angle / z ranges and bin counts (uniform bins, as Studio writes them).
+function volumeCylGrid(t) {
+  const r = t.r_grid, p = t.phi_grid, z = t.z_grid, o = t.origin || [0, 0, 0];
+  return {o, r0:r[0], r1:r[r.length - 1], nr:r.length - 1, p0:p[0], p1:p[p.length - 1], np:p.length - 1,
+    z0:z[0], z1:z[z.length - 1], nz:z.length - 1, full:Math.abs(p[p.length - 1] - p[0] - 2 * Math.PI) < 1e-6};
+}
+// Reference marcher, the shader's maths one ray at a time (tests compare the two). Brightest and Surface return the
+// byte seen (0 for none); Glow returns the premultiplied colour [r, g, b, a] in 0..1.
+function volumeRayCPU(V, t, origin, dir, tmax, mode, level, cut) {
+  const len = Math.hypot(...dir), rd = dir.map(d => d / len || 1e-12);
+  const cyl = t.mesh_type === 'cylindrical';
   let t0 = 0, t1 = Infinity;
-  for (let k = 0; k < 3; k++) {
-    const a = (lo[k] - origin[k]) / rd[k], b = (hi[k] - origin[k]) / rd[k];
+  if (cyl) {  // between the z planes and inside the outer cylinder
+    const g = volumeCylGrid(t), a = (g.z0 - origin[2]) / rd[2], b = (g.z1 - origin[2]) / rd[2];
     t0 = Math.max(t0, Math.min(a, b)); t1 = Math.min(t1, Math.max(a, b));
+    const hit = volumeCircle(origin[0] - g.o[0], origin[1] - g.o[1], rd[0], rd[1], g.r1);
+    if (!hit) return mode === 'glow' ? [0, 0, 0, 0] : 0;
+    t0 = Math.max(t0, hit[0]); t1 = Math.min(t1, hit[1]);
+  } else {
+    const lo = t.lower, hi = t.upper;
+    for (let k = 0; k < 3; k++) {
+      const a = (lo[k] - origin[k]) / rd[k], b = (hi[k] - origin[k]) / rd[k];
+      t0 = Math.max(t0, Math.min(a, b)); t1 = Math.min(t1, Math.max(a, b));
+    }
   }
   t1 = Math.min(t1, tmax);
   if (cut) {  // the cutaway removes the half-space (q[axis] - at) * side > 0: clip the ray to the kept side
     const oc = (origin[cut.axis] - cut.at) * cut.side, dc = rd[cut.axis] * cut.side, tc = -oc / dc;
     if (dc > 0) t1 = Math.min(t1, tc); else t0 = Math.max(t0, tc);
   }
-  if (!(t1 > t0)) return 0;
+  const acc = [0, 0, 0, 0];
+  let best = 0;
+  const gain = (level || 30) / 20, cellMin = volumeCellMin(t);
+  // what each mode does with one voxel's stretch of the ray; true = stop
+  const visit = (b, a, c) => {
+    if (!b) return false;
+    if (mode === 'iso') { if (b >= level) { best = b; return true; } return false; }
+    if (mode === 'glow') {
+      const f = (b - 1) / 254, f4 = f * f * f * f, al = 1 - Math.exp(-gain * f4 * (c - a) / cellMin), col = ramp_(Math.round(f * 255) / 255);
+      for (let k = 0; k < 3; k++) acc[k] += (1 - acc[3]) * al * col[k] / 255;
+      acc[3] += (1 - acc[3]) * al;
+      return acc[3] > 0.995;
+    }
+    if (b > best) best = b;
+    return false;
+  };
+  if (t1 > t0) (cyl ? volumeWalkCyl : volumeWalkBox)(V, t, origin, rd, t0, t1, visit);
+  return mode === 'glow' ? acc : best;
+}
+const volumeCellMin = t => {
+  if (t.mesh_type !== 'cylindrical') return Math.min(...[0, 1, 2].map(k => (t.upper[k] - t.lower[k]) / t.dims[k]));
+  const g = volumeCylGrid(t);
+  return Math.min((g.r1 - g.r0) / g.nr, (g.z1 - g.z0) / g.nz);
+};
+// Where a ray (x, y) + s (dx, dy) is inside the circle of radius R: [s_in, s_out], or null.
+function volumeCircle(x, y, dx, dy, R) {
+  const a = dx * dx + dy * dy, b = x * dx + y * dy, c = x * x + y * y - R * R;
+  if (a < 1e-24) return c <= 0 ? [-Infinity, Infinity] : null;
+  const disc = b * b - a * c;
+  if (disc < 0) return null;
+  const q = Math.sqrt(disc);
+  return [(-b - q) / a, (-b + q) / a];
+}
+function volumeWalkBox(V, t, origin, rd, t0, t1, visit) {
+  const lo = t.lower, hi = t.upper, n = t.dims;
   const cell = [0, 1, 2].map(k => (hi[k] - lo[k]) / n[k]);
   const s0 = t0 + Math.min(1e-4 * Math.min(...cell), (t1 - t0) / 2);  // just inside, so a voxel face at t0 picks the voxel ahead
   const ijk = [0, 1, 2].map(k => Math.min(n[k] - 1, Math.max(0, Math.floor((origin[k] + rd[k] * s0 - lo[k]) / cell[k]))));
   const stp = rd.map(r => r > 0 ? 1 : -1);
   const tNext = [0, 1, 2].map(k => (lo[k] + (ijk[k] + (stp[k] > 0 ? 1 : 0)) * cell[k] - origin[k]) / rd[k]);
   const tDelta = [0, 1, 2].map(k => cell[k] / Math.abs(rd[k]));
-  let tc = t0, best = 0;
+  let tc = t0;
   for (let i = 0; i < VOL_MAX_STEPS && tc < t1; i++) {
-    const b = V.data[ijk[0] + n[0] * (ijk[1] + n[1] * ijk[2])];
-    if (mode === 'iso') { if (b >= levelByte) return b; } else if (b > best) best = b;
-    const a = tNext[0] <= tNext[1] && tNext[0] <= tNext[2] ? 0 : tNext[1] <= tNext[2] ? 1 : 2;
+    const a = tNext[0] <= tNext[1] && tNext[0] <= tNext[2] ? 0 : tNext[1] <= tNext[2] ? 1 : 2, tOut = Math.min(tNext[a], t1);
+    if (visit(V.data[ijk[0] + n[0] * (ijk[1] + n[1] * ijk[2])], tc, tOut)) return;
     tc = tNext[a]; ijk[a] += stp[a]; tNext[a] += tDelta[a];
-    if (ijk[a] < 0 || ijk[a] >= n[a]) break;
+    if (ijk[a] < 0 || ijk[a] >= n[a]) return;
   }
-  return mode === 'iso' ? 0 : best;
+}
+function volumeWalkCyl(V, t, origin, rd, t0, t1, visit) {
+  const g = volumeCylGrid(t), dr = (g.r1 - g.r0) / g.nr, dp = (g.p1 - g.p0) / g.np, dz = (g.z1 - g.z0) / g.nz;
+  const x0 = origin[0] - g.o[0], y0 = origin[1] - g.o[1], z0 = origin[2];
+  const eps = 1e-4 * Math.min(dr, dz), TWO_PI = 2 * Math.PI;
+  // the first crossing after s of the half-plane at angle ang (through the axis), or Infinity
+  const halfPlane = (ang, s) => {
+    const nx = -Math.sin(ang), ny = Math.cos(ang), den = nx * rd[0] + ny * rd[1];
+    if (Math.abs(den) < 1e-15) return Infinity;
+    const u = -(nx * x0 + ny * y0) / den;
+    if (!(u > s)) return Infinity;
+    return Math.cos(ang) * (x0 + rd[0] * u) + Math.sin(ang) * (y0 + rd[1] * u) > 0 ? u : Infinity;
+  };
+  let tc = t0;
+  for (let i = 0; i < VOL_MAX_STEPS && tc < t1; i++) {
+    const s = tc + eps, x = x0 + rd[0] * s, y = y0 + rd[1] * s, z = z0 + rd[2] * s;
+    const r = Math.hypot(x, y);
+    let phi = Math.atan2(y, x); if (phi < 0) phi += TWO_PI;
+    let rel = phi - g.p0; rel -= TWO_PI * Math.floor(rel / TWO_PI);  // angle past the range start, 0..2pi
+    const inPhi = g.full || rel <= g.p1 - g.p0;
+    const ri = r < g.r0 ? -1 : Math.min(g.nr - 1, Math.floor((r - g.r0) / dr));
+    const pj = Math.min(g.np - 1, Math.floor(rel / dp)), zk = Math.min(g.nz - 1, Math.max(0, Math.floor((z - g.z0) / dz)));
+    // the exits of this cell: radial, angular, axial
+    let tOut = t1;
+    const outer = ri < 0 ? g.r0 : g.r0 + (ri + 1) * dr, inner = ri < 0 ? 0 : g.r0 + ri * dr;
+    const co = volumeCircle(x0, y0, rd[0], rd[1], outer);
+    if (co && co[1] > s) tOut = Math.min(tOut, co[1]);
+    if (inner > 0) { const ci = volumeCircle(x0, y0, rd[0], rd[1], inner); if (ci && ci[0] > s) tOut = Math.min(tOut, ci[0]); }
+    const [aLo, aHi] = inPhi ? [g.p0 + pj * dp, g.p0 + (pj + 1) * dp] : [g.p1, g.p0 + TWO_PI];
+    if (!g.full || g.np > 1) tOut = Math.min(tOut, halfPlane(aLo, s), halfPlane(aHi, s));
+    if (Math.abs(rd[2]) > 1e-15) tOut = Math.min(tOut, (g.z0 + (zk + (rd[2] > 0 ? 1 : 0)) * dz - z0) / rd[2]);
+    if (!(tOut > tc)) tOut = s;  // never stand still
+    if (ri >= 0 && inPhi && visit(V.data[ri + g.nr * (pj + g.np * zk)], tc, Math.min(tOut, t1))) return;
+    tc = tOut;
+  }
 }
 // Why a map can't be drawn as a volume (then it is drawn on the slice), or '' when it can.
 function volumeRefusal(t, max3d) {
   if (t.dims.some(d => d > max3d)) return `The map is ${t.dims.join(' × ')}; this GPU's 3D textures stop at ${max3d} a side, so it is shown on the slice.`;
-  if (t.dims[0] + t.dims[1] + t.dims[2] > VOL_MAX_STEPS) return `The map is ${t.dims.join(' × ')}: too fine to march every voxel, so it is shown on the slice.`;
+  const crossings = t.mesh_type === 'cylindrical' ? 2 * t.dims[0] + t.dims[1] + t.dims[2] + 8 : t.dims[0] + t.dims[1] + t.dims[2];
+  if (crossings > VOL_MAX_STEPS) return `The map is ${t.dims.join(' × ')}: too fine to march every voxel, so it is shown on the slice.`;
   return '';
 }
 const VOL_FS = `#version 300 es
 precision highp float; precision highp sampler3D;
 uniform sampler3D uVol; uniform sampler2D uDepth, uRamp;
 uniform vec3 uPos, uF, uR, uU, uLo, uHi, uCells;
-uniform vec2 uSize;
-uniform float uFocal, uTMax, uDepthOn, uMode, uLevel, uCut, uCutAxis, uCutAt, uCutSide;
+uniform vec2 uSize, uDepthScale;
+uniform float uFocal, uTMax, uDepthOn, uMode, uLevel, uGain, uCut, uCutAxis, uCutAt, uCutSide, uCyl;
+// cylindrical maps: origin, then (r0, r1, p0, p1) and (z0, z1, full turn 0/1)
+uniform vec3 uCo, uCz; uniform vec4 uCr;
 out vec4 o;
-float vol(vec3 q) { return texture(uVol, (q - uLo) / (uHi - uLo)).r * 255.0; }
+const float TWO_PI = 6.283185307179586;
+float best = 0.0, hitT = -1.0; vec4 acc = vec4(0.0);
+float cellMin;
+// one voxel's stretch [a, c] of the ray; true = stop (volumeRayCPU's visit)
+bool visit(float v, float a, float c) {
+  if (v < 0.5) return false;
+  if (uMode > 2.5) {
+    float f = (v - 1.0) / 254.0, f4 = f * f * f * f, al = 1.0 - exp(-uGain * f4 * (c - a) / cellMin);
+    vec3 col = texelFetch(uRamp, ivec2(int(floor(f * 255.0 + 0.5)), 0), 0).rgb;
+    acc.rgb += (1.0 - acc.a) * al * col; acc.a += (1.0 - acc.a) * al;
+    return acc.a > 0.995;
+  }
+  if (uMode > 1.5) { if (v >= uLevel - 0.5) { best = v; hitT = 0.5 * (a + c); return true; } return false; }
+  best = max(best, v); return false;
+}
+vec2 circle(vec2 p, vec2 d, float R) {  // [s_in, s_out] or (1, -1) for none
+  float a = dot(d, d), b = dot(p, d), c = dot(p, p) - R * R;
+  if (a < 1e-24) return c <= 0.0 ? vec2(-1e30, 1e30) : vec2(1.0, -1.0);
+  float disc = b * b - a * c;
+  if (disc < 0.0) return vec2(1.0, -1.0);
+  float q = sqrt(disc);
+  return vec2((-b - q) / a, (-b + q) / a);
+}
+float halfPlane(float ang, float s, vec2 p, vec2 d) {
+  vec2 n = vec2(-sin(ang), cos(ang));
+  float den = dot(n, d);
+  if (abs(den) < 1e-15) return 1e30;
+  float u = -dot(n, p) / den;
+  if (!(u > s)) return 1e30;
+  return dot(vec2(cos(ang), sin(ang)), p + d * u) > 0.0 ? u : 1e30;
+}
+float sampleAt(vec3 q) {  // the byte at a point (0 outside), for the Surface shading
+  if (uCyl < 0.5) {
+    vec3 u = (q - uLo) / (uHi - uLo);
+    if (any(lessThan(u, vec3(0.0))) || any(greaterThanEqual(u, vec3(1.0)))) return 0.0;
+    return texelFetch(uVol, ivec3(floor(u * uCells)), 0).r * 255.0;
+  }
+  vec2 p = q.xy - uCo.xy; float r = length(p), phi = atan(p.y, p.x); if (phi < 0.0) phi += TWO_PI;
+  float rel = phi - uCr.z; rel -= TWO_PI * floor(rel / TWO_PI);
+  vec3 u = vec3((r - uCr.x) / (uCr.y - uCr.x), rel / (uCr.w - uCr.z), (q.z - uCz.x) / (uCz.y - uCz.x));
+  if (any(lessThan(u, vec3(0.0))) || any(greaterThanEqual(u, vec3(1.0)))) return 0.0;
+  return texelFetch(uVol, ivec3(floor(u * uCells)), 0).r * 255.0;
+}
 void main() {
   vec2 p = gl_FragCoord.xy;
   vec3 d = uF + uR * ((p.x - 0.5 * uSize.x) / uFocal) + uU * ((p.y - 0.5 * uSize.y) / uFocal);
   vec3 rd = normalize(d);
   rd = mix(rd, vec3(1e-12), vec3(equal(rd, vec3(0.0))));  // as volumeRayCPU: no exact zeros to divide by
-  vec3 a = (uLo - uPos) / rd, b = (uHi - uPos) / rd, tn = min(a, b), tf = max(a, b);
-  float t0 = max(max(tn.x, tn.y), max(tn.z, 0.0)), t1 = min(min(tf.x, tf.y), tf.z);
+  float t0 = 0.0, t1 = 1e30;
+  if (uCyl > 0.5) {
+    float a = (uCz.x - uPos.z) / rd.z, b = (uCz.y - uPos.z) / rd.z;
+    t0 = max(t0, min(a, b)); t1 = min(t1, max(a, b));
+    vec2 h = circle(uPos.xy - uCo.xy, rd.xy, uCr.y);
+    if (h.x > h.y) discard;
+    t0 = max(t0, h.x); t1 = min(t1, h.y);
+  } else {
+    vec3 a = (uLo - uPos) / rd, b = (uHi - uPos) / rd, tn = min(a, b), tf = max(a, b);
+    t0 = max(max(tn.x, tn.y), max(tn.z, 0.0)); t1 = min(min(tf.x, tf.y), tf.z);
+  }
   if (uDepthOn > 0.5) {  // geometry in front hides the map (24-bit distance along the ray; white = nothing hit)
-    vec4 g = texelFetch(uDepth, ivec2(p), 0);
+    vec4 g = texelFetch(uDepth, ivec2(floor(p * uDepthScale)), 0);
     if (any(lessThan(g.rgb, vec3(0.999)))) {
       float dist = (g.r * 255.0 * 65536.0 + g.g * 255.0 * 256.0 + g.b * 255.0) / 16777214.0 * uTMax;
       t1 = min(t1, dist + 0.5 + 0.004 * dist);
@@ -8685,29 +8831,57 @@ void main() {
     if (dc > 0.0) t1 = min(t1, tc); else t0 = max(t0, tc);
   }
   if (t1 <= t0) discard;
-  vec3 cell = (uHi - uLo) / uCells;
   ivec3 n = ivec3(uCells + 0.5);
-  float s0 = t0 + min(1e-4 * min(min(cell.x, cell.y), cell.z), 0.5 * (t1 - t0));
-  ivec3 ijk = clamp(ivec3(floor((uPos + rd * s0 - uLo) / cell)), ivec3(0), n - 1);
-  ivec3 stp = ivec3(greaterThan(rd, vec3(0.0))) * 2 - 1;
-  vec3 tNext = (uLo + (vec3(ijk) + vec3(greaterThan(rd, vec3(0.0)))) * cell - uPos) / rd, tDelta = cell / abs(rd);
-  float best = 0.0, hitT = -1.0, tc = t0;
-  for (int i = 0; i < ${VOL_MAX_STEPS}; i++) {  // voxel to voxel, every voxel on the ray read once
-    if (tc >= t1) break;
-    float v = texelFetch(uVol, ijk, 0).r * 255.0;
-    int k = tNext.x <= tNext.y && tNext.x <= tNext.z ? 0 : tNext.y <= tNext.z ? 1 : 2;
-    float tOut = tNext[k];
-    if (uMode > 1.5) { if (v >= uLevel - 0.5) { hitT = 0.5 * (tc + min(tOut, t1)); best = v; break; } }
-    else best = max(best, v);
-    tc = tOut; ijk[k] += stp[k]; tNext[k] += tDelta[k];
-    if (ijk[k] < 0 || ijk[k] >= n[k]) break;
+  if (uCyl < 0.5) {  // box map: voxel to voxel
+    vec3 cell = (uHi - uLo) / uCells;
+    cellMin = min(min(cell.x, cell.y), cell.z);
+    float s0 = t0 + min(1e-4 * cellMin, 0.5 * (t1 - t0));
+    ivec3 ijk = clamp(ivec3(floor((uPos + rd * s0 - uLo) / cell)), ivec3(0), n - 1);
+    ivec3 stp = ivec3(greaterThan(rd, vec3(0.0))) * 2 - 1;
+    vec3 tNext = (uLo + (vec3(ijk) + vec3(greaterThan(rd, vec3(0.0)))) * cell - uPos) / rd, tDelta = cell / abs(rd);
+    float tc = t0;
+    for (int i = 0; i < ${VOL_MAX_STEPS}; i++) {
+      if (tc >= t1) break;
+      int k = tNext.x <= tNext.y && tNext.x <= tNext.z ? 0 : tNext.y <= tNext.z ? 1 : 2;
+      if (visit(texelFetch(uVol, ijk, 0).r * 255.0, tc, min(tNext[k], t1))) break;
+      tc = tNext[k]; ijk[k] += stp[k]; tNext[k] += tDelta[k];
+      if (ijk[k] < 0 || ijk[k] >= n[k]) break;
+    }
+  } else {  // cylindrical map: cell to cell through its own boundaries (volumeWalkCyl)
+    float dr = (uCr.y - uCr.x) / uCells.x, dp = (uCr.w - uCr.z) / uCells.y, dz = (uCz.y - uCz.x) / uCells.z;
+    bool full = uCz.z > 0.5;
+    cellMin = min(dr, dz);
+    float eps = 1e-4 * cellMin, tc = t0;
+    vec2 p0 = uPos.xy - uCo.xy;
+    for (int i = 0; i < ${VOL_MAX_STEPS}; i++) {
+      if (tc >= t1) break;
+      float s = tc + eps;
+      vec3 q = vec3(p0 + rd.xy * s, uPos.z + rd.z * s);
+      float r = length(q.xy), phi = atan(q.y, q.x); if (phi < 0.0) phi += TWO_PI;
+      float rel = phi - uCr.z; rel -= TWO_PI * floor(rel / TWO_PI);
+      bool inPhi = full || rel <= uCr.w - uCr.z;
+      int ri = r < uCr.x ? -1 : min(n.x - 1, int(floor((r - uCr.x) / dr)));
+      int pj = min(n.y - 1, int(floor(rel / dp))), zk = clamp(int(floor((q.z - uCz.x) / dz)), 0, n.z - 1);
+      float tOut = t1;
+      float outer = ri < 0 ? uCr.x : uCr.x + float(ri + 1) * dr, inner = ri < 0 ? 0.0 : uCr.x + float(ri) * dr;
+      vec2 co = circle(p0, rd.xy, outer);
+      if (co.x <= co.y && co.y > s) tOut = min(tOut, co.y);
+      if (inner > 0.0) { vec2 ci = circle(p0, rd.xy, inner); if (ci.x <= ci.y && ci.x > s) tOut = min(tOut, ci.x); }
+      float aLo = inPhi ? uCr.z + float(pj) * dp : uCr.w, aHi = inPhi ? uCr.z + float(pj + 1) * dp : uCr.z + TWO_PI;
+      if (!full || n.y > 1) tOut = min(tOut, min(halfPlane(aLo, s, p0, rd.xy), halfPlane(aHi, s, p0, rd.xy)));
+      if (abs(rd.z) > 1e-15) tOut = min(tOut, (uCz.x + float(zk + (rd.z > 0.0 ? 1 : 0)) * dz - uPos.z) / rd.z);
+      if (!(tOut > tc)) tOut = s;
+      if (ri >= 0 && inPhi && visit(texelFetch(uVol, ivec3(ri, pj, zk), 0).r * 255.0, tc, min(tOut, t1))) break;
+      tc = tOut;
+    }
   }
+  if (uMode > 2.5) { if (acc.a < 0.002) discard; o = acc; return; }  // glow: premultiplied
   if (best < 0.5) discard;
   vec3 c = texture(uRamp, vec2((best - 1.0) / 254.0, 0.5)).rgb;
   if (uMode > 1.5) {  // shade the surface by its slope, so it reads as a shape
-    vec3 q = uPos + rd * hitT, h = 0.75 * cell;
-    vec3 gr = vec3(vol(q + vec3(h.x, 0, 0)) - vol(q - vec3(h.x, 0, 0)), vol(q + vec3(0, h.y, 0)) - vol(q - vec3(0, h.y, 0)),
-                   vol(q + vec3(0, 0, h.z)) - vol(q - vec3(0, 0, h.z)));
+    vec3 q = uPos + rd * hitT; float h = 0.75 * cellMin;
+    vec3 gr = vec3(sampleAt(q + vec3(h, 0, 0)) - sampleAt(q - vec3(h, 0, 0)), sampleAt(q + vec3(0, h, 0)) - sampleAt(q - vec3(0, h, 0)),
+                   sampleAt(q + vec3(0, 0, h)) - sampleAt(q - vec3(0, 0, h)));
     float lit = length(gr) > 0.0 ? abs(dot(normalize(gr), rd)) : 1.0;
     o = vec4(c * (0.35 + 0.65 * lit), 1.0);
   } else o = vec4(c * 0.85, 0.85);  // premultiplied
@@ -8728,8 +8902,9 @@ function volumeGL() {
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
     const U = {};
-    ['uVol', 'uDepth', 'uRamp', 'uPos', 'uF', 'uR', 'uU', 'uLo', 'uHi', 'uCells', 'uSize', 'uFocal', 'uTMax', 'uDepthOn', 'uMode',
-     'uLevel', 'uCut', 'uCutAxis', 'uCutAt', 'uCutSide'].forEach(n => { U[n] = gl.getUniformLocation(prog, n); });
+    ['uVol', 'uDepth', 'uRamp', 'uPos', 'uF', 'uR', 'uU', 'uLo', 'uHi', 'uCells', 'uSize', 'uDepthScale', 'uFocal', 'uTMax',
+     'uDepthOn', 'uMode', 'uLevel', 'uGain', 'uCut', 'uCutAxis', 'uCutAt', 'uCutSide', 'uCyl', 'uCo', 'uCz', 'uCr']
+      .forEach(n => { U[n] = gl.getUniformLocation(prog, n); });
     const tex = () => { const t = gl.createTexture(); return t; };
     const ramp = tex(), rampPx = new Uint8Array(256 * 4);
     for (let i = 0; i < 256; i++) rampPx.set([...ramp_(i / 255), 255], 4 * i);
@@ -8741,14 +8916,20 @@ function volumeGL() {
   } catch (e) { console.warn('3D volume view unavailable:', e.message); return (V3.volGL = null); }
 }
 function ramp_(f) { return ramp(VIRIDIS, f); }
+// While the camera moves (orbit, pan, zoom), the volume is marched at half resolution each way, a quarter of the
+// rays, and redrawn in full a moment after it stops. The picture while moving is coarser, never wrong.
+const volumeCoarse = () => !!(V3.drag && V3.drag.mode !== 'tool') || Date.now() - (V3.wheelAt || 0) < 250;
 // Draws the map as a volume into the overlay. Returns false when it can't (then the slice is drawn instead).
 function drawVolume3D(ctx, B, t, W, H) {
-  if (t.mesh_type === 'cylindrical' || !t.lower) return false;
+  const cyl = t.mesh_type === 'cylindrical';
+  if (cyl ? !t.r_grid : !t.lower) return false;
   const G = volumeGL();
   if (!G) return false;
-  const {gl, U} = G, D = V3.depth, cw = D ? D.w : W, ch = D ? D.h : H;
+  const {gl, U} = G, D = V3.depth, fw = D ? D.w : W, fh = D ? D.h : H;
   V3.volNote = volumeRefusal(t, gl.getParameter(gl.MAX_3D_TEXTURE_SIZE));
   if (V3.volNote) return false;
+  const coarse = volumeCoarse(), cw = coarse ? Math.max(1, Math.ceil(fw / 2)) : fw, ch = coarse ? Math.max(1, Math.ceil(fh / 2)) : fh;
+  V3.volCoarse = coarse;
   const key = `${t.name}|${t.values[t.scores[0]].length}|${VOLVIEW.hideNoisy}`;
   if (G.volKey !== key || G.volT !== t) {
     G.V = volumeData(t, VOLVIEW.hideNoisy);
@@ -8774,10 +8955,20 @@ function drawVolume3D(ctx, B, t, W, H) {
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, G.depth); gl.uniform1i(U.uDepth, 1);
   gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, G.ramp); gl.uniform1i(U.uRamp, 2);
   gl.uniform3fv(U.uPos, B.pos); gl.uniform3fv(U.uF, B.f); gl.uniform3fv(U.uR, B.r); gl.uniform3fv(U.uU, B.u);
-  gl.uniform3fv(U.uLo, t.lower); gl.uniform3fv(U.uHi, t.upper); gl.uniform3fv(U.uCells, t.dims);
-  gl.uniform2f(U.uSize, cw, ch); gl.uniform1f(U.uFocal, B.focal * cw / W);
+  gl.uniform3fv(U.uCells, t.dims);
+  gl.uniform1f(U.uCyl, cyl ? 1 : 0);
+  if (cyl) {
+    const g = volumeCylGrid(t);
+    gl.uniform3fv(U.uCo, g.o); gl.uniform4f(U.uCr, g.r0, g.r1, g.p0, g.p1); gl.uniform3f(U.uCz, g.z0, g.z1, g.full ? 1 : 0);
+    gl.uniform3fv(U.uLo, [0, 0, 0]); gl.uniform3fv(U.uHi, [1, 1, 1]);
+  } else {
+    gl.uniform3fv(U.uLo, t.lower); gl.uniform3fv(U.uHi, t.upper);
+    gl.uniform3fv(U.uCo, [0, 0, 0]); gl.uniform4f(U.uCr, 0, 1, 0, 1); gl.uniform3f(U.uCz, 0, 1, 1);
+  }
+  gl.uniform2f(U.uSize, cw, ch); gl.uniform2f(U.uDepthScale, fw / cw, fh / ch); gl.uniform1f(U.uFocal, B.focal * cw / W);
   gl.uniform1f(U.uTMax, D ? D.tmax : 0); gl.uniform1f(U.uDepthOn, D ? 1 : 0);
-  gl.uniform1f(U.uMode, VOLVIEW.mode === 'iso' ? 2 : 1); gl.uniform1f(U.uLevel, volumeLevelByte(G.V, VOLVIEW.level));
+  gl.uniform1f(U.uMode, {mip:1, iso:2, glow:3}[VOLVIEW.mode] || 1);
+  gl.uniform1f(U.uLevel, volumeLevelByte(G.V, VOLVIEW.level)); gl.uniform1f(U.uGain, VOLVIEW.glow / 20);
   const cut = $('#cutaway').checked, ax = {xy:2, xz:1, yz:0}[view.plane];
   gl.uniform1f(U.uCut, cut ? 1 : 0); gl.uniform1f(U.uCutAxis, ax); gl.uniform1f(U.uCutAt, view.slice);
   gl.uniform1f(U.uCutSide, B.pos[ax] >= view.slice ? 1 : -1);
@@ -8787,13 +8978,18 @@ function drawVolume3D(ctx, B, t, W, H) {
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   ctx.drawImage(G.cv, 0, 0, W, H);
   meshColorbar(ctx, W, t, {mn:G.V.mn, mx:G.V.mx});
+  if (coarse) {  // draw it in full once the camera has been still for a moment
+    clearTimeout(V3.volRefine);
+    V3.volRefine = setTimeout(() => { if (!volumeCoarse()) schedule(); else V3.volRefine = null; }, 300);
+  }
   return true;
 }
-// The 3D-only controls: how to show the map, the Surface level, and hiding noisy voxels.
+// The 3D-only controls: how to show the map, the Surface level, the Glow strength, and hiding noisy voxels.
 function syncVolumeControls(meshT) {
-  const on = view.mode === '3d' && !!meshT && meshT.mesh_type !== 'cylindrical';
+  const on = view.mode === '3d' && !!meshT;
   const set = (id, hide) => { const e = document.getElementById(id); if (e && e.hidden !== hide) e.hidden = hide; };
-  set('volMode', !on); set('volLevelWrap', !on || VOLVIEW.mode !== 'iso'); set('volNoisyWrap', !on || VOLVIEW.mode === 'slice');
+  set('volMode', !on); set('volLevelWrap', !on || VOLVIEW.mode !== 'iso'); set('volGlowWrap', !on || VOLVIEW.mode !== 'glow');
+  set('volNoisyWrap', !on || VOLVIEW.mode === 'slice');
 }
 function adapter3D() {
   const {B} = V3.geom, c = toolTarget() ? targetCenter(toolTarget()) : CAM.target;
@@ -9537,6 +9733,7 @@ $('#vp3o').addEventListener('pointerup', e => {
   V3.drag = null;
   $('#vp3o').style.cursor = 'grab';
   if (!d) return;
+  if (d.mode !== 'tool' && V3.volCoarse) schedule();  // the volume was drawn coarse while moving: redraw it in full
   if (d.mode === 'tool') { endTransform(false); return; }
   if (d.moved || e.button !== 0) return;
   const [mx, my] = v3Local(e);
@@ -9549,7 +9746,7 @@ $('#vp3o').addEventListener('pointerup', e => {
   if (i >= 0) selectFromView('part', S.parts[i].id, e);
 });
 $('#vp3o').addEventListener('pointercancel', () => { if (V3.drag && V3.drag.mode === 'tool') endTransform(true); V3.drag = null; });
-$('#vp3o').addEventListener('wheel', e => { e.preventDefault(); CAM.dist *= e.deltaY < 0 ? 1 / 1.12 : 1.12; schedule(); }, {passive:false});
+$('#vp3o').addEventListener('wheel', e => { e.preventDefault(); CAM.dist *= e.deltaY < 0 ? 1 / 1.12 : 1.12; V3.wheelAt = Date.now(); schedule(); }, {passive:false});
 $('#vp').addEventListener('wheel', e => { e.preventDefault(); view.zoom = Math.min(20, Math.max(.25, view.zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15))); schedule(); }, {passive:false});
 const vpLocal = e => { const r = $('#vp').getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
 $('#vp').addEventListener('pointerdown', e => {

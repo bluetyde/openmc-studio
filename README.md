@@ -201,12 +201,14 @@ neutron tracks and the world boundary.
 - Drag to orbit, right-drag or Shift+drag to pan, wheel to zoom, **F** to focus on the
   selection, **Fit** to reset. Click a part to select it.
 - **Flux and dose maps in 3D:** next to the map in the toolbar, **Slice** draws it on the slice plane,
-  **Brightest** shows the largest value along each line of sight through the whole map, and **Surface** draws the
-  shape where the map reaches a percentage of its peak (the slider), shaded so it reads as a surface. Parts in
-  front hide it and Cutaway opens it up, as for the geometry; **Hide noisy** leaves out voxels with more than 50%
-  error. Same colour scale and legend as the slice. Every voxel on a line of sight is read, however thin, so a
-  single hot voxel is never skipped; a map too fine for that (more than 4,096 voxels along x + y + z, or wider
-  than the GPU's 3D textures) is shown on the slice with a note. Box maps only; a cylindrical map stays a slice.
+  **Brightest** shows the largest value along each line of sight through the whole map, **Surface** draws the
+  shape where the map reaches a percentage of its peak (the slider), shaded so it reads as a surface, and **Glow**
+  shows it as a soft cloud whose higher values glow brighter and hide what is behind them (a strength slider).
+  Box and cylindrical maps alike. Parts in front hide it and Cutaway opens it up, as for the geometry; **Hide
+  noisy** leaves out voxels with more than 50% error. Same colour scale and legend as the slice. Every voxel on a
+  line of sight is read, however thin, so a single hot voxel is never skipped; a map too fine for that (more than
+  about 4,000 bin boundaries along a ray, or wider than the GPU's 3D textures) is shown on the slice with a note.
+  While you orbit, pan or zoom, the map is drawn at half resolution and sharpens a moment after you stop.
 - **Cutaway** cuts the model open at the slice plane (XY / XZ / YZ and the position box),
   removing the half facing you, so cross-sections show their materials.
 - After a run, the **Flux map** is painted on the slice plane and **Tracks** are drawn

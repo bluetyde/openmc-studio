@@ -64,8 +64,8 @@ Test names: `test/…` is this repository; `exporter tests/…` is
 | Detector responses (He-3, BF3, B-10, U-235, custom) | yes | yes (`EnergyFunctionFilter`) | yes (`FM`) | n/a | `test_detector_responses.py` |
 | Material filter | yes | yes | **refused** by the exporter | n/a | `test_surface_and_periodic.py` (OpenMC only) |
 | Surface current, neutron or photon | yes | yes | yes (`F1:N` / `F1:P`, `C`, `FS`) | n/a | `test_generated_models.py`, exporter `tests/test_review_semantics.py` |
-| Regular (box) mesh, flux | yes, slice / slab / 3D volume view | yes | yes (`FMESH`; MCNP divides by voxel volume) | n/a | `test_mesh_maps.js`, `test_volume_view*.{js,cjs}` |
-| Cylindrical mesh, flux | yes, slice only | yes | yes (`FMESH GEOM=CYL`) | n/a | `test_cylindrical_mesh.py`, `test_cylindrical_view.js` |
+| Regular (box) mesh, flux | yes, slice / slab / 3D volume view (Brightest, Surface, Glow) | yes | yes (`FMESH`; MCNP divides by voxel volume) | n/a | `test_mesh_maps.js`, `test_volume_view*.{js,cjs}` |
+| Cylindrical mesh, flux | yes, slice and 3D volume view | yes | yes (`FMESH GEOM=CYL`) | n/a | `test_cylindrical_mesh.py`, `test_cylindrical_view.js` |
 | Mesh reaction rates | yes | yes | **no** (flux only) | n/a | |
 | Effective dose on cells (ICRP-116/-74) | yes | yes (+ volume calculation) | yes (`DE`/`DF`, `SD`, `FM`) | n/a | `test_dose_rates.py` (hand calculation), `test_dose_mcnp.py` |
 | Dose on parts inside lattices | yes | yes (per-instance volumes) | yes | n/a | `test_dose_rates.py`, `test_dose_mcnp.py`, exporter `tests/test_dose_export.py` |

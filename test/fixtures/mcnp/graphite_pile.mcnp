@@ -1,0 +1,250 @@
+$ This file was written with mcnpy
+c @studio-map-v1
+c ===================================================================
+c BLOCK 1: CELL CARDS
+c Format: <cell_id> <mat_id> <density> <surfaces> <parameters>
+c   - Material 0 = void (vacuum)
+c   - Negative density = mass density in g/cm3; positive = at/b-cm
+c   - Positive surface = outside (+); negative surface = inside (-)
+c ===================================================================
+c --- Cell 3: Apertures (12x11 array) (filled by lattice 2: Apertures (12x11 array)) ---
+c @studio-v1 cell 3 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_apertures%22%7D
+3 0 13 -14 15 -16 23 -18 1 -2 3 -4 5 -6 FILL=2 (-111.76 0 -60.96) IMP:N=1.0
+c --- Cell 4: Source drawer (Material 2: Air (Dry, Near Sea Level), rho = -0.001205 g/cm3) ---
+c @studio-v1 cell 4 1/1 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22drawer%22%7D
+4 2 -0.001205 7 -8 9 -10 11 -12 1 -2 3 -4 5 -6 IMP:N=1.0
+c --- Cell 5: Graphite pile (Material 1: Carbon, Graphite (Reactor Grade), rho = -1.7 g/cm3) ---
+c @studio-v1 cell 5 1/1 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22pile%22%7D
+5 1 -1.7 13 -14 15 -16 17 -18 1 -2 3 -4 5 -6 (-7:8:-9:10:-11:12) (-13:14:-15:16:-23:18) IMP:N=1.0
+c --- Cell 6: World (void) ---
+c @studio-v1 cell 6 1/1 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%7D
+6 0 1 -2 3 -4 5 -6 (-7:8:-9:10:-11:12) (-13:14:-15:16:-17:18) (-13:14:-15:16:-23:18) IMP:N=1.0
+c --- Cell 1: Aperture r11 c1 [unit] (Material 2: Air (Dry, Near Sea Level), rho = -0.001205 g/cm3) ---
+c @studio-v1 cell 1 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_apertures%22%7D
+1 2 -0.001205 19 -20 15 -16 21 -22 U 1 IMP:N=1.0
+c --- Cell 2: Apertures (12x11 array) Mod (Material 1: Carbon, Graphite (Reactor Grade), rho = -1.7 g/cm3) ---
+c @studio-v1 cell 2 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_apertures%22%7D
+2 1 -1.7 -19:20:-15:16:-21:22 U 1 IMP:N=1.0
+c @studio-v1 cell 7 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_apertures%22%7D
+7 0 -25 U=2 LAT=1 FILL=1 IMP:N=1.0
+c --- Cell 999: Outside World (vacuum boundary, particles terminated) ---
+c @studio-v1 cell 999 1/1 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%7D
+999 0 #3 #4 #5 #6 IMP:N=0
+
+c ===================================================================
+c BLOCK 2: SURFACE CARDS
+c Format: <surf_id> <mnemonic> <parameters in cm>
+c ===================================================================
+c --- Surface 13: (XPlane) ---
+13 P 1.0 0.0 0.0 -121.92
+c --- Surface 14: (XPlane) ---
+14 P 1.0 0.0 0.0 121.92
+c --- Surface 15: (YPlane) ---
+15 P 0.0 1.0 0.0 -121.92
+c --- Surface 16: (YPlane) ---
+16 P 0.0 1.0 0.0 121.92
+c --- Surface 23: (ZPlane) ---
+c @studio-v1 surface 23 1/2 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_apertures%22%2C%22
+c @studio-v1 surface 23 2/2 slot%22%3A22%7D
+23 P 0.0 0.0 1.0 -71.12
+c --- Surface 18: (ZPlane) ---
+18 P 0.0 0.0 1.0 152.4
+c --- Surface 1: (XPlane) ---
+c @studio-v1 surface 1 1/2 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%2C%22slot%2
+c @studio-v1 surface 1 2/2 2%3A0%7D
+1 P 1.0 0.0 0.0 -182.88
+c --- Surface 2: (XPlane) ---
+c @studio-v1 surface 2 1/2 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%2C%22slot%2
+c @studio-v1 surface 2 2/2 2%3A1%7D
+2 P 1.0 0.0 0.0 182.88
+c --- Surface 3: (YPlane) ---
+c @studio-v1 surface 3 1/2 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%2C%22slot%2
+c @studio-v1 surface 3 2/2 2%3A2%7D
+3 P 0.0 1.0 0.0 -182.88
+c --- Surface 4: (YPlane) ---
+c @studio-v1 surface 4 1/2 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%2C%22slot%2
+c @studio-v1 surface 4 2/2 2%3A3%7D
+4 P 0.0 1.0 0.0 182.88
+c --- Surface 5: (ZPlane) ---
+c @studio-v1 surface 5 1/2 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%2C%22slot%2
+c @studio-v1 surface 5 2/2 2%3A4%7D
+5 P 0.0 0.0 1.0 -182.88
+c --- Surface 6: (ZPlane) ---
+c @studio-v1 surface 6 1/2 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%2C%22slot%2
+c @studio-v1 surface 6 2/2 2%3A5%7D
+6 P 0.0 0.0 1.0 182.88
+c --- Surface 7: (XPlane) ---
+c @studio-v1 surface 7 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22drawer%22%2C%22slot%2
+c @studio-v1 surface 7 2/2 2%3A6%7D
+7 P 1.0 0.0 0.0 -0.9525
+c --- Surface 8: (XPlane) ---
+c @studio-v1 surface 8 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22drawer%22%2C%22slot%2
+c @studio-v1 surface 8 2/2 2%3A7%7D
+8 P 1.0 0.0 0.0 0.9525
+c --- Surface 9: (YPlane) ---
+c @studio-v1 surface 9 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22drawer%22%2C%22slot%2
+c @studio-v1 surface 9 2/2 2%3A8%7D
+9 P 0.0 1.0 0.0 -10.16
+c --- Surface 10: (YPlane) ---
+c @studio-v1 surface 10 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22drawer%22%2C%22slot%2
+c @studio-v1 surface 10 2/2 2%3A9%7D
+10 P 0.0 1.0 0.0 10.16
+c --- Surface 11: (ZPlane) ---
+c @studio-v1 surface 11 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22drawer%22%2C%22slot%2
+c @studio-v1 surface 11 2/2 2%3A10%7D
+11 P 0.0 0.0 1.0 -122.8725
+c --- Surface 12: (ZPlane) ---
+c @studio-v1 surface 12 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22drawer%22%2C%22slot%2
+c @studio-v1 surface 12 2/2 2%3A11%7D
+12 P 0.0 0.0 1.0 -120.9675
+c --- Surface 17: (ZPlane) ---
+c @studio-v1 surface 17 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22pile%22%2C%22slot%22%
+c @studio-v1 surface 17 2/2 3A16%7D
+17 P 0.0 0.0 1.0 -152.4
+c --- Surface 19: (Plane) ---
+c @studio-v1 surface 19 1/2 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_apertures%22%2C%22
+c @studio-v1 surface 19 2/2 slot%22%3A18%7D
+19 P 0.707106781187 0.0 -0.707106781187 -2.54
+c --- Surface 20: (Plane) ---
+c @studio-v1 surface 20 1/2 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_apertures%22%2C%22
+c @studio-v1 surface 20 2/2 slot%22%3A19%7D
+20 P 0.707106781187 0.0 -0.707106781187 2.54
+c --- Surface 21: (Plane) ---
+c @studio-v1 surface 21 1/2 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_apertures%22%2C%22
+c @studio-v1 surface 21 2/2 slot%22%3A20%7D
+21 P 0.707106781187 0.0 0.707106781187 -2.54
+c --- Surface 22: (Plane) ---
+c @studio-v1 surface 22 1/2 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_apertures%22%2C%22
+c @studio-v1 surface 22 2/2 slot%22%3A21%7D
+22 P 0.707106781187 0.0 0.707106781187 2.54
+c @studio-v1 surface 25 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_apertures%22%7D
+25 RPP -10.16 10.16 -121.92 121.92 -10.16 10.16
+
+c ===================================================================
+c BLOCK 3: DATA CARDS (Materials, Physics, Source, Tallies)
+c ===================================================================
+c -------------------------------------------------------------------
+c Materials & Thermal Scattering S(alpha, beta)
+c Format: M<id> <zaid> <fraction> (negative = wt%, positive = at%)
+c -------------------------------------------------------------------
+c --- Material 1: Carbon, Graphite (Reactor Grade), rho = 1.7 g/cm3 ---
+c @studio-v1 material 1 1/1 %7B%22kind%22%3A%22material%22%2C%22id%22%3A%22m_graphite%22%7D
+M1
+     5010   -1.8355495875073257E-7
+     5011   -8.164450412492672E-7
+     6012   -0.9880058570788415
+     6013   -0.01199314292115856
+c MT1: Thermal neutron scattering S(alpha, beta) for Material 1
+MT1 grph.40t
+c --- Material 2: Air (Dry, Near Sea Level), rho = 0.001205 g/cm3 ---
+c @studio-v1 material 2 1/1 %7B%22kind%22%3A%22material%22%2C%22id%22%3A%22m_air%22%7D
+M2
+     6012   -1.2251284879062516E-4
+     6013   -1.4871512093748708E-6
+     7014   -0.752305244741685
+     7015   -0.002962755258314888
+     8016   -0.23116605552664307
+     8017   -9.333460159096408E-5
+     8018   -5.216098717659598E-4
+     18036   -3.8527345040032535E-5
+     18038   -7.667262798076369E-6
+     18040   -0.012780805392161892
+c --- Material 3: He-3 detector gas (4 atm), rho = 0.000502 g/cm3 ---
+c @studio-v1 material 3 1/1 %7B%22kind%22%3A%22material%22%2C%22id%22%3A%22m_he3%22%7D
+M3 2003   1.0
+c --- Material 4: BF3 detector gas (96% B-10), rho = 0.00268 g/cm3 ---
+c @studio-v1 material 4 1/1 %7B%22kind%22%3A%22material%22%2C%22id%22%3A%22m_bf3%22%7D
+M4
+     5010   0.96
+     5011   0.04
+     9019   3.0
+c -------------------------------------------------------------------
+c Particle Transport Mode
+c -------------------------------------------------------------------
+c @studio-v1 data MODE 1/1 %7B%22kind%22%3A%22settings%22%2C%22id%22%3A%22settings%22%7D
+MODE N
+c -------------------------------------------------------------------
+c Source Definition & Run Control
+c -------------------------------------------------------------------
+c SDEF: General particle source distribution
+c @studio-v1 data SDEF 1/1 %7B%22kind%22%3A%22source%22%2C%22id%22%3A%22s_pube%22%7D
+SDEF PAR=1
+     X=D1
+     Y=D2
+     Z=D3
+     ERG=D4
+c @studio-v1 data SI1 1/1 %7B%22kind%22%3A%22source%22%2C%22id%22%3A%22s_pube%22%7D
+SI1 H -0.9525 0.9525
+c @studio-v1 data SP1 1/1 %7B%22kind%22%3A%22source%22%2C%22id%22%3A%22s_pube%22%7D
+SP1 0 1
+c @studio-v1 data SI2 1/1 %7B%22kind%22%3A%22source%22%2C%22id%22%3A%22s_pube%22%7D
+SI2 H -10.16 10.16
+c @studio-v1 data SP2 1/1 %7B%22kind%22%3A%22source%22%2C%22id%22%3A%22s_pube%22%7D
+SP2 0 1
+c @studio-v1 data SI3 1/1 %7B%22kind%22%3A%22source%22%2C%22id%22%3A%22s_pube%22%7D
+SI3 H -122.8725 -120.9675
+c @studio-v1 data SP3 1/1 %7B%22kind%22%3A%22source%22%2C%22id%22%3A%22s_pube%22%7D
+SP3 0 1
+c @studio-v1 data SI4 1/1 %7B%22kind%22%3A%22source%22%2C%22id%22%3A%22s_pube%22%7D
+SI4 H 0.05 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6 1.8 2.0 2.2 2.4 2.6 2.8 3.0 3.2 3.4 3.6 3.8 4.0 4.2 4.4 4.6 4.8 5.0 5.2 5.4 5.6 5.8
+     6.0 6.5 7.0 7.5 8.0 8.5 9.0 9.5 10.0 10.75
+c @studio-v1 data SP4 1/1 %7B%22kind%22%3A%22source%22%2C%22id%22%3A%22s_pube%22%7D
+SP4 D 0 0.00520663846404 0.00976244712008 0.0143182557761 0.0182232346241 0.0208265538562 0.0227790432802 0.0247315327042
+     0.0260331923202 0.0273348519362 0.0292873413602 0.0312398307842 0.0338431500163 0.0364464692483 0.0390497884803
+     0.0410022779043 0.0442564269444 0.0403514480963 0.0377481288643 0.0357956394403 0.0338431500163 0.0312398307842
+     0.0299381711682 0.0325414904003 0.0377481288643 0.0338431500163 0.0299381711682 0.0260331923202 0.0227790432802
+     0.0195248942402 0.0169215750081 0.0357956394403 0.0312398307842 0.0260331923202 0.0208265538562 0.0156199153921
+     0.0104132769281 0.00520663846404 0.00195248942402 0.000325414904003
+c NPS: Total particle histories to simulate
+c @studio-v1 data NPS 1/1 %7B%22kind%22%3A%22settings%22%2C%22id%22%3A%22settings%22%7D
+NPS 100000
+c -------------------------------------------------------------------
+c Tallies
+c Format: F<n>:<p> <cells/surfaces> (e.g., F4: volume flux, F1: surface current)
+c -------------------------------------------------------------------
+c @studio-v1 tally 4 1/1 %7B%22kind%22%3A%22tally%22%2C%22id%22%3A%22t_x%22%7D
+FMESH4:N GEOM=XYZ ORIGIN=-121.92 -21.59 -21.59
+     IMESH=121.92 IINTS=96 JMESH=-19.05 JINTS=1
+     KMESH=-19.05 KINTS=1
+c @studio-v1 tally 14 1/1 %7B%22kind%22%3A%22tally%22%2C%22id%22%3A%22t_y%22%7D
+FMESH14:N GEOM=XYZ ORIGIN=8.89 -121.92 -21.59
+     IMESH=11.43 IINTS=1 JMESH=121.92 JINTS=96
+     KMESH=-19.05 KINTS=1
+c @studio-v1 tally 24 1/1 %7B%22kind%22%3A%22tally%22%2C%22id%22%3A%22t_z%22%7D
+FMESH24:N GEOM=XYZ ORIGIN=8.89 -21.59 -152.4
+     IMESH=11.43 IINTS=1 JMESH=-19.05 JINTS=1
+     KMESH=152.4 KINTS=120
+c @studio-v1 tally 34 1/1 %7B%22kind%22%3A%22tally%22%2C%22id%22%3A%22t_he3_x%22%7D
+FMESH34:N GEOM=XYZ ORIGIN=-121.92 -21.59 -21.59
+     IMESH=121.92 IINTS=96 JMESH=-19.05 JINTS=1
+     KMESH=-19.05 KINTS=1
+     FM=0.00010023492276744086 3 103
+c @studio-v1 tally 44 1/1 %7B%22kind%22%3A%22tally%22%2C%22id%22%3A%22t_he3_y%22%7D
+FMESH44:N GEOM=XYZ ORIGIN=8.89 -121.92 -21.59
+     IMESH=11.43 IINTS=1 JMESH=121.92 JINTS=96
+     KMESH=-19.05 KINTS=1
+     FM=0.00010023492276744086 3 103
+c @studio-v1 tally 54 1/1 %7B%22kind%22%3A%22tally%22%2C%22id%22%3A%22t_he3_z%22%7D
+FMESH54:N GEOM=XYZ ORIGIN=8.89 -21.59 -152.4
+     IMESH=11.43 IINTS=1 JMESH=-19.05 JINTS=1
+     KMESH=152.4 KINTS=120
+     FM=0.00010023492276744086 3 103
+c @studio-v1 tally 64 1/1 %7B%22kind%22%3A%22tally%22%2C%22id%22%3A%22t_b10_x%22%7D
+FMESH64:N GEOM=XYZ ORIGIN=-121.92 -21.59 -21.59
+     IMESH=121.92 IINTS=96 JMESH=-19.05 JINTS=1
+     KMESH=-19.05 KINTS=1
+     FM=9.628527011538423e-05 4 107
+c @studio-v1 tally 74 1/1 %7B%22kind%22%3A%22tally%22%2C%22id%22%3A%22t_b10_y%22%7D
+FMESH74:N GEOM=XYZ ORIGIN=8.89 -121.92 -21.59
+     IMESH=11.43 IINTS=1 JMESH=121.92 JINTS=96
+     KMESH=-19.05 KINTS=1
+     FM=9.628527011538423e-05 4 107
+c @studio-v1 tally 84 1/1 %7B%22kind%22%3A%22tally%22%2C%22id%22%3A%22t_b10_z%22%7D
+FMESH84:N GEOM=XYZ ORIGIN=8.89 -21.59 -152.4
+     IMESH=11.43 IINTS=1 JMESH=-19.05 JINTS=1
+     KMESH=152.4 KINTS=120
+     FM=9.628527011538423e-05 4 107
+c @studio-v1 tally 94 1/1 %7B%22kind%22%3A%22tally%22%2C%22id%22%3A%22t_map%22%7D
+FMESH94:N GEOM=XYZ ORIGIN=-121.92 -21.59 -152.4
+     IMESH=121.92 IINTS=96 JMESH=-19.05 JINTS=1
+     KMESH=152.4 KINTS=120

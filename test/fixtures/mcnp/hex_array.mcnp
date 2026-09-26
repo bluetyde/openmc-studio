@@ -1,0 +1,186 @@
+$ This file was written with mcnpy
+c @studio-map-v1
+c ===================================================================
+c BLOCK 1: CELL CARDS
+c Format: <cell_id> <mat_id> <density> <surfaces> <parameters>
+c   - Material 0 = void (vacuum)
+c   - Negative density = mass density in g/cm3; positive = at/b-cm
+c   - Positive surface = outside (+); negative surface = inside (-)
+c ===================================================================
+c --- Cell 4: Hex pins (filled by lattice 3: Hex pins) ---
+c @studio-v1 cell 4 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%7D
+4 0 -16 17 -18 1 -2 3 -4 5 -6 FILL=3 (5.0 -4.0 3.0) IMP:N=1.0
+c --- Cell 5: pool (Material 1: Water, rho = -1 g/cm3) ---
+c @studio-v1 cell 5 1/1 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22pool%22%7D
+5 1 -1.0 7 -8 9 -10 11 -12 1 -2 3 -4 5 -6 (16:-17:18) IMP:N=1.0
+c --- Cell 6: World (void) ---
+c @studio-v1 cell 6 1/1 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%7D
+6 0 1 -2 3 -4 5 -6 (-7:8:-9:10:-11:12) (16:-17:18) IMP:N=1.0
+c --- Cell 1: pin_-2_0 [unit] (Material 2: Iron, rho = -7.87 g/cm3) ---
+c @studio-v1 cell 1 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%7D
+1 2 -7.87 -13 14 -15 U 1 IMP:N=1.0
+c --- Cell 2: Hex pins Mod (Material 1: Water, rho = -1 g/cm3) ---
+c @studio-v1 cell 2 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%7D
+2 1 -1.0 13:-14:15 U 1 IMP:N=1.0
+c --- Cell 3: Hex pins Solid [unit] (Material 1: Water, rho = -1 g/cm3) ---
+c @studio-v1 cell 3 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%7D
+3 1 -1.0 -19:19 U 2 IMP:N=1.0
+c @studio-v1 cell 8 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%7D
+8 0 -26 -27 -28 -29 -30 -31 -32 33 U=3 LAT=2 FILL=-6:6 -6:6 0:0 2 2 2 2 2 2 2
+c --- Cell 2: Hex pins Mod (Material 1: Water, rho = -1 g/cm3) ---
+     2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
+c --- Cell 2: Hex pins Mod (Material 1: Water, rho = -1 g/cm3) ---
+     2 2 2 2 2 2 2 2 2 2 2 2 2 2 1 1 1 2 2 2 2 2 2 2 2 2 1 1 1 1 2 2 2 2 2 2 2
+c --- Cell 2: Hex pins Mod (Material 1: Water, rho = -1 g/cm3) ---
+     2 1 1 2 1 1 2 2 2 2 2 2 2 2 1 1 1 1 2 2 2 2 2 2 2 2 2 1 1 1 2 2 2 2 2 2 2
+c --- Cell 2: Hex pins Mod (Material 1: Water, rho = -1 g/cm3) ---
+     2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
+c --- Cell 2: Hex pins Mod (Material 1: Water, rho = -1 g/cm3) ---
+     2 2 2 2 2 2 2 2 2 2 2 2 2 2 IMP:N=1.0
+c --- Cell 999: Outside World (vacuum boundary, particles terminated) ---
+c @studio-v1 cell 999 1/1 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%7D
+999 0 #4 #5 #6 IMP:N=0
+
+c ===================================================================
+c BLOCK 2: SURFACE CARDS
+c Format: <surf_id> <mnemonic> <parameters in cm>
+c ===================================================================
+c --- Surface 16: (ZCylinder) ---
+c @studio-v1 surface 16 1/2 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%2C%22slot%2
+c @studio-v1 surface 16 2/2 2%3A15%7D
+16 C/Z 5.0 -4.0 8.4
+c --- Surface 17: (ZPlane) ---
+c @studio-v1 surface 17 1/2 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%2C%22slot%2
+c @studio-v1 surface 17 2/2 2%3A16%7D
+17 P 0.0 0.0 1.0 -12.0
+c --- Surface 18: (ZPlane) ---
+c @studio-v1 surface 18 1/2 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%2C%22slot%2
+c @studio-v1 surface 18 2/2 2%3A17%7D
+18 P 0.0 0.0 1.0 18.0
+c --- Surface 1: (XPlane) ---
+c @studio-v1 surface 1 1/2 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%2C%22slot%2
+c @studio-v1 surface 1 2/2 2%3A0%7D
+1 P 1.0 0.0 0.0 -30.0
+c --- Surface 2: (XPlane) ---
+c @studio-v1 surface 2 1/2 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%2C%22slot%2
+c @studio-v1 surface 2 2/2 2%3A1%7D
+2 P 1.0 0.0 0.0 30.0
+c --- Surface 3: (YPlane) ---
+c @studio-v1 surface 3 1/2 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%2C%22slot%2
+c @studio-v1 surface 3 2/2 2%3A2%7D
+3 P 0.0 1.0 0.0 -30.0
+c --- Surface 4: (YPlane) ---
+c @studio-v1 surface 4 1/2 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%2C%22slot%2
+c @studio-v1 surface 4 2/2 2%3A3%7D
+4 P 0.0 1.0 0.0 30.0
+c --- Surface 5: (ZPlane) ---
+c @studio-v1 surface 5 1/2 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%2C%22slot%2
+c @studio-v1 surface 5 2/2 2%3A4%7D
+5 P 0.0 0.0 1.0 -30.0
+c --- Surface 6: (ZPlane) ---
+c @studio-v1 surface 6 1/2 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%2C%22slot%2
+c @studio-v1 surface 6 2/2 2%3A5%7D
+6 P 0.0 0.0 1.0 30.0
+c --- Surface 7: (XPlane) ---
+c @studio-v1 surface 7 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22pool%22%2C%22slot%22%
+c @studio-v1 surface 7 2/2 3A6%7D
+7 P 1.0 0.0 0.0 -15.0
+c --- Surface 8: (XPlane) ---
+c @studio-v1 surface 8 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22pool%22%2C%22slot%22%
+c @studio-v1 surface 8 2/2 3A7%7D
+8 P 1.0 0.0 0.0 25.0
+c --- Surface 9: (YPlane) ---
+c @studio-v1 surface 9 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22pool%22%2C%22slot%22%
+c @studio-v1 surface 9 2/2 3A8%7D
+9 P 0.0 1.0 0.0 -24.0
+c --- Surface 10: (YPlane) ---
+c @studio-v1 surface 10 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22pool%22%2C%22slot%22%
+c @studio-v1 surface 10 2/2 3A9%7D
+10 P 0.0 1.0 0.0 16.0
+c --- Surface 11: (ZPlane) ---
+c @studio-v1 surface 11 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22pool%22%2C%22slot%22%
+c @studio-v1 surface 11 2/2 3A10%7D
+11 P 0.0 0.0 1.0 -17.0
+c --- Surface 12: (ZPlane) ---
+c @studio-v1 surface 12 1/2 %7B%22kind%22%3A%22part%22%2C%22id%22%3A%22pool%22%2C%22slot%22%
+c @studio-v1 surface 12 2/2 3A11%7D
+12 P 0.0 0.0 1.0 23.0
+c --- Surface 13: (ZCylinder) ---
+c @studio-v1 surface 13 1/2 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%2C%22slot%2
+c @studio-v1 surface 13 2/2 2%3A12%7D
+13 CZ 1.1
+c --- Surface 14: (ZPlane) ---
+c @studio-v1 surface 14 1/2 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%2C%22slot%2
+c @studio-v1 surface 14 2/2 2%3A13%7D
+14 P 0.0 0.0 1.0 -15.0
+c --- Surface 15: (ZPlane) ---
+c @studio-v1 surface 15 1/2 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%2C%22slot%2
+c @studio-v1 surface 15 2/2 2%3A14%7D
+15 P 0.0 0.0 1.0 15.0
+c --- Surface 19: (Sphere) ---
+19 SO 1.0E9
+c @studio-v1 surface 26 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%7D
+26 P 0.8660254038 0.5 0 1.5
+c @studio-v1 surface 27 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%7D
+27 P -0.8660254038 -0.5 0 1.5
+c @studio-v1 surface 28 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%7D
+28 P 0 1.0 0 1.5
+c @studio-v1 surface 29 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%7D
+29 P 0 -1.0 0 1.5
+c @studio-v1 surface 30 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%7D
+30 P -0.8660254038 0.5 0 1.5
+c @studio-v1 surface 31 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%7D
+31 P 0.8660254038 -0.5 0 1.5
+c @studio-v1 surface 32 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%7D
+32 PZ 15.0
+c @studio-v1 surface 33 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%7D
+33 PZ -15.0
+
+c ===================================================================
+c BLOCK 3: DATA CARDS (Materials, Physics, Source, Tallies)
+c ===================================================================
+c -------------------------------------------------------------------
+c Materials & Thermal Scattering S(alpha, beta)
+c Format: M<id> <zaid> <fraction> (negative = wt%, positive = at%)
+c -------------------------------------------------------------------
+c --- Material 1: Water, rho = 1 g/cm3 ---
+c @studio-v1 material 1 1/1 %7B%22kind%22%3A%22material%22%2C%22id%22%3A%22m_water%22%7D
+M1
+     1001   1.99968852
+     1002   3.1148E-4
+     8016   0.9976206
+     8017   3.79E-4
+     8018   0.0020004
+c MT1: Thermal neutron scattering S(alpha, beta) for Material 1
+MT1 h-h2o.40t
+c --- Material 2: Iron, rho = 7.87 g/cm3 ---
+c @studio-v1 material 2 1/1 %7B%22kind%22%3A%22material%22%2C%22id%22%3A%22m_steel%22%7D
+M2
+     26054   0.05845
+     26056   0.91754
+     26057   0.02119
+     26058   0.00282
+c -------------------------------------------------------------------
+c Particle Transport Mode
+c -------------------------------------------------------------------
+c @studio-v1 data MODE 1/1 %7B%22kind%22%3A%22settings%22%2C%22id%22%3A%22settings%22%7D
+MODE N
+c -------------------------------------------------------------------
+c Source Definition & Run Control
+c -------------------------------------------------------------------
+c SDEF: General particle source distribution
+c @studio-v1 data SDEF 1/1 %7B%22kind%22%3A%22source%22%2C%22id%22%3A%22s1%22%7D
+SDEF PAR=1
+     POS=5.0 -4.0 3.0
+     ERG=2.0
+c NPS: Total particle histories to simulate
+c @studio-v1 data NPS 1/1 %7B%22kind%22%3A%22settings%22%2C%22id%22%3A%22settings%22%7D
+NPS 40000
+c -------------------------------------------------------------------
+c Tallies
+c Format: F<n>:<p> <cells/surfaces> (e.g., F4: volume flux, F1: surface current)
+c -------------------------------------------------------------------
+c @studio-v1 tally 4 1/1 %7B%22kind%22%3A%22tally%22%2C%22id%22%3A%22t_pool%22%7D
+FMESH4:N GEOM=XYZ ORIGIN=-15.0 -24.0 -17.0
+     IMESH=25.0 IINTS=4 JMESH=16.0 JINTS=4
+     KMESH=23.0 KINTS=2

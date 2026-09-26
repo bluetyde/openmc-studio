@@ -58,6 +58,21 @@ class Run:
         (self.path / "meta.json").write_text(json.dumps(self.meta(), indent=2))
 
 
+PROJECT_TAG = "@studio-project-v1"
+
+
+def project_block(project, prefix):
+    """The project as comment lines, as the page writes them (index.html projectBlock): base64 of the JSON's
+    UTF-8, 76 characters a line, each line `<prefix>@studio-project-v1: <chunk>`; well under MCNP's 128 columns."""
+    import base64
+    b64 = base64.b64encode(json.dumps(project, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).decode("ascii")
+    if len(b64) > 8_000_000:
+        return [f"{prefix}{PROJECT_TAG} not embedded: the project is over 6 MB. It is in project.json beside this deck."]
+    out = [f"{prefix}{PROJECT_TAG} OpenMC Studio project ({len(b64)} characters below): Studio reopens this file as the project."]
+    out += [f"{prefix}{PROJECT_TAG}: {b64[i:i + 76]}" for i in range(0, len(b64), 76)]
+    return out
+
+
 class Studio:
     def __init__(self, runs_dir, token, port):
         self.root = Path(runs_dir).expanduser()
@@ -113,6 +128,10 @@ class Studio:
         (folder / "project.json").write_text(json.dumps(project, indent=2), encoding="utf-8")
         report = self.mcnp.run(script, slug, folder, seq=None)
         report.update(folder=str(folder), name=slug)
+        runnable = folder / f"{slug}_runnable.mcnp"
+        if report.get("ok") and runnable.is_file():  # the deck is a project file too: Open project reads it back
+            text = runnable.read_text(encoding="utf-8").rstrip()
+            runnable.write_text(text + "\n" + "\n".join(project_block(project, "c ")) + "\n", encoding="utf-8")
         return report
 
     def check_geometry(self, script, world, points, particles):

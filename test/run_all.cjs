@@ -49,6 +49,7 @@ function suites(p) {
   if (p === 'physics') {
     const studio = hostPath(REPO), exp = env.OPENMC_MCNP_PROJECT;  // the exporter path is as the Python host sees it
     return [...listDir('test', /^test_.*\.py$/).filter(s => !/test_cad_/.test(s)).map(s => py(s, studio)),
+      node('test/test_mcnp_import_gate.cjs'),  // Windows node + Python on the host: needs OPENMC_PYTHON (checked above)
       {kind:'python-glob', label:'exporter tests/test_*.py + tests/check_export_mcnp.py', cwdHost:exp}];
   }
   if (p === 'full') return [node('setup/cad/run_integration.cjs')];

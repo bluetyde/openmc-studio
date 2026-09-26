@@ -81,7 +81,10 @@ Test names: `test/…` is this repository; `exporter tests/…` is
 | Project file (`.openmc-studio.json`) | yes | `test_frontend_model.js` |
 | model.py / model.mcnp carry the project (`@studio-project-v1`) | yes; a saved deck carries the project it was translated from | `test_embed_project.js` |
 | Import edited model.py / model.mcnp (numbers Studio marked) | yes; anything else is listed, not applied | `test_patch_import.js`, `test_mcnp_patch_import.js`, `test_review_deep.js` |
-| Import a model.py / MCNP deck Studio didn't write | **no** (refused with a message) | `test_patch_import.js` |
+| Import an MCNP deck Studio didn't write: geometry (universes, `LAT=1`, `TRCL`/`*FILL`, macrobodies, `LIKE n BUT`) and materials | yes, as read-only imported geometry, checked against OpenMC point by point | `test_mcnp_import_gate.cjs`, `test_mcnp_import.py` |
+| ...its sources, tallies and run settings | **no** (listed in the Log) | `test_mcnp_import_gate.cjs` |
+| ...hexagonal lattices (`LAT=2`), tori | **refused** with the reason | `test_mcnp_import.py` |
+| Import a model.py Studio didn't write | **no** (refused with a message) | `test_patch_import.js` |
 | OpenMC XML import | no | |
 | Results: k-eff, tables, maps, tracks | yes | `test_results_overlay_browser.cjs`, `test_output_tabs_browser.cjs` |
 | Export for ParaView (VTK maps, tracks, STL geometry) | yes | `test_vtk_export.py`, `test_paraview_export.js` |

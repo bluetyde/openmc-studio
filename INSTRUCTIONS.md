@@ -55,7 +55,15 @@ python -c "import mcnpy"    # must print "Metamodel Gateway Server Started", the
 The MCNPy clone is about 130 MB and can take several minutes. That last line is the real test: an import that
 succeeds without those two messages means the Java bridge isn't working.
 
-Versions this was developed against: OpenMC 0.15.3, MontePy 1.1.3, MCNPy 0.0.7, MetaPy 0.0.1, Python 3.11.
+To import MCNP decks Studio didn't write (Convert > Import MCNP deck…), add the OpenMC developers' converter.
+It isn't on PyPI either; install the commit Studio was tested with (it needs only NumPy and OpenMC):
+
+```bash
+pip install --no-deps "git+https://github.com/openmc-dev/openmc_mcnp_adapter.git@80fda5abeed22502e2f6e19e57a9b2a8762844a8"
+```
+
+Versions this was developed against: OpenMC 0.15.3, MontePy 1.1.3, MCNPy 0.0.7, MetaPy 0.0.1,
+openmc_mcnp_adapter 0.1.0 (commit 80fda5a), Python 3.11.
 
 ## 3. Get the nuclear data
 

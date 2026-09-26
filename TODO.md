@@ -232,7 +232,8 @@ and the MCNP lattice work; fixes listed under Completed).
     fingerprint needed: the file is compared with what the restored project generates). A deck waits for the
     model.mcnp tab to translate first. The live tabs and run folders don't carry the block; the patch import
     ignores it. Tests: `test/test_embed_project.js` (8); a saved model.py with the block runs in OpenMC.
-    Not done: the Export ▸ MCNP input deck written by the server (it has the project.json beside it).
+    The server's Export ▸ MCNP input deck carries it too (`server.project_block`, same format; checked by
+    decoding the server's block with the page's `readProjectBlock`).
   - **STEP: keep names and materials.** STEP export writes one unnamed compound today, so even part names
     are lost. Write each part as its own named solid (PRODUCT name = the Studio name), put Studio data
     (material, density, id) in the product description, and also write a small sidecar JSON beside the

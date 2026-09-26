@@ -78,6 +78,19 @@ test('damaged or missing blocks are reported, and the open project is left alone
   assert.ok(run('window.__log').some(([k, m]) => k === 'error' && /has no project inside/.test(m)));
 });
 
+test('the block the server writes into Export > MCNP input decks reads back in the page', () => {
+  const {spawnSync} = require('child_process');
+  const want = projectJson();
+  const py = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+  const r = spawnSync(py, ['-c', 'import json, sys; sys.path.insert(0, sys.argv[1]); from openmc_studio.server import project_block; ' +
+    'print("\\n".join(project_block(json.loads(sys.stdin.buffer.read().decode("utf-8")), "c ")))', path.join(__dirname, '..', 'studio')],
+    {input: want, encoding: 'utf8'});
+  assert.equal(r.status, 0, r.stderr);
+  const deck = 'Title\n1 0 -1\n\n1 so 5\n\nMODE N\n' + r.stdout;
+  assert.ok(r.stdout.split('\n').filter(Boolean).every(l => l.startsWith('c @studio-project-v1') && l.length <= 128));
+  assert.equal(JSON.stringify(sb.readProjectBlock(deck)), want, 'Python and the page agree on the format');
+});
+
 test('a project file still opens as before', async () => {
   const want = projectJson(), json = JSON.stringify(run('S'));
   run("S = normalizeProject(sampleModel());");

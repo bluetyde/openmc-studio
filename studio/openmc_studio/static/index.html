@@ -395,6 +395,7 @@ input[type=checkbox]{accent-color:var(--accent)}
 </div>
 <input type="file" id="openFile" accept=".json,.py,.mcnp,.i,.inp,.txt,application/json,text/plain" hidden>
 <input type="file" id="patchFile" accept=".py,.mcnp,.i,.inp,.txt,text/x-python,text/plain" hidden>
+<input type="file" id="mcnpDeckFile" accept=".mcnp,.i,.inp,.txt,text/plain" hidden>
 <div class="menu" id="matMenu" hidden role="menu"></div>
 <div class="menu" id="sourceMenu" hidden role="menu"></div>
 <div class="menu" id="detectorMenu" hidden role="menu"></div>
@@ -2540,6 +2541,61 @@ function commitCsgImport(report, fileName, choice = {}) {
     '. Undo returns to the previous project.');
   return components;
 }
+// Commit an imported MCNP deck (server mcnp_import.py: openmc_mcnp_adapter, flattened, checked point by point
+// against OpenMC). Like a CSG import it becomes a new project: the deck's cells are read-only imported components,
+// its materials are added (by name, so re-importing reuses them), parts, groups and tallies go, and sources and
+// settings carry over, because the deck's own source and tallies aren't imported yet (the Log lists them).
+function commitMcnpImport(report, fileName) {
+  if (!report || !report.ok || !Array.isArray(report.components) || !report.components.length) throw new Error('The import report has no geometry.');
+  HISTORY.boundary = true;
+  const ids = new Set([...S.materials, ...S.sources].map(o => o.id));
+  const fresh = prefix => { let id; do { id = newId(prefix); } while (ids.has(id)); ids.add(id); return id; };
+  const importId = fresh('i');
+  const mats = [...S.materials], byMcnp = {};
+  (report.materials || []).forEach(m => {
+    const same = mats.find(x => x.name === m.name && x.comps === m.comps && Math.abs(x.density - m.density) <= 1e-9 * m.density);
+    if (same) { byMcnp[m.mcnp] = same.id; return; }
+    const id = fresh('m');
+    mats.push({id, name:m.name, color:m.color, density:m.density, frac:m.frac, comps:m.comps, sab:m.sab || '', ref:`MCNP M${m.mcnp}`});
+    byMcnp[m.mcnp] = id;
+  });
+  const components = report.components.map(c => ({id:fresh('k'), name:c.name, import:importId, source:{key:c.key, path:null},
+    units:'cm', ir:1, bounds:c.bounds_cm, surfaces:clone(c.surfaces), display:c.display ? clone(c.display) : null,
+    cells:c.cells.map(cell => ({id:fresh('c'), name:cell.name, region:clone(cell.region), material:byMcnp[cell.material_mcnp] || 'void',
+      mcnpCell:cell.mcnp_cell}))}));
+  const left = Object.entries(report.not_imported || {}).map(([k, n]) => `${k}${n > 1 ? ` ×${n}` : ''}`);
+  S = normalizeProject({...S, schema:SCHEMA_VERSION, parts:[], groups:[], tallies:[], materials:mats,
+    settings:{...S.settings, name:String(fileName).replace(/\.[^.]+$/, '')},
+    csg:{components},
+    imports:[{id:importId, file:String(fileName), sha256:report.source_sha256, at:new Date().toISOString(), mode:'mcnp',
+      adapter:report.adapter, versions:report.versions || null, units:'cm', cells:report.cells, check:report.check,
+      outside:report.outside_cells || [], voidCells:report.void_cells || 0, notImported:report.not_imported || {}, omitted:[]}]});
+  const b = report.bounds_cm, need = Math.max(...b.map(Math.abs)) * 1.1;
+  const want = S.settings.worldShape === 'box' ? need : need * Math.sqrt(3);
+  if (want > S.settings.worldR) { const step = Math.pow(10, Math.floor(Math.log10(want))) / 2; S.settings.worldR = Math.ceil(want / step) * step; }
+  sel = {kind:'settings'};
+  renderAll();
+  log('ok', `Imported ${esc(fileName)}: ${report.cells} cell${report.cells === 1 ? '' : 's'} in ${components.length} component${components.length === 1 ? '' : 's'}, ` +
+    `${(report.materials || []).length} material${(report.materials || []).length === 1 ? '' : 's'}; checked against OpenMC's reading of the deck at ` +
+    `${report.check.agree.toLocaleString()} of ${report.check.points.toLocaleString()} points. Undo returns to the previous project.`);
+  if ((report.outside_cells || []).length) log('info', `Cell${report.outside_cells.length === 1 ? '' : 's'} ${report.outside_cells.join(', ')} (importance 0, the outside) became Studio's world boundary.`);
+  if (report.void_cells) log('info', `${report.void_cells} void cell${report.void_cells === 1 ? ' is' : 's are'} left to Studio's world, which is void wherever no part is.`);
+  if (left.length) log('warn', `Not imported from the deck (yet): ${esc(left.join(', '))}. Sources and tallies are Studio's own: the project keeps its current source and has no tallies.`);
+  return components;
+}
+async function importMcnpDeck(text, fileName) {
+  setOutTab('log');
+  if (/@studio-project-v1/.test(text)) { log('info', `${esc(fileName)} was saved by Studio and carries its project: opening that.`); return openProjectText(text, fileName); }
+  if (!LOCAL.on) { log('warn', 'Importing an MCNP deck needs the local Studio server (it runs OpenMC to read and check the deck).'); return; }
+  logProgress('mcnpImport', `Reading ${esc(fileName)} with openmc_mcnp_adapter and checking it against OpenMC…`);
+  let r;
+  try { r = await api('/api/import-mcnp', {method:'POST', body:JSON.stringify({text, name:fileName})}); }
+  catch (e) { r = {ok:false, error:e.message}; }
+  document.getElementById('mcnpImport')?.remove();
+  if (!r.ok) { log('error', `Didn't import ${esc(fileName)}: ${esc(r.error || 'unknown error')}${r.folder ? ` (files in ${esc(r.folder)})` : ''}`); return r; }
+  try { commitMcnpImport(r, fileName); } catch (e) { log('error', `Didn't import ${esc(fileName)}: ${esc(e.message)}`); }
+  return r;
+}
 // What the MCNP export translates: the same model (the exporter writes RectLattices as LAT=1 and HexLattices as
 // LAT=2). Options stay here so one can force cell-by-cell arrays for MCNP again ({flatHex:true} or {flat:true}).
 const MCNP_OPTS = {};
@@ -4166,6 +4222,7 @@ const RIBBON = {
       ['convert', 'CSG to STEP…', e => openCadExportMenu(e.currentTarget)]
     ]},
     {label:'Round trip', btns:[['open', 'Import edited model.py / .mcnp…', () => $('#patchFile').click()]]},
+    {label:'MCNP deck', btns:[['open', 'Import MCNP deck…', () => $('#mcnpDeckFile').click(), () => LOCAL.on]]},
     {label:'Nuclear Decks', btns:[
       ['save', 'MCNP input', () => exportMcnp(), () => LOCAL.on],
       ['copy', 'Copy model.py', copyScript],
@@ -4393,7 +4450,7 @@ function renderTree() {
   }).join('') + S.groups.filter(g => !shown.has(g.id)).map(groupRow).join(''); // remaining groups
   h += group('parts', 'Geometry', S.parts.length + 1, 'Add sphere',
     partRows + item('world', undefined, ic('world', 14), 'World boundary', `${S.settings.worldShape} ${shortLen(S.settings.worldR)}`));
-  if (csgComponents().length) h += group('csg', 'Imported CAD', csgComponents().length, '',
+  if (csgComponents().length) h += group('csg', (S.imports || []).some(i => i.mode === 'mcnp') ? 'Imported geometry' : 'Imported CAD', csgComponents().length, '',
     csgComponents().map(k => {
       const pending = k.cells.some(c => c.materialPending);
       const mats = [...new Set(k.cells.map(c => c.material))];
@@ -4522,7 +4579,9 @@ function specFor(kind, o) {
     });
     const secs = [{title:'Imported component', fields:[F('text', 'name', 'Name'),
       note(`From <b>${esc(imp.file || 'a CAD file')}</b>: ${esc(o.source ? o.source.key : '')}. ${o.cells.length} cell${o.cells.length === 1 ? '' : 's'}, ${o.surfaces.length} surface${o.surfaces.length === 1 ? '' : 's'} (${esc(types)}).`),
-      note('The geometry is read-only: it is exactly the converted CAD solid, checked against it point by point. Move or resize it in the CAD file and import again.'),
+      note(imp.mode === 'mcnp'
+        ? `The geometry is read-only: it is the deck's cells (universes and lattices laid out cell by cell), checked against OpenMC's reading of the deck at ${imp.check ? imp.check.agree.toLocaleString() : '?'} points. The 3D view draws a voxel preview; slices and runs use the exact surfaces. Change it in the deck and import again.`
+        : 'The geometry is read-only: it is exactly the converted CAD solid, checked against it point by point. Move or resize it in the CAD file and import again.'),
       ...(o.cells.length > 1 ? [F('material', 'material', 'All cells', {obj:all, hint:'Sets every cell of this component.'})] : []),
       ...(pending ? [note('<b>Needs a material.</b> CAD files carry none, so runs are blocked until every cell has one.'),
         {type:'buttons', btns:[['Keep as Void (empty space)', () => { HISTORY.boundary = true; o.cells.forEach(c => { if (c.materialPending) { c.material = 'void'; delete c.materialPending; } }); renderProps(); schedule(); }]]}] : []),
@@ -9679,6 +9738,7 @@ $('#runBtn').addEventListener('click', runModel);
 $('#propFilter').addEventListener('input', applyPropFilter);
 $('#openFile').addEventListener('change', e => { const f = e.target.files[0]; if (f) openProject(f); e.target.value = ''; });
 $('#patchFile').addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (f) importScriptPatch(await f.text(), f.name); });
+$('#mcnpDeckFile').addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (f) importMcnpDeck(await f.text(), f.name); });
 document.querySelectorAll('[data-plane]').forEach(b => b.addEventListener('click', () => { view.plane = b.dataset.plane; view.slice = 0; syncViewControls(); schedule(); }));
 $('#sliceIn').addEventListener('input', e => { const v = parseFloat(e.target.value); if (fin(v)) { view.slice = fromShown(v); schedule(); } });
 $('#zoomIn').addEventListener('click', () => { if (view.mode === '3d') CAM.dist /= 1.4; else view.zoom = Math.min(view.zoom * 1.4, 20); schedule(); });

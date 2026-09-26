@@ -98,6 +98,7 @@ def _dose(tallies, info, cell_names, openmc):
     """
     rate = info.get("source_rate")
     vols = info.get("volumes", {})
+    labels = info.get("labels", {})  # Studio part names for parts inside lattices
     maps = {}
     for t in tallies:
         meta = info["tallies"][str(t.id)]
@@ -110,16 +111,23 @@ def _dose(tallies, info, cell_names, openmc):
             continue
         meta = info["tallies"][str(t.id)]
         g = groups.setdefault(meta["studio"], {"meta": meta, "cells": {}})
-        cf = t.find_filter(openmc.CellFilter)
+        # CellFilter bins are cells; CellInstanceFilter bins are (cell, instance): a part inside a lattice is
+        # its unit cell in one element, and its volume is keyed "cell/instance" in dose.json
+        inst = t.find_filter(openmc.CellInstanceFilter) if any(isinstance(f, openmc.CellInstanceFilter) for f in t.filters) else None
+        bins = [(int(c), int(i)) for c, i in inst.bins] if inst is not None else [(int(c), None) for c in t.find_filter(openmc.CellFilter).bins]
         mean, std = t.mean.reshape(-1), t.std_dev.reshape(-1)
-        for i, cid in enumerate(cf.bins):
-            c = g["cells"].setdefault(int(cid), {})
+        for i, b in enumerate(bins):
+            c = g["cells"].setdefault(b, {})
             c[meta["particle"]] = (float(mean[i]), float(std[i]))
     for studio, g in groups.items():
         rows = []
-        for cid, parts in g["cells"].items():
-            v, dv = vols.get(str(cid), [None, None])
-            row = {"cell": cell_names.get(cid, f"cell {cid}"), "cell_id": cid, "volume": [_num(v), _num(dv)] if v else None}
+        for (cid, n), parts in g["cells"].items():
+            key = f"{cid}/{n}" if f"{cid}/{n}" in vols else str(cid)
+            v, dv = vols.get(key, [None, None])
+            name = labels.get(key) or cell_names.get(cid, f"cell {cid}") + (f" #{n}" if n else "")
+            row = {"cell": name, "cell_id": cid, "volume": [_num(v), _num(dv)] if v else None}
+            if n is not None:
+                row["instance"] = n
             vrel = (dv / v) if v else None
 
             def entry(m, s):

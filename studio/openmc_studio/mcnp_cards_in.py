@@ -722,12 +722,17 @@ def _parse_sdef(card, si_cards, sp_cards, sb_cards, ds_cards, notes):
             if sp_raw and sp_raw[0].upper() in ('C', 'V'):
                 raise ParseRefusal(card["name"], card["line"], f"SP{d_num} option {sp_raw[0].upper()} isn't supported")
 
-            # Check negative functions
+            if not sp_raw:
+                raise ParseRefusal(card["name"], card["line"], f"SP{d_num} has no values")
+
+            # Check negative functions. A leading D (the default option) is followed by
+            # probabilities; any other first entry must be a number.
             first_sp_num = None
-            try:
-                first_sp_num = float(sp_raw[0].replace('D', 'E').replace('d', 'e'))
-            except Exception:
-                pass
+            if sp_raw[0].upper() != 'D':
+                try:
+                    first_sp_num = float(sp_raw[0].replace('D', 'E').replace('d', 'e'))
+                except ValueError:
+                    raise ParseRefusal(card["name"], card["line"], f"SP{d_num} value '{sp_raw[0]}' isn't a number")
 
             if first_sp_num is not None and first_sp_num < 0:
                 fn = int(first_sp_num)

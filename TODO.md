@@ -1,6 +1,6 @@
 # TODO
 
-What's next for OpenMC Studio, roughly in priority order. Updated 2026-09-26.
+What's next for OpenMC Studio, roughly in priority order. Updated 2026-09-27.
 
 **What works today, what is refused and what is planned is in [docs/SUPPORT.md](docs/SUPPORT.md)**, one table
 per area with the test behind each entry; start there. This file is the working backlog: open items first,
@@ -10,6 +10,18 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
 
 ## Open items carried over
 
+- **Next up (2026-09-27), in order:**
+  1. **Slow model.mcnp for big MCNP imports** (see "Import an MCNP deck" below): measure where the time
+     goes, then write an imported deck's cells back without re-translating them through MCNPy.
+  2. **Prove the MCNP export in real MCNP**: run the user's MCNP bundle (lattices, lattice tallies, surface
+     currents, dose) and compare with OpenMC; waiting on the user's runs.
+  3. **H\*(10)**: transcribe and check the conversion table (sources found: PNNL-19273; IAEA/Griffith,
+     OSTI XA0053408).
+  4. **Hexagonal lattices in imported decks** (`LAT=2`, refused today; the adapter can't read them).
+  5. Graphs: lethargy spectrum and 1D line cuts with +/-1 sigma bands (see the backlog below).
+- **Flaky test to watch**: `test/test_generated_models.py` failed once in a full run (2026-09-26):
+  `model.run()` returned no statepoint. It passed alone and in the next full run; find the cause if it recurs.
+- **MontePy upgrade**: 1.1.3 in the env vs 1.5.0 upstream; needs a Python 3.12 env. Not decided.
 - **MCNP lattices, remaining**:
   - Rectangular lattices export as `LAT=1`/`FILL` and hexagonal ones as `LAT=2`/`FILL`, and both pass the
     geometry check. Tested: the pile, a deleted site, 3D and 2D arrays, an outer universe, hex arrays in both
@@ -254,13 +266,16 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
     survived; otherwise parts stay "needs a material" as now.
   - Tests: an edited radius, density and batch count come back exactly; an unsupported edit is reported;
     a file from another project is refused; STEP export -> import keeps names and materials.
-- **Import an MCNP deck: geometry and materials done** (2026-09-26; research and converter comparison in
+- **Import an MCNP deck: geometry, materials, sources, tallies and run settings done** (2026-09-26; research and converter comparison in
   [docs/design/mcnp-import-research.md](docs/design/mcnp-import-research.md): openmc_mcnp_adapter was exact on every deck it read,
   csg2csg failed on 4 of 6). `mcnp_import.py` flattens universes, lattices and fill transforms into imported-CSG
   cells, checks them against `openmc.lib` at every cell, and builds voxel preview meshes; Convert > Import MCNP
   deck commits them (`commitMcnpImport`). Tests: `test/test_mcnp_import_gate.cjs` (model.py vs the deck in
-  OpenMC), `test/test_mcnp_import.py`. **Next:** sources (`SDEF`, `SI`/`SP`, `NPS`/`KCODE`) and tallies (`F4`, `E`,
-  `FM`, `FMESH`, `F1`) parsed by Studio; hexagonal lattices (upstream in the adapter, or Studio's own step).
+  OpenMC), `test/test_mcnp_import.py`. The data block is read by `mcnp_cards_in.py` (standard library only): `SDEF` with
+  `SI`/`SP` distributions, `NPS`, `KCODE`/`KSRC`, `MODE`, `F4` with `E`/`FM`/`FC`/`SD`, and `FMESH` (rectangular
+  and cylindrical); every other card, and any card with a value it can't read, is listed in the Log with the
+  reason (tests: `test/test_mcnp_cards_in.py`, `test/test_mcnp_import_physics.js`). **Next:** hexagonal lattices
+  (upstream in the adapter, or Studio's own step); `F1`/`F2`/`F5` tallies; tallies on cells repeated in a lattice.
   **Known issue:** the live model.mcnp tab re-translates the flattened cells through MCNPy, which is slow for big
   imports: the NE403 pile (266 cells) was still translating after 10 minutes (2026-09-26). Cause not yet
   measured; candidates are MCNPy's per-cell cost and the long flattened regions. A fix could write an imported

@@ -7,6 +7,8 @@
 *.md      text eol=lf
 *.cmd     text eol=crlf
 *.bat     text eol=crlf
+setup/portable/*.cmd text eol=lf
+*.ttf binary
 
 *.h5 binary
 *.xz binary

@@ -30,8 +30,9 @@ def assemble(repo, data, archive, notices, output, runtime_id):
         raise ValueError("Output already exists; choose a new version folder. User data is never overwritten.")
     if not archive.is_file() or archive.stat().st_size < 1024:
         raise ValueError("Missing runtime export")
-    files = subprocess.check_output(["git", "-C", str(repo), "ls-files", "-z"], text=True).split("\0")
-    untracked = subprocess.check_output(["git", "-C", str(repo), "ls-files", "--others", "--exclude-standard", "-z"], text=True).split("\0")
+    git = ["git", "-c", f"safe.directory={repo.as_posix()}", "-C", str(repo)]
+    files = subprocess.check_output(git + ["ls-files", "-z"], text=True).split("\0")
+    untracked = subprocess.check_output(git + ["ls-files", "--others", "--exclude-standard", "-z"], text=True).split("\0")
     # Only explicit production trees and licensing material. New portable files
     # can be packaged for testing before committing; manifest hashes record them.
     selected = sorted({name for name in files + untracked if name and
@@ -63,7 +64,7 @@ def assemble(repo, data, archive, notices, output, runtime_id):
     records = [record(p, output) for p in sorted(output.rglob("*")) if p.is_file() and p != runtime]
     runtime_record = record(runtime, output)
     runtime_record.update(id=runtime_id, requiredFreeBytes=max(20 * 1024**3, runtime.stat().st_size * 2))
-    revision = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    revision = subprocess.check_output(git + ["rev-parse", "HEAD"], text=True).strip()
     manifest = {"schema": 1, "platform": "windows-x86_64-wsl2", "studioRevision": revision,
                 "runtime": runtime_record, "files": records}
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

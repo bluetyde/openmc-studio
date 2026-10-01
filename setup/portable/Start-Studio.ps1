@@ -43,6 +43,7 @@ function Quote-Argument([string]$Value) {
 
 $mutex = [Threading.Mutex]::new($false, 'Local\OpenMCStudioSetup')
 $locked = $false
+$transcript = $false
 try {
     if (-not [Environment]::Is64BitOperatingSystem -or $env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64') {
         throw 'This package requires Windows on an Intel or AMD 64-bit computer.'
@@ -60,6 +61,8 @@ try {
     $locked = $mutex.WaitOne(0)
     if (-not $locked) { throw 'Another Studio setup or launch is active. Close its launcher before retrying.' }
     foreach ($folder in @('projects','results','logs')) { $null = New-Item -ItemType Directory -Force -Path (Join-Path $package $folder) }
+    $null = Start-Transcript -Path (Join-Path $package "logs\launcher-$script:token.log")
+    $transcript = $true
     $localRoot = Join-Path $env:LOCALAPPDATA 'OpenMCStudio'
     $script:distro = 'OpenMCStudio-' + $manifest.runtime.sha256.Substring(0,16)
     $install = Join-Path $localRoot $script:distro
@@ -124,4 +127,5 @@ try {
     }
     if ($locked) { $mutex.ReleaseMutex() }
     $mutex.Dispose()
+    if ($transcript) { $null = Stop-Transcript }
 }

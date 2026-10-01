@@ -615,6 +615,15 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             return self._send(200, (STATIC / "index.html").read_bytes(), "text/html; charset=utf-8",
                               {"Referrer-Policy": "no-referrer"})
+        # A fixed allowlist, not a filesystem route: no traversal or arbitrary static reads.
+        font_files = {"fonts.css", "ibm-plex-sans-400.ttf", "ibm-plex-sans-500.ttf",
+                      "ibm-plex-sans-600.ttf", "jetbrains-mono-400.ttf", "jetbrains-mono-500.ttf"}
+        if path.startswith("/fonts/") and path[len("/fonts/"):] in font_files:
+            asset = STATIC / "fonts" / path[len("/fonts/"):]
+            if not asset.is_file():
+                return self._error(404, "Font asset missing")
+            mime = "text/css; charset=utf-8" if asset.suffix == ".css" else "font/ttf"
+            return self._send(200, asset.read_bytes(), mime)
         if path == "/materials.jsonl":  # the material library (no token: it's the same public data as the page)
             lib = STATIC / "materials.jsonl"
             if not lib.is_file():

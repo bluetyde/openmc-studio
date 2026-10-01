@@ -18,7 +18,7 @@ body{background:var(--ground);color:var(--text);font:13px/1.45 var(--ui)}
 button,input,select{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .app{height:100%;box-sizing:border-box;padding-block:12px;padding-inline:16px;display:flex}
-.win{flex:1;min-width:0;display:grid;grid-template-rows:auto auto minmax(0,1fr);background:var(--frame);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.win{flex:1;min-width:0;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr);background:var(--frame);border:1px solid var(--line);border-radius:8px;overflow:hidden}
 
 /* Title bar */
 .titlebar{display:flex;align-items:center;gap:12px;padding:6px 10px;border-bottom:1px solid var(--line);min-width:0}
@@ -310,7 +310,7 @@ input[type=checkbox]{accent-color:var(--accent)}
           </div>
           <label class="tlabel" for="sliceIn"><span id="sliceAxis">at y =</span> <input type="number" id="sliceIn" step="any" value="0"> <span id="sliceUnit">cm</span></label>
           <div class="seg" role="group" aria-label="Zoom">
-            <button type="button" id="zoomOut" aria-label="Zoom out">−</button><button type="button" id="zoomFit">Fit</button><button type="button" id="zoomIn" aria-label="Zoom in">+</button>
+            <button type="button" id="zoomOut" aria-label="Zoom out">−</button><button type="button" id="zoomFit" title="Fit the view">Fit</button><button type="button" id="zoomIn" aria-label="Zoom in">+</button>
           </div>
           <label class="chk" id="cutWrap" hidden title="Cut the model open at the slice plane"><input type="checkbox" id="cutaway" checked> Cutaway</label>
           <span class="layers" id="layers" hidden>
@@ -4337,6 +4337,7 @@ function renderRibbon() {
       const label = typeof labelOrFn === 'function' ? labelOrFn() : labelOrFn;
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'rbtn'; b.innerHTML = ic(icon) + `<span>${label}</span>`;
+      const tip = RIBBON_TIPS[label]; if (tip) b.title = tip;
       if (active) { const on = !!active(); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }
       if (enabled && !enabled()) { b.disabled = true; if (!downloads && /Save/.test(label)) b.title = 'Saving files is not available in this view.'; }
       b.addEventListener('click', fn);
@@ -4347,6 +4348,8 @@ function renderRibbon() {
     body.appendChild(grp);
   });
 }
+// Shortcut hints on ribbon buttons; the wording matches NODAL Studio so the two apps read the same.
+const RIBBON_TIPS = {Undo:'Undo (Ctrl+Z)', Redo:'Redo (Ctrl+Y)'};
 const MATMENU = {open:new Set(), filterGroup:'All', assign:null, applyPreset:null, allowAuto:false};
 function openMatMenu(btn, assign, opts = {}) {
   const menu = $('#matMenu');

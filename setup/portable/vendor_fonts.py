@@ -28,9 +28,11 @@ def main():
     for slug in ('ibmplexsans', 'jetbrainsmono'):
         url = f'https://raw.githubusercontent.com/google/fonts/main/ofl/{slug}/OFL.txt'
         payload = urllib.request.urlopen(url, timeout=60).read()
-        (target / (slug + '-OFL.txt')).write_bytes(payload)
+        normalized = payload.replace(b'\r\n', b'\n')
+        (target / (slug + '-OFL.txt')).write_bytes(normalized)
         entries.append({'filename': slug + '-OFL.txt', 'source': url,
-                        'sha256': hashlib.sha256(payload).hexdigest()})
+                        'sourceSha256': hashlib.sha256(payload).hexdigest(),
+                        'sha256': hashlib.sha256(normalized).hexdigest()})
     (target / 'sources.json').write_text(json.dumps(entries, indent=2) + '\n', encoding='utf-8', newline='\n')
 
 

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenMC Studio offline package",
+  "type": "object",
+  "required": ["schema", "platform", "studioRevision", "runtime", "files"],
+  "properties": {
+    "schema": {"const": 1},
+    "platform": {"const": "windows-x86_64-wsl2"},
+    "studioRevision": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "runtime": {
+      "allOf": [{"$ref": "#/$defs/file"}],
+      "required": ["id", "requiredFreeBytes"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9-]{1,48}$"},
+        "requiredFreeBytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "files": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/file"}}
+  },
+  "$defs": {
+    "file": {
+      "type": "object", "required": ["path", "bytes", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "bytes": {"type": "integer", "minimum": 0},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    }
+  }
+}

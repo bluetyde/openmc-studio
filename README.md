@@ -9,6 +9,11 @@ download, and how to start the app.
 
 ## Start OpenMC Studio
 
+For a Windows installation with bundled Python, OpenMC, CAD tools and nuclear
+data, see [the offline package](setup/portable/README.md). Its `Start Studio.cmd`
+sets up a private WSL2 runtime; it does not use a personal conda environment.
+The launchers below are for a source checkout with dependencies installed separately.
+
 - **Windows:** double-click `Start OpenMC Studio.cmd`
 - **Mac:** double-click `Start OpenMC Studio.command`
 

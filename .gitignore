@@ -71,6 +71,13 @@ studio/tools/pnnl-15870-rev1.txt
 FreeCAD.log
 .FreeCAD/
 FreeCAD/
+/.portable-build/
+/dist/
+/OpenMC-Studio/
+/runtime/
+/projects/
+/results/
+/logs/
 *.AppImage
 
 # ── Intermediate CAD/Mesh conversion outputs (outside test/fixtures) ──

@@ -104,6 +104,12 @@ try {
     $argsList = @('-d',$script:distro,'-u','root','--exec','/opt/openmc/conda/envs/openmc-mcnp/bin/python',
                   $entry,'start',$script:linuxPackage,'--port',"$Port",'--token',$script:token)
     $script:process = Start-Process -FilePath wsl.exe -ArgumentList (($argsList | ForEach-Object { Quote-Argument $_ }) -join ' ') -PassThru -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err
+    $watchArgs = @('-NoProfile','-ExecutionPolicy','Bypass','-File',
+        (Join-Path $package 'app/setup/portable/Watch-Studio.ps1'),
+        '-LauncherId',"$PID",'-LauncherStarted',"$((Get-Process -Id $PID).StartTime.ToUniversalTime().Ticks)",
+        '-ClientId',"$($script:process.Id)",'-ClientStarted',"$($script:process.StartTime.ToUniversalTime().Ticks)",
+        '-Distro',$script:distro,'-LinuxPackage',$script:linuxPackage,'-Token',$script:token)
+    $null = Start-Process -FilePath powershell.exe -ArgumentList (($watchArgs | ForEach-Object { Quote-Argument $_ }) -join ' ') -WindowStyle Hidden
     $ready = $false
     for ($attempt = 0; $attempt -lt 90; $attempt++) {
         if ($script:process.HasExited) { throw "Studio stopped during startup. See $err" }

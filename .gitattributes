@@ -9,6 +9,8 @@
 *.bat     text eol=crlf
 setup/portable/*.cmd text eol=lf
 *.ttf binary
+# Keep upstream license wording/spacing; text still uses LF in the repository.
+studio/openmc_studio/static/fonts/*-OFL.txt text eol=lf -whitespace
 
 *.h5 binary
 *.xz binary

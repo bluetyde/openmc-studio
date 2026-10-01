@@ -103,6 +103,11 @@ these licenses. Preserve the component notices and corresponding source referenc
 
 ## Offline Windows package
 
+Studio bundles IBM Plex Sans and JetBrains Mono under the SIL Open Font License
+1.1. Copyright and license texts, source URLs and SHA256 hashes are beside the
+font files in `studio/openmc_studio/static/fonts/`. Fonts are served locally;
+the interface does not need Google Fonts access.
+
 The assembled package's `licenses/` directory contains dependency inventories,
 the available conda license files and build recipes with source URLs, Ubuntu
 copyright records, and the companion's notices. Ubuntu Base, Miniforge, OpenJDK,

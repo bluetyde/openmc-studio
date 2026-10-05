@@ -1,12 +1,15 @@
-// studio/tools/regen_script.cjs: the regenerated script equals the one Studio saved with an example, is the same twice, and a
-// project with error-level problems still writes a script but exits 3. Requires playwright. Run: node test/test_regen_script.cjs
+// studio/tools/regen_script.cjs (runs in Electron): the regenerated script equals the one Studio saved with an example, is the same twice, and a
+// project with error-level problems still writes a script but exits 3. Needs an Electron binary: SEED_ELECTRON, else a sibling SEED clone's node_modules. Run: node test/test_regen_script.cjs
 const { spawnSync } = require("child_process");
 const fs = require("fs"), path = require("path"), os = require("os"), assert = require("assert");
 const root = path.join(__dirname, "..");
 const tool = path.join(root, "studio", "tools", "regen_script.cjs");
+const exe = process.platform === "win32" ? "electron.exe" : "electron";
+const electron = [process.env.SEED_ELECTRON, path.join(root, "..", "seed-gate", "node_modules", "electron", "dist", exe), path.join(root, "..", "experiment-studio", "node_modules", "electron", "dist", exe)].find(p => p && fs.existsSync(p));
+if (!electron) { console.error("NOT RUN: no Electron binary (set SEED_ELECTRON)"); process.exit(3); }
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "regen-"));
 const regen = (project, out) => {
-  const r = spawnSync(process.execPath, [tool, project, out], { encoding: "utf8" });
+  const r = spawnSync(electron, [tool, project, out], { encoding: "utf8" });
   const line = (r.stdout || "").trim().split("\n").pop();
   return { status: r.status, reply: JSON.parse(line) };
 };

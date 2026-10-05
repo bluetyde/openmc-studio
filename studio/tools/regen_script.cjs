@@ -1,49 +1,33 @@
-// Regenerate model.py from a Studio project with the real page, headless. Used by SEED to check that a model.py is exactly what
-// Studio's generator produces for its project.json (no project-supplied Python is executed: only the page's own code runs).
+// Regenerate model.py from a Studio project with the real page, headless, inside Electron's Chromium (hidden window, every
+// network request blocked). Used by SEED to check that a model.py is exactly what Studio's generator produces for its
+// project.json: no project-supplied Python is executed, only the page's own code runs.
 //
-//   node studio/tools/regen_script.cjs PROJECT.json OUT.py [--html path/to/index.html]
+//   <electron> studio/tools/regen_script.cjs PROJECT.json OUT.py [INDEX.html]
 //
-// Prints one JSON line {ok, bytes, sha256, problems, pageErrors}; exit 0 when the script was written, 2 for bad input, 3 when
-// the project has error-level problems (the page's own Run button refuses those too; the script is still written for diffing).
-// Needs playwright (NODE_PATH or SEED_PLAYWRIGHT) and Edge/Chromium (BROWSER_CHANNEL, default msedge), like the browser tests.
+// Prints one JSON line {ok, bytes, sha256, problems, chrome}. Exit 0: script written. 2: bad input or the page failed.
+// 3: the project has error-level problems (the page's own Run button refuses those too; the script is still written for diffing).
+const { app, BrowserWindow } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-function loadPlaywright() {
-  const tries = [process.env.SEED_PLAYWRIGHT, "playwright"].filter(Boolean);
-  for (const t of tries) {
-    try { return require(t); } catch { /* try the next */ }
-  }
-  throw new Error("playwright not found: set NODE_PATH or SEED_PLAYWRIGHT");
-}
+app.disableHardwareAcceleration();
+const [projectPath, outPath, htmlArg] = process.argv.slice(process.argv.findIndex(a => path.resolve(a) === __filename) + 1);
+const html = htmlArg || path.join(__dirname, "..", "openmc_studio", "static", "index.html");
+const done = (code, reply) => { console.log(JSON.stringify(reply)); app.exit(code); };
 
-(async () => {
-  const args = process.argv.slice(2);
-  const hi = args.indexOf("--html");
-  const html = hi >= 0 ? args.splice(hi, 2)[1] : path.join(__dirname, "..", "openmc_studio", "static", "index.html");
-  const [projectPath, outPath] = args;
-  const fail = (code, message) => { console.log(JSON.stringify({ ok: false, error: message })); process.exit(code); };
-  if (!projectPath || !outPath) fail(2, "usage: regen_script.cjs PROJECT.json OUT.py [--html index.html]");
+app.whenReady().then(async () => {
+  if (!projectPath || !outPath) return done(2, { ok: false, error: "usage: regen_script.cjs PROJECT.json OUT.py [INDEX.html]" });
   let project;
-  try { project = JSON.parse(fs.readFileSync(projectPath, "utf8")); } catch (e) { fail(2, "cannot read the project: " + e.message); }
-  const { chromium } = loadPlaywright();
-  const browser = await chromium.launch({ headless: true, channel: process.env.BROWSER_CHANNEL || "msedge" });
-  try {
-    const page = await browser.newPage();
-    const pageErrors = [];
-    page.on("pageerror", e => pageErrors.push(e.message));
-    await page.route("**/*", r => r.fulfill({ status: 404, body: "" })); // nothing leaves the page
-    await page.setContent(fs.readFileSync(html, "utf8"));
-    await page.evaluate(() => { clearTimeout(LIVE.timer); stopMcnpProgress(); liveMcnpTick = () => {}; });
-    const out = await page.evaluate(p => {
-      loadProject(p);
-      const P = problems();
-      return { script: generate(P), problems: P.filter(x => x.sev === "error").map(x => String(x.msg || x.text || x.message || JSON.stringify(x))) };
-    }, project).catch(e => ({ failed: e.message }));
-    if (out.failed || pageErrors.length) fail(2, out.failed || "the page raised: " + pageErrors[0]);
-    fs.writeFileSync(outPath, out.script, "utf8");
-    console.log(JSON.stringify({ ok: true, bytes: Buffer.byteLength(out.script), sha256: crypto.createHash("sha256").update(out.script, "utf8").digest("hex"), problems: out.problems, pageErrors }));
-    process.exitCode = out.problems.length ? 3 : 0;
-  } finally { await browser.close(); }
-})().catch(e => { console.log(JSON.stringify({ ok: false, error: e.message })); process.exit(2); });
+  try { project = JSON.parse(fs.readFileSync(projectPath, "utf8")); } catch (e) { return done(2, { ok: false, error: "cannot read the project: " + e.message }); }
+  const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true } });
+  const pageErrors = [];
+  win.webContents.on("console-message", (_e, level, message) => { if (level >= 3) pageErrors.push(String(message)); });
+  win.webContents.session.webRequest.onBeforeRequest((d, cb) => cb({ cancel: !d.url.startsWith("data:") }));
+  await win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(fs.readFileSync(html, "utf8")));
+  await win.webContents.executeJavaScript("clearTimeout(LIVE.timer); stopMcnpProgress(); liveMcnpTick = () => {}; 0");
+  const out = await win.webContents.executeJavaScript(
+    `(function (p) { loadProject(p); const P = problems(); return { script: generate(P), problems: P.filter(x => x.sev === "error").map(x => String(x.msg || x.text || x.message || JSON.stringify(x))) }; })(${JSON.stringify(project)})`);
+  fs.writeFileSync(outPath, out.script, "utf8");
+  done(out.problems.length ? 3 : 0, { ok: true, bytes: Buffer.byteLength(out.script), sha256: crypto.createHash("sha256").update(out.script, "utf8").digest("hex"), problems: out.problems, chrome: process.versions.chrome });
+}).catch(e => done(2, { ok: false, error: String(e && e.message || e) }));

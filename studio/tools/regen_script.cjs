@@ -22,7 +22,12 @@ app.whenReady().then(async () => {
   try { project = JSON.parse(fs.readFileSync(projectPath, "utf8")); } catch (e) { return done(2, { ok: false, error: "cannot read the project: " + e.message }); }
   const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true } });
   const pageErrors = [];
-  win.webContents.on("console-message", (_e, level, message) => { if (level >= 3) pageErrors.push(String(message)); });
+  // Electron passes either (event, level, message, ...) or one event object with level and message, depending on its version.
+  win.webContents.on("console-message", (e, ...rest) => {
+    const level = e && e.level !== undefined ? e.level : rest[0];
+    const message = e && e.message !== undefined ? e.message : rest[1];
+    if (level === "error" || level >= 3) pageErrors.push(String(message));
+  });
   win.webContents.session.webRequest.onBeforeRequest((d, cb) => cb({ cancel: !d.url.startsWith("data:") }));
   await win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(fs.readFileSync(html, "utf8")));
   await win.webContents.executeJavaScript("clearTimeout(LIVE.timer); stopMcnpProgress(); liveMcnpTick = () => {}; 0");

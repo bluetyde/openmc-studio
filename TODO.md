@@ -11,8 +11,11 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
 ## Open items carried over
 
 - **Next up (2026-09-27), in order:**
-  1. **Slow model.mcnp for big MCNP imports** (see "Import an MCNP deck" below): measure where the time
-     goes, then write an imported deck's cells back without re-translating them through MCNPy.
+  1. **Slow model.mcnp for big MCNP imports** ([plan](docs/design/mcnp-import-speed-plan.md)): measured
+     2026-10-06 on the pile (267 cells): MCNPy translate 407 s, validate 973 s, everything else under 40 s.
+     Validate is fixed (exporter `410d9d9`: the geometry check finds cells with `openmc.lib`, 973 s to 16-36 s).
+     Still open: translate (superlinear in the cell count) by converting only the diff from the imported
+     baseline (G in the plan), and showing the deck before validation finishes (H).
   2. **Prove the MCNP export in real MCNP**: run the user's MCNP bundle (lattices, lattice tallies, surface
      currents, dose) and compare with OpenMC; waiting on the user's runs.
   3. **H\*(10)**: transcribe and check the conversion table (sources found: PNNL-19273; IAEA/Griffith,
@@ -276,10 +279,10 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
   and cylindrical); every other card, and any card with a value it can't read, is listed in the Log with the
   reason (tests: `test/test_mcnp_cards_in.py`, `test/test_mcnp_import_physics.js`). **Next:** hexagonal lattices
   (upstream in the adapter, or Studio's own step); `F1`/`F2`/`F5` tallies; tallies on cells repeated in a lattice.
-  **Known issue:** the live model.mcnp tab re-translates the flattened cells through MCNPy, which is slow for big
-  imports: the NE403 pile (266 cells) was still translating after 10 minutes (2026-09-26). Cause not yet
-  measured; candidates are MCNPy's per-cell cost and the long flattened regions. A fix could write an imported
-  deck's cells back without re-translating them.
+  **Known issue (partly fixed 2026-10-06):** the live model.mcnp tab was unusable on big imports (the pile, 266
+  cells, took 23.5 min). Measured: validate 973 s (OpenMC's Python `Geometry.find` once per sample point; fixed in
+  the exporter, now 16-36 s) and MCNPy translate 407 s (about 0.6 s a cell up to 100 cells, steeper beyond). The
+  translate cost remains; see the plan for the diff-from-baseline fix.
   Original notes:
   - We already write MCNP decks *and* check them against the OpenMC model point by point. Import closes the
     loop: read a hand-written deck (e.g. the user's NE403 graphite deck) into Studio's scene graph, then run

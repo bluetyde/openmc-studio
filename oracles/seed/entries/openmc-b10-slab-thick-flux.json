@@ -1,0 +1,42 @@
+{
+ "adapter": "openmc",
+ "adapterVersions": [
+  "*"
+ ],
+ "coverage": {
+  "domain": "fixed source, 0.0253 eV beam on a pure B-10 slab (optical thickness 0.9 to 2.8), 294 K",
+  "quantities": [
+   "B-10 thick slab:absorption",
+   "B-10 thick slab:flux"
+  ]
+ },
+ "entryVersion": 1,
+ "expected": {
+  "quantity": "B-10 thick slab:flux",
+  "unit": "cm",
+  "value": 4.0529607536907095
+ },
+ "inputs": [
+  {
+   "path": "models/b10-slab-thick.openmc-studio.json",
+   "sha256": "0fb993dfa52c03fff44e1cdb7673a7364a1def1742172e904c5f74539743d712"
+  },
+  {
+   "path": "models/b10-slab-thick.py",
+   "sha256": "deedec29afe4c6440963813f9476ba4410ad1002cc4ecd1e75f541d472532de5"
+  }
+ ],
+ "oracleId": "openmc-b10-slab-thick-flux",
+ "schema": "seed.oracle/0.1",
+ "source": {
+  "check": "Independent of OpenMC's transport: the formula and the library cross sections only. The absorption and flux entries are tied by absorption = Sigma_a x flux.",
+  "kind": "analytic",
+  "text": "A beam of 0.0253 eV neutrons along +x onto a 12 cm slab of pure B-10 (0.001 g/cm3, 294 K), 20000 x 10 histories, seed 12345. Expected: the beam's track length in the slab, (1 - exp(-Sigma_t t))/Sigma_t, which is also absorption / Sigma_a. Optical thickness 2.776. Cross sections (total 3846.99 b, absorption 3844.80 b) read from the library file B10.h5 (sha256 dab256fa4794...) by studio/tools/seed_oracle_xs.py. Tolerance: 4 sigma of the predicted statistical error (0.192 % per sigma) plus 0.4 % for the neglected elastic scattering (0.057 % of all collisions)."
+ },
+ "tag": "good",
+ "tolerance": {
+  "abs": 0,
+  "rel": 0.0117
+ },
+ "toleranceHash": "c2ec6f0929ef9c416f95746c1c11dc096bd9fbd935446371aeb3927fdf460993"
+}

@@ -1,0 +1,31 @@
+{
+ "adapter": "openmc",
+ "adapterVersions": [
+  "*"
+ ],
+ "coverage": {
+  "domain": "project validation and first-slice capability gate",
+  "quantities": [
+   "model-validation"
+  ]
+ },
+ "entryVersion": 1,
+ "expected": {
+  "refusalCode": "E_SCHEMA_INVALID"
+ },
+ "inputs": [
+  {
+   "path": "models/bad-no-tally.openmc-studio.json",
+   "sha256": "8281721c2ec149d3565683255c53e2e0c474a8c34166483a875226513870e10f"
+  }
+ ],
+ "oracleId": "openmc-bad-no-tally",
+ "schema": "seed.oracle/0.1",
+ "source": {
+  "check": "The runner's own first-slice checks (studio/openmc_studio/headless.py, test/test_headless.py) refuse the same faults.",
+  "kind": "hand",
+  "text": "A project with no tally: a run would produce no result, so the runner refuses it."
+ },
+ "tag": "bad-input",
+ "toleranceHash": "72007821e991e512f894281ba619245fca393e28d49071e5b067f3ac1aac935b"
+}

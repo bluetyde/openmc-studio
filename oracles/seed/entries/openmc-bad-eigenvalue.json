@@ -1,0 +1,31 @@
+{
+ "adapter": "openmc",
+ "adapterVersions": [
+  "*"
+ ],
+ "coverage": {
+  "domain": "project validation and first-slice capability gate",
+  "quantities": [
+   "model-validation"
+  ]
+ },
+ "entryVersion": 1,
+ "expected": {
+  "refusalCode": "E_UNSUPPORTED"
+ },
+ "inputs": [
+  {
+   "path": "models/bad-eigenvalue.openmc-studio.json",
+   "sha256": "b79a0f15ccdaa402eeae9f4ba8ac1c538f357af285efa9872f52cf40cbad7dbf"
+  }
+ ],
+ "oracleId": "openmc-bad-eigenvalue",
+ "schema": "seed.oracle/0.1",
+ "source": {
+  "check": "The runner's own first-slice checks (studio/openmc_studio/headless.py, test/test_headless.py) refuse the same faults.",
+  "kind": "hand",
+  "text": "An eigenvalue project. The first slice runs fixed-source cases only, so the runner must refuse it before anything is reserved."
+ },
+ "tag": "bad-input",
+ "toleranceHash": "be0cd25da730942e7f9784bcfc09d2f79454f857d7c497d9037ce42ff2ab7c7e"
+}

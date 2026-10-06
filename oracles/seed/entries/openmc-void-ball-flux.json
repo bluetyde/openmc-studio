@@ -1,0 +1,41 @@
+{
+ "adapter": "openmc",
+ "adapterVersions": [
+  "*"
+ ],
+ "coverage": {
+  "domain": "fixed source, void geometry, point isotropic source, cell flux (track length)",
+  "quantities": [
+   "Void ball:flux"
+  ]
+ },
+ "entryVersion": 1,
+ "expected": {
+  "quantity": "Void ball:flux",
+  "unit": "cm",
+  "value": 4
+ },
+ "inputs": [
+  {
+   "path": "models/void-ball-flux.openmc-studio.json",
+   "sha256": "9f6b3ba83b21ed87ac5ae4d870ea771da03f0969e9680faa22ca9a1b5bf8028a"
+  },
+  {
+   "path": "models/void-ball-flux.py",
+   "sha256": "8a5311859409c02ac9f1f99f6b66b7b2c95a4aed5a06157ddcc4db76fdff73e2"
+  }
+ ],
+ "oracleId": "openmc-void-ball-flux",
+ "schema": "seed.oracle/0.1",
+ "source": {
+  "check": "Independent of OpenMC's transport and of any cross section: pure geometry.",
+  "kind": "analytic",
+  "text": "A point source at the centre of a void ball of radius 4 cm. Every particle flies along a radius and crosses the whole ball, so the track length in it is exactly 4 cm per source particle, with no statistical error."
+ },
+ "tag": "good",
+ "tolerance": {
+  "abs": 0,
+  "rel": 1e-9
+ },
+ "toleranceHash": "729e08bc01b72116a5a6fdaca28c10fe698292e46459fb0c4559e6f80455a742"
+}

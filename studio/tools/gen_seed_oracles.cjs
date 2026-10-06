@@ -60,13 +60,13 @@ function trackLength(rho, t) {
 
 // ---- Studio projects -----------------------------------------------------------------------------------------------------------------
 const part = (o) => ({ id: "p", name: "part", shape: "box", x: 0, y: 0, z: 0, r: 10, r2: 5, h: 20, a: 15, b: 10, c: 8, axis: "z", sx: 20, sy: 20, sz: 20, rx: 0, ry: 0, rz: 0, material: "void", ...o });
-function project(name, { parts, materials = [], source, tally, settings = {} }) {
+function project(name, { parts, materials = [], source, tally, tallies, settings = {} }) {
   return {
     materials,
     parts,
     groups: [],
     sources: [{ ...EXAMPLE.sources[0], id: "src", name: "source", strength: 1, space: "point", x: 0, y: 0, z: 0, angle: "isotropic", energy: "lines", lines: "1:1", ...source }],
-    tallies: tally ? [{ id: "tally", kind: "cell", ebins: "", ...tally }] : [],
+    tallies: tallies ?? (tally ? [{ id: "tally", kind: "cell", ebins: "", ...tally }] : []),
     settings: {
       ...EXAMPLE.settings, name, runMode: "fixed source", particles: PARTICLES, batches: BATCHES, inactive: 0, seed: SEED, maxTracks: 0, track: "", photon: false,
       fissionNeutrons: false, temperatureDefault: 294, temperatureMethod: "nearest", worldShape: "sphere", worldR: 60, worldBC: "vacuum", worldFill: "void", ...settings,
@@ -83,6 +83,23 @@ const slab = (name, t) =>
     // a beam of 0.0253 eV neutrons (2.53e-8 MeV) along +x onto the slab's face, from 3 cm in front of it
     source: { x: -3, angle: "mono", u: 1, v: 0, w: 0, lines: "2.53e-8:1" },
     tally: { name, cells: ["slab"], scores: ["absorption", "flux"] },
+  });
+
+// The heating oracle: the same dilute B-10 slab, but along z with the beam along +z, so a mesh of PROFILE_NZ bins along z is an axial profile (what a
+// transfer into a fuel pin reads). Two tallies in one project: the whole slab's heating (the oracle entry) and the heating in the axial bins (the
+// SEED adapter's mesh test compares each bin with the same formula).
+const PROFILE_T = 4;
+const PROFILE_NZ = 4;
+const profile = () =>
+  project("B-10 heating profile", {
+    materials: [{ id: "b10", name: "Boron-10", color: "#7a7a7a", density: RHO, frac: "ao", comps: "B10:1", sab: "", ref: "Pure B-10 at a low density: an absorber for the analytic SEED oracle cases" }],
+    parts: [part({ id: "slab", name: "B-10 slab", shape: "box", x: 0, y: 0, z: PROFILE_T / 2, sx: 40, sy: 40, sz: PROFILE_T, material: "b10" })],
+    // a beam of 0.0253 eV neutrons along +z onto the slab's face, from 3 cm in front of it
+    source: { x: 0, y: 0, z: -3, angle: "mono", u: 0, v: 0, w: 1, lines: "2.53e-8:1" },
+    tallies: [
+      { id: "tally", kind: "cell", ebins: "", name: "B-10 profile slab", cells: ["slab"], scores: ["heating"] },
+      { id: "mesh", kind: "mesh", ebins: "", name: "B-10 profile mesh", cells: [], scores: ["heating"], nx: 1, ny: 1, nz: PROFILE_NZ, lx: -20, ly: -20, lz: 0, ux: 20, uy: 20, uz: PROFILE_T },
+    ],
   });
 
 const voidSphere = (settings = {}, tally = true) =>
@@ -121,6 +138,30 @@ for (const [id, t, label] of [["b10-slab-thin", 4, "thin"], ["b10-slab-thick", 1
     ],
     source: { kind: "analytic", check: "Independent of OpenMC's transport: the formula and the library cross sections only. The absorption and flux entries are tied by absorption = Sigma_a x flux." },
     coverage: { quantities: [`${name}:absorption`, `${name}:flux`], domain: "fixed source, 0.0253 eV beam on a pure B-10 slab (optical thickness 0.9 to 2.8), 294 K" },
+  });
+}
+
+{
+  // Heating: the flux tally weighted with the library's neutron heating (KERMA) cross section at 0.0253 eV, N_B10 * kappa * track length. The
+  // heating cross section is read from the library (MT 301, eV-barn) with the others, never from a transport run.
+  const f = trackLength(RHO, PROFILE_T);
+  const name = "B-10 profile slab";
+  const kappa = XS.heating_eV_b;
+  const value = numberDensity(RHO) * kappa * f.value;
+  const text =
+    `A beam of 0.0253 eV neutrons along +z onto a ${PROFILE_T} cm slab of pure B-10 (${RHO} g/cm3, 294 K), ${PARTICLES} x ${BATCHES} histories, seed ${SEED}, neutrons only. ` +
+    `Expected: the heating per source particle in the slab, N kappa (1 - exp(-Sigma_t t))/Sigma_t, with kappa = ${kappa.toPrecision(10)} eV b the library's neutron heating cross section ` +
+    `at 0.0253 eV (MT 301 of ${XS.library.file}, sha256 ${XS.library.file_sha256.slice(0, 12)}...) and the beam's track length from the flux formula (optical thickness ${f.tau.toFixed(3)}). ` +
+    `Heating per absorption is kappa / sigma_a = ${(kappa / XS.sigma_absorption_b / 1e6).toFixed(3)} MeV. ` +
+    `Tolerance: 4 sigma of the predicted statistical error (${(f.sigmaRel * 100).toFixed(3)} % per sigma, the track-length variance) plus ${NEGLECTED_SCATTER * 100} % for the neglected elastic scattering.`;
+  CASES.push({
+    id: "b10-heating-profile", model: profile(),
+    entries: [{ quantity: `${name}:heating`, unit: "eV", value, key: "heating", tol: { abs: 0, rel: round3up(4 * f.sigmaRel + NEGLECTED_SCATTER) }, text }],
+    source: {
+      kind: "analytic",
+      check: `Independent of OpenMC's transport: the formula and the library cross sections only. The same project also holds a ${PROFILE_NZ}-bin axial mesh tally of heating, which the SEED adapter's tests compare with the formula per bin (the entry itself judges the whole slab).`,
+    },
+    coverage: { quantities: [`${name}:heating`], domain: "fixed source, 0.0253 eV beam on a 4 cm pure B-10 slab (optical thickness 0.9), 294 K, neutron heating (no photon transport)" },
   });
 }
 

@@ -50,7 +50,7 @@ tally_b_10_profile_slab.filters = [openmc.CellFilter([cell_b_10_slab])]
 tally_b_10_profile_slab.scores = ["heating"]
 
 mesh_b_10_profile_mesh = openmc.RegularMesh(name="B-10 profile mesh")
-mesh_b_10_profile_mesh.dimension = [3, 3, 4]
+mesh_b_10_profile_mesh.dimension = [3, 3, 5]
 mesh_b_10_profile_mesh.lower_left = [-20.0, -20.0, 0.0]
 mesh_b_10_profile_mesh.upper_right = [20.0, 20.0, 4.0]
 tally_b_10_profile_mesh = openmc.Tally(name="B-10 profile mesh")

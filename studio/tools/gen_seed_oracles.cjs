@@ -89,7 +89,7 @@ const slab = (name, t) =>
 // transfer into a fuel pin reads). Two tallies in one project: the whole slab's heating (the oracle entry) and the heating in the axial bins (the
 // SEED adapter's mesh test compares each bin with the same formula).
 const PROFILE_T = 4;
-const PROFILE_NZ = 4;
+const PROFILE_NZ = 5;
 const profile = () =>
   project("B-10 heating profile", {
     materials: [{ id: "b10", name: "Boron-10", color: "#7a7a7a", density: RHO, frac: "ao", comps: "B10:1", sab: "", ref: "Pure B-10 at a low density: an absorber for the analytic SEED oracle cases" }],

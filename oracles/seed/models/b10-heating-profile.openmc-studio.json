@@ -122,7 +122,7 @@
    "name": "B-10 profile mesh",
    "nx": 3,
    "ny": 3,
-   "nz": 4,
+   "nz": 5,
    "scores": [
     "heating"
    ],

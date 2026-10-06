@@ -204,7 +204,7 @@ def _tally(t, cell_names, mat_names, openmc):
         var_m = np.moveaxis(var_f, k, 0).sum(axis=tuple(a + 1 for a in range(len(other))) + (len(shape), ))
         # mean_m: (mesh bins, scores), in MeshFilter.bins order; place into grid explicitly
         n = dims[0] * dims[1] * dims[2]
-        values, rel = {}, {}
+        values, rel, absstd = {}, {}, {}
         idx = np.array([(b[0] - 1) + dims[0] * ((b[1] - 1) + dims[1] * (b[2] - 1)) for b in mesh_f.bins])
         for s, score in enumerate(scores):
             grid = np.zeros(n)
@@ -212,12 +212,15 @@ def _tally(t, cell_names, mat_names, openmc):
             err = np.zeros(n)
             with np.errstate(divide="ignore", invalid="ignore"):
                 err[idx] = np.where(mean_m[:, s] > 0, np.sqrt(var_m[:, s]) / mean_m[:, s], 0.0)
+            sd = np.zeros(n)
+            sd[idx] = np.sqrt(var_m[:, s])
             values[score] = [float(x) for x in grid]
+            absstd[score] = [float(x) for x in sd]  # absolute standard deviation, unrounded (rel_err below is rounded to 4 decimals)
             rel[score] = [round(float(x), 4) for x in err]
         res = {
             "name": t.name, "kind": "mesh", "dims": dims,
             "mesh_type": "cylindrical" if is_cyl else "regular",
-            "scores": scores, "values": values, "rel_err": rel,
+            "scores": scores, "values": values, "rel_err": rel, "std": absstd,
             "summed_over": [type(f).__name__ for i, f in enumerate(t.filters) if i != k]
         }
         if is_cyl:

@@ -13,7 +13,7 @@ assert.strictEqual(gen.status, 0, "the files differ from the generator's output:
 console.log("  [PASS] generated files equal the files on disk");
 
 const entries = fs.readdirSync(path.join(base, "entries")).map((f) => JSON.parse(fs.readFileSync(path.join(base, "entries", f), "utf8")));
-assert.strictEqual(entries.length, 8);
+assert.strictEqual(entries.length, 9);
 for (const e of entries) {
   assert.strictEqual(e.toleranceHash, sha256(JSON.stringify(sorted({ expected: e.expected ?? null, tolerance: e.tolerance ?? null }))), e.oracleId + ": toleranceHash");
   for (const i of e.inputs) assert.strictEqual(sha256(fs.readFileSync(path.join(base, i.path))), i.sha256, e.oracleId + ": " + i.path + " does not match its pinned hash");

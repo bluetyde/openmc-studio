@@ -6,6 +6,7 @@ Writes oracles/seed/xs/b10-294K-0.0253eV.json: microscopic total, elastic and ab
 atomic mass OpenMC uses, and the identity (path and sha256) of the library file and of cross_sections.xml they came from. The generator
 (gen_seed_oracles.cjs) computes every expected value from this file by formula; transport never produces an expected value.
 Absorption is OpenMC's `absorption` score: the sum of the disappearance reactions MT 102 to 117.
+The heating oracle also reads MT 301, the neutron heating (KERMA) cross section in eV-barn, which is what the `heating` score weights the flux with.
 """
 import hashlib
 import json
@@ -48,6 +49,7 @@ doc = {
     "nuclide": NUCLIDE,
     "temperature": TEMP,
     "energy_eV": ENERGY_EV,
+    "heating_eV_b": xs(301),
     "sigma_total_b": xs(1),
     "sigma_elastic_b": xs(2),
     "sigma_absorption_b": sum(xs(mt) for mt in disappearance),

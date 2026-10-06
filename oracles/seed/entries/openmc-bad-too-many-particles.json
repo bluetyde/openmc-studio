@@ -1,0 +1,31 @@
+{
+ "adapter": "openmc",
+ "adapterVersions": [
+  "*"
+ ],
+ "coverage": {
+  "domain": "project validation and first-slice capability gate",
+  "quantities": [
+   "model-validation"
+  ]
+ },
+ "entryVersion": 1,
+ "expected": {
+  "refusalCode": "E_BOUNDS_EXCEEDED"
+ },
+ "inputs": [
+  {
+   "path": "models/bad-too-many-particles.openmc-studio.json",
+   "sha256": "becd910c3e7096755f2ee6b7e4741b38c210717bcd6010bbd4d565e33ec7d684"
+  }
+ ],
+ "oracleId": "openmc-bad-too-many-particles",
+ "schema": "seed.oracle/0.1",
+ "source": {
+  "check": "The runner's own first-slice checks (studio/openmc_studio/headless.py, test/test_headless.py) refuse the same faults.",
+  "kind": "hand",
+  "text": "Two million particles per batch: over the runner's limit of one million. It must be refused as out of bounds."
+ },
+ "tag": "bad-input",
+ "toleranceHash": "4212da47d6c1bddedf051442f8f0c7469eaff8fed70426617bd19d08c554b1f5"
+}

@@ -1,0 +1,24 @@
+{
+ "atomic_mass_amu": 10.012936862,
+ "avogadro_per_mol": 6.02214076e+23,
+ "disappearance_mts": [
+  102,
+  103,
+  104,
+  105,
+  107
+ ],
+ "energy_eV": 0.0253,
+ "library": {
+  "cross_sections_xml_sha256": "ba7f6d5a371b5a8de8157356f8ef5d1c17cb0ed60accccfbc3075f46ae13f489",
+  "file": "B10.h5",
+  "file_sha256": "dab256fa4794c8077ccca28a5f8e254d2ee99a1c0d95d11453cdc5b1cf01190e",
+  "openmc": "0.15.3"
+ },
+ "note": "total = elastic + absorption at this energy (B-10 has no inelastic channel below the MeV range); checked below.",
+ "nuclide": "B10",
+ "sigma_absorption_b": 3844.799396182301,
+ "sigma_elastic_b": 2.193832,
+ "sigma_total_b": 3846.9933281823005,
+ "temperature": "294K"
+}

@@ -18,17 +18,17 @@
  "inputs": [
   {
    "path": "models/b10-heating-profile.openmc-studio.json",
-   "sha256": "5ea1dcd77443e0bad7178f6d6b4e60c8b850e8d06dfc0fdeb0dde8f1f1d4f608"
+   "sha256": "931fba4326bc5605b27ce0c0ad89493601ef95cc74a405603e032f75180f3b50"
   },
   {
    "path": "models/b10-heating-profile.py",
-   "sha256": "36d23334904cf62cd4294c7cb19b3e9e6453c41e9af42ea96e5138e4c1b1a6aa"
+   "sha256": "91c9126939392a71bbfc35cb8810c5e7556b058c055021dbb227b490e24f86f2"
   }
  ],
  "oracleId": "openmc-b10-heating-profile-heating",
  "schema": "seed.oracle/0.1",
  "source": {
-  "check": "Independent of OpenMC's transport: the formula and the library cross sections only. The same project also holds a 4-bin axial mesh tally of heating, which the SEED adapter's tests compare with the formula per bin (the entry itself judges the whole slab).",
+  "check": "Independent of OpenMC's transport: the formula and the library cross sections only. The same project also holds a 3 x 3 x 4 mesh tally of heating (the beam runs down the middle voxel column), which the SEED adapter's tests compare with the formula per bin (the entry itself judges the whole slab).",
   "kind": "analytic",
   "text": "A beam of 0.0253 eV neutrons along +z onto a 4 cm slab of pure B-10 (0.001 g/cm3, 294 K), 20000 x 10 histories, seed 12345, neutrons only. Expected: the heating per source particle in the slab, N kappa (1 - exp(-Sigma_t t))/Sigma_t, with kappa = 9002818191 eV b the library's neutron heating cross section at 0.0253 eV (MT 301 of B10.h5, sha256 dab256fa4794...) and the beam's track length from the flux formula (optical thickness 0.925). Heating per absorption is kappa / sigma_a = 2.342 MeV. Tolerance: 4 sigma of the predicted statistical error (0.122 % per sigma, the track-length variance) plus 0.4 % for the neglected elastic scattering."
  },

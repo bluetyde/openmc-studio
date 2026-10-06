@@ -120,8 +120,8 @@
    "ly": -20,
    "lz": 0,
    "name": "B-10 profile mesh",
-   "nx": 1,
-   "ny": 1,
+   "nx": 3,
+   "ny": 3,
    "nz": 4,
    "scores": [
     "heating"

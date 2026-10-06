@@ -98,7 +98,7 @@ const profile = () =>
     source: { x: 0, y: 0, z: -3, angle: "mono", u: 0, v: 0, w: 1, lines: "2.53e-8:1" },
     tallies: [
       { id: "tally", kind: "cell", ebins: "", name: "B-10 profile slab", cells: ["slab"], scores: ["heating"] },
-      { id: "mesh", kind: "mesh", ebins: "", name: "B-10 profile mesh", cells: [], scores: ["heating"], nx: 1, ny: 1, nz: PROFILE_NZ, lx: -20, ly: -20, lz: 0, ux: 20, uy: 20, uz: PROFILE_T },
+      { id: "mesh", kind: "mesh", ebins: "", name: "B-10 profile mesh", cells: [], scores: ["heating"], nx: 3, ny: 3, nz: PROFILE_NZ, lx: -20, ly: -20, lz: 0, ux: 20, uy: 20, uz: PROFILE_T },
     ],
   });
 
@@ -159,7 +159,7 @@ for (const [id, t, label] of [["b10-slab-thin", 4, "thin"], ["b10-slab-thick", 1
     entries: [{ quantity: `${name}:heating`, unit: "eV", value, key: "heating", tol: { abs: 0, rel: round3up(4 * f.sigmaRel + NEGLECTED_SCATTER) }, text }],
     source: {
       kind: "analytic",
-      check: `Independent of OpenMC's transport: the formula and the library cross sections only. The same project also holds a ${PROFILE_NZ}-bin axial mesh tally of heating, which the SEED adapter's tests compare with the formula per bin (the entry itself judges the whole slab).`,
+      check: `Independent of OpenMC's transport: the formula and the library cross sections only. The same project also holds a 3 x 3 x ${PROFILE_NZ} mesh tally of heating (the beam runs down the middle voxel column), which the SEED adapter's tests compare with the formula per bin (the entry itself judges the whole slab).`,
     },
     coverage: { quantities: [`${name}:heating`], domain: "fixed source, 0.0253 eV beam on a 4 cm pure B-10 slab (optical thickness 0.9), 294 K, neutron heating (no photon transport)" },
   });

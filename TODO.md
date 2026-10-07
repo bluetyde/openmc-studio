@@ -34,8 +34,8 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
   1. **`line_wrap` hangs on a token with no blank longer than the line limit** (a union of 22 terms; 18 is fine). The 128-column
      wrap itself is intended. Standalone, no Java: [`line_wrap_hang.py`](docs/mcnpy-issues/line_wrap_hang.py). Ask for a split
      after `:` or a clear error. Ours: add a guard that wraps MCNPy's own long tokens in the normal translate path too.
-  2. **`Deck.add` re-reads all universes through Java for every cell** (O(N^2) calls; "Making Universes" is 292 of 311 s on
-     the pile). Verify the per-read call count, then report; examples [`phase_timer.py`](docs/mcnpy-issues/phase_timer.py),
+  2. **`Deck.add` re-reads all universes through Java for every cell** (O(N^2) calls; the cell-adding stage, "Translating
+     Universes and Cells", is 292 of 311 s on the pile). Verify the per-read call count, then report; examples [`phase_timer.py`](docs/mcnpy-issues/phase_timer.py),
      [`count_rpc.py`](docs/mcnpy-issues/count_rpc.py), [`sample_translate.py`](docs/mcnpy-issues/sample_translate.py),
      [`time_stages.py`](docs/mcnpy-issues/time_stages.py).
 - **Flaky test to watch**: `test/test_generated_models.py` failed once in a full run (2026-09-26):

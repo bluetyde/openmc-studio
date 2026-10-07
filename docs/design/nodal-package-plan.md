@@ -1,6 +1,6 @@
 # Nodal core package (optional add-on): plan
 
-Status (2026-10-07): **planned, not started.** Nothing here is built. Written after the deep dive on openndm (`research/other-project-surveys/2026-10-07-deep-dive/03-rizkiokt-openndm.md`)
+Status (2026-10-07): **planned, not started.** Nothing here is built. Written after the deep dive on openndm (private survey notes, not in the repo)
 and the decision that this is an **optional package** for users doing a PWR-type core, not part of the core app. A simple TRIGA or shielding user never sees it.
 
 ## What it is

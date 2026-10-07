@@ -1,6 +1,6 @@
 # TODO
 
-What's next for OpenMC Studio, roughly in priority order. Updated 2026-09-27.
+What's next for OpenMC Studio, roughly in priority order. Updated 2026-10-07.
 
 **What works today, what is refused and what is planned is in [docs/SUPPORT.md](docs/SUPPORT.md)**, one table
 per area with the test behind each entry; start there. This file is the working backlog: open items first,
@@ -8,26 +8,38 @@ then the packages, then **Completed** and dated "done" notes, which are history 
 replaced what they describe; SUPPORT.md is current). Design plans are in [docs/design/](docs/design/).
 Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summary in `test/results/`).
 
+**Packages.** Sections 2 to 5 and the new Nodal and TRISO sections below are *packages*: optional add-ons for users who need them, not part of
+the core app (a simple TRIGA or shielding user never sees them). SEED will install them one by one (its plan 11, "Optional add-ons"; manifest
+format `seed.component-manifest/0.1`, `docs/runtime-contract.md` in the SEED repo). **On the dev machine every package is installed for now**;
+how they are split and installed is decided later, so build features so that a missing package turns off its own tab with a message naming
+the package, and nothing else.
+
 ## Open items carried over
 
-- **Next up (2026-09-27), in order:**
-  1. **Slow model.mcnp for big MCNP imports: mostly done** ([plan](docs/design/mcnp-import-speed-plan.md)). The 267-cell
-     lattice test deck took 23.5 min to export (MCNPy translate 407 s, validate 973 s). Now translate is about 14 s and validate 30 s, all in
-     the exporter, byte-identical decks: validate uses `openmc.lib` (`410d9d9`), the world cell is written as `#cell`
-     complements (`c765b21`), plain cells' regions are written directly (`f7f78c2`), and MCNPy's own round trips are cut
-     (`776bc09`: `fast_add`, `cached_reflection`, a `line_wrap` that cannot loop; deck identical on and off in
-     `tests/test_mcnpy_speed_identity.py`). The live model.mcnp tab now shows the deck as soon as it is translated and checks it against OpenMC in a
-     separate process (H in the plan; `mcnp_validate.py`, `server.Validator`; a newer deck stops the older check; the Export button still
-     validates before it writes).
-     **Future: a diff-based export** so that CAD and part edits rebuild only what changed
-     ([plan](docs/design/mcnp-diff-export-plan.md)); hard because one edit (a material, a cell) touches several cards that
-     refer to each other, and because of universes and lattices. Not urgent now; measure first.
-  2. **Prove the MCNP export in real MCNP**: run the user's MCNP bundle (lattices, lattice tallies, surface
-     currents, dose) and compare with OpenMC; waiting on the user's runs.
-  3. **H\*(10)**: transcribe and check the conversion table (sources found: PNNL-19273; IAEA/Griffith,
-     OSTI XA0053408).
-  4. **Hexagonal lattices in imported decks** (`LAT=2`, refused today; the adapter can't read them).
-  5. Graphs: lethargy spectrum and 1D line cuts with +/-1 sigma bands (see the backlog below).
+- **Next up (2026-10-07), in order:**
+  1. **Prove the MCNP export in real MCNP**: run the user's MCNP bundle (lattices, lattice tallies, surface
+     currents, dose) and compare with OpenMC; waiting on the user's runs. Nothing so far has been checked against an actual MCNP run.
+  2. **Small wins from the 2026-10-07 investigation** (private notes kept outside the repo, in the user's plans folder),
+     each a day or less: a **figure-of-merit column** on tally tables (1/(R^2 T)); **result-page checks** (section 0 below); a **re-run command**
+     over `provenance.json`; a **model-stages guide**; a **Godiva regression case** from `mit-crpg/benchmarks`.
+  3. **H\*(10)**: transcribe and check the conversion table (sources found: PNNL-19273; IAEA/Griffith, OSTI XA0053408). The code
+     is small (the effective-dose path exists); the work is the sourced, checked table. **Hexagonal lattices in imported decks**
+     (`LAT=2`, refused at `mcnp_import.py:207`; the adapter can't read them): Studio's own step, needs MCNP's hex index order, pitch and
+     orientation turned into an `openmc.HexLattice`, a fixture and a byte-for-byte check against OpenMC; about 1 to 2 days.
+  4. **Nodal core package, P2** (reflector-aware factors; [plan](docs/design/nodal-package-plan.md)); the BEAVRS lesson in RAFT is its first user.
+  5. **One shared pre-run check** with an error level, used by the page, `/api/run` and the headless runner (section 0).
+  6. **Graphs**: lethargy spectrum and 1D line cuts with +/-1 sigma bands (see the backlog below).
+  7. **Future: a diff-based export** so that CAD and part edits rebuild only what changed
+     ([plan](docs/design/mcnp-diff-export-plan.md); phases 0 to 6, about 6 days to phase 4); hard because one edit (a material, a cell) touches
+     several cards that refer to each other, and because of universes and lattices. Stop after phase 3 if edits then take about 1 s.
+  **Done, for the record: slow model.mcnp for big imports** ([plan](docs/design/mcnp-import-speed-plan.md)). The 267-cell
+  lattice test deck took 23.5 min to export (MCNPy translate 407 s, validate 973 s). Now translate is about 14 s and validate 30 s, all in
+  the exporter, byte-identical decks: validate uses `openmc.lib` (`410d9d9`), the world cell is written as `#cell`
+  complements (`c765b21`), plain cells' regions are written directly (`f7f78c2`), and MCNPy's own round trips are cut
+  (`776bc09`: `fast_add`, `cached_reflection`, a `line_wrap` that cannot loop; deck identical on and off in
+  `tests/test_mcnpy_speed_identity.py`). The live model.mcnp tab shows the deck as soon as it is translated and checks it against OpenMC in a
+  separate process (H in the plan, merged 2026-10-07: `mcnp_validate.py`, `server.Validator`; a newer deck stops the older check; the Export
+  button still validates before it writes).
 - **MCNPy issues to report upstream** (found 2026-10-06; nothing sent; details, numbers and runnable examples in
   [docs/mcnpy-issues/](docs/mcnpy-issues/README.md)). MCNPy 0.0.7 is RPI NuCoMP's (MIT, Peter J. Kowal); it is
   **not** on PyPI or public GitHub (source: `github.rpi.edu/NuCoMP/mcnpy`, RPI's GitHub Enterprise server; readable without a login, but
@@ -46,7 +58,10 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
      [`time_stages.py`](docs/mcnpy-issues/time_stages.py).
 - **Flaky test to watch**: `test/test_generated_models.py` failed once in a full run (2026-09-26):
   `model.run()` returned no statepoint. It passed alone and in the next full run; find the cause if it recurs.
-- **MontePy upgrade**: 1.1.3 in the env vs 1.5.0 upstream; needs a Python 3.12 env. Not decided.
+- **MontePy upgrade**: 1.1.3 in the env vs 1.5.0 upstream; needs a Python 3.12 env. Not decided. **Pin `montepy==1.1.3`** in the exporter's
+  `requirements.txt` and `environment.yml` (both say just `montepy` today; 5 minutes; recommended in the 2026-10-07 investigation).
+- **Test thread counts**: Studio's own Python tests run OpenMC with all cores (no `OMP_NUM_THREADS`); upstream advises 2 for its own
+  regression tests; only `test_headless.py` sets threads. Decide whether the physics suite should set a count (it would slow a quiet machine).
 - **MCNP lattices, remaining**:
   - Rectangular lattices export as `LAT=1`/`FILL` and hexagonal ones as `LAT=2`/`FILL`, and both pass the
     geometry check. Tested: the lattice test deck, a deleted site, 3D and 2D arrays, an outer universe, hex arrays in both
@@ -82,6 +97,22 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
 ---
 
 ## Active Backlog (Modular Architecture)
+
+### 0. Quality & workflow (from the 2026-10-07 investigation; private notes, not in the repo)
+- **Figure of merit** on tally tables: 1/(R^2 T), R the tally's relative error, T the run time (wall time on a shared machine: say so). Hours.
+- **Result-page checks for Monte Carlo good practice**, as a separate findings list on the Results page (not Problems, which is rebuilt from the
+  model on every edit). Every threshold names its source; where none gives a number it says "could not compare", never a default.
+  Particles per cycle (below 200: bias; below 5,000: info; MCNP 6.3 manual 2.8.1/2.8.2); inactive batches (MCNP's minimum-uncertainty skipped-cycle check);
+  entropy plateau (no numeric source: "could not compare"); any lost particle (read the run log); label the k uncertainty ("1 sigma, standard
+  uncertainty of the mean"). The OpenMC-documentation sources for the last two are **not confirmed** (docs were offline). About 2 days.
+- **Re-run command over `provenance.json`**: verify the stored `model.py` / `project.json` hashes, list differences from today's environment
+  (the 13 GB library is one hash of `cross_sections.xml`, not its contents), then run through the headless runner. About 1 day.
+- **One shared pre-run check**: today the page checks in JavaScript (`problems()`), the headless runner has its own short list, and `/api/run` does
+  not re-check. One Python function with an error level for every run path; the page asks it. 3 to 5 days (the rules live in JavaScript).
+- **Model-stages guide** (materials, parts, source, tally, settings: done / missing) and a **New menu** (Blank, Demo, examples). The findings badge
+  and click-to-select already exist (`renderProblems`). 1 day and 1 to 2 days.
+- **Godiva regression case** from `mit-crpg/benchmarks` (MIT; `icsbep/heu-met-fast-001`): import its MCNP input into Studio, run in OpenMC, compare
+  with the handbook k (to be fetched; the repo stores no reference value), export back to MCNP and diff. No MCNP run needed. About 1 day. C5G7 is multigroup: not Studio's.
 
 ### 1. Core Workbench & Measurement Suite
 - **3D Caliper & Dimension Measurement Tool**:
@@ -163,13 +194,45 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
   - **Doppler Fuel Temperature Coefficient ($\alpha_T$)**: Temperature sweep ($300\text{ K} \to 1800\text{ K}$) using OpenMC Doppler broadening to determine Doppler defect and $\alpha_T = \partial \rho / \partial T$ in $\text{pcm}/\text{K}$.
   - **Pitch-to-Diameter ($p/d$) Ratio Sweep**: Lattice pitch sweep mapping the transition between under-moderated and over-moderated core regimes ($k_\infty$ maximum).
   - **Critical Mass / Dimension Search**: Binary search routine for critical radius, enrichment, or soluble boron concentration to achieve $k_{\text{eff}} = 1.00000$.
+    Use a secant that stops within 2 sigma of the target and reports an interval (a tight tolerance chases noise). Needs a ppm knob on a
+    material (boron-in-water) first. Boron worth from 2 or 3 runs is the smallest start; 2 to 3 days.
 - **Point Kinetics Parameters via Iterated Fission Probability (IFP)**:
   - Calculation and dashboard display of effective delayed neutron fraction $\beta_{\text{eff}}$, delayed group precursors $(\beta_i, \lambda_i)$, and prompt neutron lifetime $\ell_p$ / generation time $\Lambda$.
+  - Smallest step: a settings toggle and two numbers on the results page, handed to KIRK and RAFT as JSON; about 2 days plus a check against a known
+    value. OpenMC 0.15.3 has IFP; not tried here. Deferred until KIRK or RAFT asks.
 - **Core Depletion & Fuel Burnup (`openmc.deplete` & MCNP `BURN`)**:
   - Power history (MW), depletion timesteps (EFPD / MWd/kgHM), and interactive evolution curves for $k_{\text{eff}}$, U-235 consumption, Pu-239 breeding, and fission product equilibrium (Xe-135, Sm-149).
   - MCNP companion `BURN` card export: time steps, power levels, volume tracking (`MATVOL`), and CINDER90 inventory tracking (manual §10.3.3, Example 57).
+  - **Hand-off format first, no engine of our own** (FEED and RAFT import it): a schema-versioned `depletion.json` beside a run record with time
+    steps (days), power history, k with its sigma, regions (name, OpenMC cell ids, heavy-metal mass), burnup per region and step in MWd/tU,
+    optional isotopics, and the run's provenance block. Studio would drive `openmc.deplete`. **Open question posted to FEED's log**: is OFFBEAT's
+    per-cell `Bu` file MWd per tonne of oxide or of heavy metal, and how do Studio regions map to FEED cells? Nothing is built.
 
 
+
+### 2b. Package: Nodal Core (PWR-type cores; optional add-on)
+Plan: [docs/design/nodal-package-plan.md](docs/design/nodal-package-plan.md). A lattice model gives few-group constants (`openmc.mgxs.Library`), openndm
+(MIT; PyPI 0.3.0) solves a coarse 3D core, and the tab shows the nodal k and power map beside OpenMC's k. First user: RAFT's BEAVRS lesson.
+- **P0 done (2026-10-07)**: the group-constant path works (infinite assembly within Monte Carlo noise: -76 and +9 pcm). An 8 x 8 core with a water
+  reflector is +5,470 pcm (vacuum outside) and +2,350 pcm (reflective); a fuel-only reflective case is -8 pcm. ADFs from infinite lattices change it by under 20 pcm.
+  Scripts in `docs/design/nodal-p0/`.
+- **Next, P2**: reflector-aware factors or reflector constants from a fuel-and-reflector calculation; then the comparison against OpenMC kept as tests.
+  The pass line is the user's to set after seeing the numbers. **No nodal k is shown as an estimate of a core until P2 passes.**
+- Then P1 (the solver wrapper; `legendre_order = 0` with P0 correction, `openmc` on PATH, never a physical region as the lattice's `outer`), P3 (the tab),
+  P4 (the SEED manifest: add-on `nodal-core`, capabilities `group-constants` and `nodal-solve`, MIT notice), P5 (the RAFT result file).
+- For the BEAVRS HZP comparison (RAFT's M8): absolute critical boron and the temperature coefficients need full Monte Carlo; bank and boron worths as
+  differences might come from the nodal route, unproven.
+
+### 2c. Package: TRISO & Particle Fuel (eventually; a separate package for people doing TRISO work)
+Today: one five-layer particle example (`examples/triso-particle`), no packing. Findings of the 2026-10-07 probe (private notes, not in the repo):
+- **Package contents**: a compact or pebble template (radii, packing fraction, count, seed) using `openmc.model.pack_spheres` and `create_triso_lattice`,
+  3D and packing-fraction checks (random sequential packing stalls near 0.38), the particle library, volume and fuel-loading numbers. Start OpenMC-only.
+- **MCNP export of a packing is not ready, and the template must refuse it with a named message until it is**: MCNPy takes about 2.6 s per particle (20 particles
+  about 85 s, 100 particles 302 s; 1,000 would be about 45 min, 10,000 about 7 h if linear); it fails on numpy 2 unless `np.set_printoptions(legacy="1.25")`
+  is set (the text `np.float64(...)` reaches Java); and the exporter refuses translated cells inside lattice universes (`lattice_cards.py:351`). Reading the raw deck in MCNP: not run.
+- Needs before an MCNP export: exporter support for translated cells in lattice universes, a per-cell speed-up of the same kind as the earlier speed work, and a real MCNP read.
+  Weeks, not days. Report the numpy-2 failure upstream only when the user says (with the other MCNPy items).
+- Cost of the OpenMC-only template: 3 to 4 days. Build it when TRISO users exist (none confirmed).
 
 ### 3. Package: Radiation Protection & Detection Lab
 - **Pulse Height Multichannel Analyzer (MCA) Spectrum (`openmc.PulseHeightFilter`)**:
@@ -224,6 +287,12 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
     thermal-scattering story at a glance (e.g. `c_Be` or `c_Graphite`), as does He-3 (n,p) for a detector.
 - **Weight Windows & Importance Maps (`openmc.WeightWindows`)**:
   - Spatial weight window mesh configuration for deep shielding penetration, with 2D/3D importance heatmaps and MCNP `WWG`/`WWP` cards.
+  - Order: the figure of merit first (section 0), then MAGIC generation (`openmc.WeightWindowGenerator`; two passes: generate, then load; 3 to 4 days),
+    tested on the shielding demo. The test: a windowed run against an analog run of the same model, two seeds each, agreeing within 3 sigma of the
+    combined uncertainty, with the FOM gain reported (not run yet). **MCNP export: not supported, and it says so**: MCNP's `WWG` generates its own
+    (different) windows, and carrying OpenMC's over needs a `wwinp` writer that cannot be verified without MCNP.
+  - Random ray / FW-CADIS: OpenMC 0.15.3 has them (`Settings.random_ray`, `convert_to_multigroup`, `WeightWindowGenerator(method='fw_cadis')`) but they need
+    multigroup constants Studio does not make. Deferred.
 
 ### 4. Package: Fusion Neutronics
 - **Torus & Tokamak Geometry**:

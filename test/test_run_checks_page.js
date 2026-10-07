@@ -87,7 +87,7 @@ test('the record check says what differs', () => {
 
 test('the Results buttons call the report and the record check, and only those', () => {
   run('window.__calls = []; saveRunReport = () => window.__calls.push("report"); checkRunRecord = () => window.__calls.push("record"); exportParaview = () => window.__calls.push("vtk");');
-  const click = id => { run('window.__calls = []'); for (const [t, fn] of listeners) if (t === 'click') { try { fn({target: {closest: sel => sel === id ? {} : null}}); } catch (e) { /* other click handlers expect more of the event */ } } return json(run('window.__calls')); };
+  const click = id => { run('window.__calls = []'); for (const [t, fn] of listeners) if (t === 'click' && fn.toString().includes('#reportBtn')) fn({target: {closest: sel => sel === id ? {} : null}}); return json(run('window.__calls')); };
   assert.deepEqual(click('#reportBtn'), ['report']);
   assert.deepEqual(click('#recordBtn'), ['record']);
   assert.deepEqual(click('#paraviewBtn'), ['vtk']);

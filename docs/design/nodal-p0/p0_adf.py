@@ -16,6 +16,7 @@ import openmc.mgxs
 import openndm
 from openndm.gc import lattice_universes
 from openndm.gc.mgxs import from_mgxs_library
+from openndm.gc.adf import add_adf_tallies, compute_adf
 
 particles = int(sys.argv[1]) if len(sys.argv) > 1 else 20000
 batches = int(sys.argv[2]) if len(sys.argv) > 2 else 120
@@ -86,7 +87,7 @@ TYPES = ["absorption", "transport", "nu-fission", "kappa-fission", "chi", "inver
          "consistent nu-scatter matrix", "consistent scatter matrix"]
 
 
-def case(label, lattice, side, n_nodes, outside_bc, subdiv=(1, 2, 4)):
+def case(label, lattice, side, n_nodes, outside_bc, subdiv=(1, 2, 4), want_adf=False, adfs=None):
     """Run OpenMC on `lattice` (n x n positions of width ASM), tally 2-group constants on its universes, solve with openndm."""
     t0 = time.time()
     box = openmc.model.RectangularPrism(n_nodes * ASM, n_nodes * ASM, boundary_type=outside_bc)
@@ -109,36 +110,54 @@ def case(label, lattice, side, n_nodes, outside_bc, subdiv=(1, 2, 4)):
     tallies = openmc.Tallies()
     lib.add_to_tallies_file(tallies, merge=True)
     model = openmc.Model(geometry, materials, settings, tallies)
+    if want_adf:
+        add_adf_tallies(model, lattice, lib.energy_groups)
     sp_path = model.run(output=False)
+    adf = None
     with openmc.StatePoint(sp_path) as sp:
         k = sp.keff
         lib.load_from_statepoint(sp)
+        if want_adf:
+            adf = compute_adf(sp, n_axes=2)
     print(f"[{label}] OpenMC k = {k.nominal_value:.5f} +/- {k.std_dev * 1e5:.0f} pcm  ({time.time() - t0:.0f} s)")
     xs = from_mgxs_library(lib)
-    xs.finalize(warn=False)
-    bc = {f: outside_bc for f in ("x_min", "x_max", "y_min", "y_max")} | {"z_min": "reflective", "z_max": "reflective"}
-    for kernel in ("fdm", "sanm"):
-        for sub in subdiv:
-            g = openndm.Geometry.from_openmc(lattice, dz=[HZ], boundaries=bc, outside=side, subdivide=sub)
-            r = openndm.Model(g, xs, openndm.Settings(kernel=kernel, verbosity=0)).solve()
-            print(f"    nodal {kernel:4s} x{sub}: k = {r.k_eff:.5f}  {(r.k_eff - k.nominal_value) * 1e5:+7.0f} pcm   {r.runtime * 1000:.0f} ms")
-    return k, xs
+    if adf is not None:
+        print(f"    ADF (faces -x +x -y +y, groups fast thermal): {np.round(adf.values[:4], 4).tolist()}  max sigma {np.nanmax(adf.std_dev):.4f}")
+    for use in ([False, True] if adfs else [False]):
+        if use:
+            for idx, u in enumerate(lib.domains):
+                if u.id in adfs:
+                    adfs[u.id].apply_to(xs, idx)
+        xs.finalize(warn=False)
+        bc = {f: outside_bc for f in ("x_min", "x_max", "y_min", "y_max")} | {"z_min": "reflective", "z_max": "reflective"}
+        for kernel in ("fdm", "sanm"):
+            for sub in subdiv:
+                g = openndm.Geometry.from_openmc(lattice, dz=[HZ], boundaries=bc, outside=side, subdivide=sub)
+                r = openndm.Model(g, xs, openndm.Settings(kernel=kernel, verbosity=0)).solve()
+                print(f"    {'ADF' if use else 'no ADF'} nodal {kernel:4s} x{sub}: k = {r.k_eff:.5f}  {(r.k_eff - k.nominal_value) * 1e5:+7.0f} pcm   {r.runtime * 1000:.0f} ms")
+    return k, xs, adf
+
 
 
 # 1. infinite lattice of one assembly: isolates the group-constant path (no leakage, no reflector)
+ADFS = {}
 for name, asm in (("A", A), ("B", B)):
     lat = openmc.RectLattice()
     lat.pitch = (ASM, ASM)
     lat.lower_left = (-ASM / 2, -ASM / 2)
     lat.universes = [[asm]]
-    case(f"infinite {name}", lat, "reflective", 1, "reflective", subdiv=(1,))
+    _, _, adf = case(f"infinite {name}", lat, "reflective", 1, "reflective", subdiv=(1,), want_adf=True)
+    ADFS[asm.id] = adf
 
-# 2. a small core: 8 x 8 positions, 6 x 6 fuel in a checkerboard, a one-assembly water reflector ring, vacuum outside
-NC = 8
-core = openmc.RectLattice(name="core")
-core.pitch = (ASM, ASM)
-core.lower_left = (-NC * ASM / 2, -NC * ASM / 2)
-core.universes = [[R if (i in (0, NC - 1) or j in (0, NC - 1)) else (A if (i + j) % 2 == 0 else B) for i in range(NC)] for j in range(NC)]
-# (R must not be core.outer: openndm treats the outer universe as outside the core)
-case("core 8x8", core, "vacuum", NC, "vacuum")
+ADFS = ADFS
+def core_lattice(NC, ring):
+    lat = openmc.RectLattice(name="core")
+    lat.pitch = (ASM, ASM)
+    lat.lower_left = (-NC * ASM / 2, -NC * ASM / 2)
+    lat.universes = [[R if (ring and (i in (0, NC - 1) or j in (0, NC - 1))) else (A if (i + j) % 2 == 0 else B) for i in range(NC)] for j in range(NC)]
+    return lat
+
+# the water ring is made of real lattice positions (R); it must not be the lattice's `outer` universe, which openndm treats as outside the core
+case("8x8 with reflector, vacuum outside", core_lattice(8, True), "vacuum", 8, "vacuum", subdiv=(1, 2, 4), adfs=ADFS)
+case("8x8 with reflector, reflective outside", core_lattice(8, True), "reflective", 8, "reflective", subdiv=(1, 2), adfs=ADFS)
 print(f"total {time.time() - t_all:.0f} s")

@@ -30,21 +30,26 @@ openndm's own full-core comparison against OpenMC (its requirement "C-4") is **n
 `openmc.mgxs.Library` with a chosen group structure and the lattice domains, run OpenMC to fill it, and load it into openndm in a throwaway script in the sandbox
 (no repo change). Go/no-go: does it work with no extra user steps, and how long does it take on a small core? Output: a note with times and the manual steps found.
 
-**P0 result (2026-10-07, done): GO for the group-constant path; the core-level accuracy is NOT there yet.** Script: [`nodal-p0/p0.py`](nodal-p0/p0.py) (throwaway, run in WSL in a venv
+**P0 result (2026-10-07, done): GO for the group-constant path; the core-level accuracy is NOT there yet (+5.5 thousand pcm with a water reflector).** Script: [`nodal-p0/p0.py`](nodal-p0/p0.py) (throwaway; `nodal-p0/p0_adf.py` adds the factors and the reflective/vacuum variants; run in WSL in a venv
 with `openndm 0.3.0` on top of the OpenMC 0.15.3 env; 4 threads). Test model: 5 x 5 pin assemblies (2.4 % and 3.1 % UO2, a guide tube, water), 2 energy groups split at 0.625 eV,
 20,000 particles x 150 batches (30 inactive), constants tallied on the assembly universes (`openmc.mgxs.Library`, domain type `universe`).
 - **Infinite assembly (the group-constant path alone):** OpenMC 1.30622 and 1.36311 (+/- 52 and 54 pcm); openndm on the same library, one node, all faces reflective: **-76 pcm and +9 pcm**.
   Inside the Monte Carlo noise. So Studio's lattice universes go through `openndm.gc.from_mgxs_library` with no translation code, and the domain order matches the lattice map.
-- **8 x 8 core (6 x 6 checkerboard of the two assemblies, one water reflector ring, vacuum outside):** OpenMC 0.94469 (+/- 58 pcm); openndm **-7186 pcm (finite differences, one node per
-  assembly) to -7924 pcm (SANM, 4 x 4 nodes per assembly)**. The mesh-refined values barely move, so this is not mesh error: it is the model (constants collapsed with the core spectrum and
-  no discontinuity factors at the water reflector). It is the case P2 exists for: openndm has `add_adf_tallies` / `compute_adf` for assembly discontinuity factors, and the first P2 experiment is
-  to add them and see how much of the 7.9 thousand pcm they remove. **Until P2 passes, the tab must not show a nodal k as an estimate of a core.**
+- **8 x 8 core (6 x 6 checkerboard of the two assemblies, one water reflector ring, vacuum outside):** OpenMC 0.94469 (+/- 58 pcm); openndm **+5,470 pcm** (SANM, mesh-converged;
+  +4,300 pcm for finite differences at one node per assembly). With a reflective outside instead: OpenMC 1.0795, openndm **+2,350 pcm** (SANM), and finite differences at two nodes per assembly
+  within 730 pcm by luck of cancelling errors. A fuel-only 4 x 4 checkerboard with a reflective outside: **-8 pcm** (SANM): the fuel-to-fuel coupling is right.
+  So the error sits at the fuel/water-reflector interface.
+- **Discontinuity factors from the infinite lattices (openndm's `add_adf_tallies` / `compute_adf`, 0.995 to 1.013 for both assemblies) change the core k by less than 20 pcm.** They do not touch the
+  reflector problem. The reflector needs its own treatment: factors from a fuel-plus-reflector configuration, or reflector constants from a fuel/reflector calculation. That is the first P2 experiment.
+- **A correction to my first P0 note:** an earlier run of this experiment showed -7.9 thousand pcm. That was my set-up error: the water ring was also the lattice's `outer` universe, and openndm
+  treats the outer universe as outside the core, so the reflector was silently missing. A model with the reflector as real lattice positions (not `outer`) gives the numbers above. The Studio wrapper
+  must never use a physical region as `outer`, and should say so when the lattice has one.
 - **Cost:** a nodal solve is milliseconds (5 to 120 ms); the OpenMC run for the constants is 80 to 100 s per case here (20,000 x 150, 4 threads, a machine with other agents on it). Group constants,
   not the solve, set the price. Timings are not clean (shared machine).
 - **Manual steps found (the wrapper must do them):** `lib.legendre_order = 0` with `lib.correction = 'P0'` (with order 1 openndm's loader fails on the matrix shape: 8 values for a 2 x 2 x 2 matrix, a ValueError);
   the `openmc` executable must be on PATH (venv python and the conda env's bin on PATH); `openndm.gc.lattice_universes(lattice)` must be the library's domain list; the `outside` option of `from_openmc` is only for
   inactive lattice positions, the outer faces take `boundaries` (a first run with the wrong reading gave a nonsense k of 0.157, which would have looked like a solver bug).
-- **Not done:** ADFs, two-step (single-assembly) group constants, 3D, rods, boron.
+- **Not done:** reflector-aware factors, two-step (single-assembly) group constants, 3D, rods, boron.
 
 **P1: wrap the solver (2 days).** A small module that takes the library, the lattice map and pitch, runs openndm, and returns k, a power map and (optional) critical boron.
 Set `OMP_NUM_THREADS` explicitly (the deep dive saw it stall at 16 threads, fine at 1 to 8). Pin one openndm version. Test against openndm's own published numbers

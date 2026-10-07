@@ -502,6 +502,18 @@ class TestRerunCheck(unittest.TestCase):
                 "environment_info": 0,
             })
 
+    def test_files_are_listed_sorted_by_name(self):
+        """Added by the dispatcher (a gap in the brief: the first test data was already in order)."""
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td)
+            files_map = {}
+            for name in ("c.txt", "a.txt", "b.txt"):
+                (p / name).write_bytes(name.encode())
+                files_map[name] = sha256_bytes(name.encode())
+            (p / "provenance.json").write_text(json.dumps(make_record(files=files_map)))
+            res = rerun_check.check(p, current=BASE_ENV)
+            self.assertEqual([f["name"] for f in res["files"]], ["a.txt", "b.txt", "c.txt"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

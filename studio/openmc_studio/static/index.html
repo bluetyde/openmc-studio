@@ -5332,7 +5332,11 @@ async function exportParaview() {
   const maps = r.files.filter(f => f.tally).length, tracks = r.files.some(f => f.file === 'tracks.vtk');
   await saveFile(r.zip_name, bytes, `${maps} flux map${maps === 1 ? '' : 's'}${tracks ? ', tracks' : ''} and geometry, for ParaView. README.txt inside says how to open them. Also in <code>${esc(r.folder)}</code>.`);
 }
-$('#results').addEventListener('click', e => { if (e.target.closest('#paraviewBtn')) exportParaview(); });
+$('#results').addEventListener('click', e => {
+  if (e.target.closest('#paraviewBtn')) exportParaview();
+  else if (e.target.closest('#reportBtn')) saveRunReport();
+  else if (e.target.closest('#recordBtn')) checkRunRecord();
+});
 function clearResults() {
   LOCAL.results = null; LOCAL.resultsRun = null; LOCAL.selTrack = null; LOCAL.mesh = 0;
   renderResults();
@@ -5453,13 +5457,56 @@ function renderKeffChart(s) {
     `</div>`;
 }
 
+// The result checks of a finished run (mc_result_checks via the server): one line each, worst first. A check whose limit has no
+// source says "not compared"; nothing is shown as a pass that was not tested.
+const FINDING_LEVEL = {error:0, warning:1, info:2, 'not-compared':3};
+function renderFindings(list) {
+  if (!list || !list.length) return '';
+  const rows = [...list].sort((a, b) => FINDING_LEVEL[a.level] - FINDING_LEVEL[b.level]);
+  const cls = l => l === 'error' ? 'error' : l === 'warning' ? 'warn' : l === 'info' ? 'info' : '';
+  return `<h4>Checks on this run</h4><ul class="olist" id="runFindings">` +
+    rows.map(f => `<li><span class="sev ${cls(f.level)}">${esc(f.level === 'not-compared' ? 'not compared' : f.level)}</span><span class="omsg">${esc(f.message)}</span></li>`).join('') + '</ul>';
+}
+async function saveRunReport() {
+  const rid = LOCAL.resultsRun;
+  if (!LOCAL.on || !rid) { log('warn', 'Open a run first (Runs > Results).'); return; }
+  let html;
+  try { html = await api(`/api/runs/${encodeURIComponent(rid)}/report`); } catch (e) { log('error', `Couldn't make the report: ${esc(e.message)}`); return; }
+  await saveFile(`run-report-${rid}.html`, new TextEncoder().encode(html), 'It is one self-contained page: open it in a browser.');
+}
+async function checkRunRecord() {
+  const rid = LOCAL.resultsRun;
+  if (!LOCAL.on || !rid) { log('warn', 'Open a run first (Runs > Results).'); return; }
+  let r;
+  try { r = await api(`/api/runs/${encodeURIComponent(rid)}/record-check`); } catch (e) { log('error', `Couldn't check the record: ${esc(e.message)}`); return; }
+  setOutTab('log');
+  log(...recordCheckLog(rid, r));
+}
+function recordCheckLog(rid, r) {
+  const c = r.counts || {};
+  if (r.status === 'no-record') return ['warn', `Run <code>${esc(rid)}</code> has no provenance.json, so there is nothing to check it against.`];
+  if (r.status === 'bad-record') return ['error', `Run <code>${esc(rid)}</code>: provenance.json can't be read (${esc((r.notes || []).join('; '))}).`];
+  if (r.status === 'match') return ['ok', `Run <code>${esc(rid)}</code>: the recorded files and environment match today's.`];
+  const bits = [];
+  if (c.files_changed) bits.push(`${c.files_changed} file${c.files_changed === 1 ? '' : 's'} changed`);
+  if (c.files_missing) bits.push(`${c.files_missing} missing`);
+  if (c.files_other) bits.push(`${c.files_other} unreadable or outside the run folder`);
+  if (c.environment_warnings) bits.push(`${c.environment_warnings} environment difference${c.environment_warnings === 1 ? '' : 's'} to look at`);
+  if (c.environment_info) bits.push(`${c.environment_info} minor`);
+  const first = (r.environment || []).slice(0, 3).map(d => `${esc(d.path)}: ${esc(String(d.recorded))} then, ${esc(String(d.current))} now`).join('; ');
+  return ['warn', `Run <code>${esc(rid)}</code> differs from its record: ${bits.join(', ') || esc(r.status)}.${first ? ' ' + first + '.' : ''}`];
+}
+
 function renderResults() {
   const box = $('#results'), R = LOCAL.results;
   if (!R) { box.innerHTML = '<p class="envline">Run the model to see tallies here. Past runs are under Runs.</p>'; $('#layers').hidden = true; return; }
   const s = R.summary || {};
   let h = `<h4>Run ${esc(LOCAL.resultsRun)}</h4><p class="envline">${esc(s.run_mode || '')} · ${s.particles?.toLocaleString?.() ?? '?'} × ${s.batches ?? '?'} batches · seed ${s.seed ?? '?'} · ${s.runtime_s ? s.runtime_s.toFixed(1) + ' s' : ''}` +
     (s.keff ? ` · k-eff ${s.keff[0].toFixed(5)} ± ${s.keff[1].toFixed(5)}` : '') + `</p>` +
-    `<p class="envline"><button class="tbtn" type="button" id="paraviewBtn" title="Flux maps, tracks and geometry as VTK and STL files for ParaView or VisIt">Export for ParaView…</button></p>`;
+    `<p class="envline"><button class="tbtn" type="button" id="paraviewBtn" title="Flux maps, tracks and geometry as VTK and STL files for ParaView or VisIt">Export for ParaView…</button> ` +
+    `<button class="tbtn" type="button" id="reportBtn" title="One page: what produced this run, its results and the checks below">Save run report…</button> ` +
+    `<button class="tbtn" type="button" id="recordBtn" title="Check the files and environment this run recorded against today's">Check record</button></p>` +
+    renderFindings(R.findings);
   if (s.k_generation && s.k_generation.length) {
     h += renderKeffChart(s);
   }
@@ -5467,8 +5514,8 @@ function renderResults() {
     if (t.kind === 'dose') { h += renderDose(t); return; }
     if (t.kind === 'table') {
       const nl = t.rows[0]?.labels.length || 0;
-      h += `<h4>${esc(t.name)}</h4><div style="overflow-x:auto"><table class="rtable"><thead><tr>${t.filters.map(f => `<th>${esc(f.replace('Filter', ''))}</th>`).join('')}<th>Score</th><th class="num">Mean</th><th class="num">Rel. error</th></tr></thead><tbody>` +
-        t.rows.map(r => `<tr>${r.labels.map(l => `<td>${esc(l)}</td>`).join('')}${nl ? '' : ''}<td>${esc(r.score)}</td><td class="num">${sci(r.mean)}</td><td class="num ${relClass(r.rel_err)}">${r.rel_err === null ? '—' : (100 * r.rel_err).toFixed(1) + '%'}</td></tr>`).join('') +
+      h += `<h4>${esc(t.name)}</h4><div style="overflow-x:auto"><table class="rtable"><thead><tr>${t.filters.map(f => `<th>${esc(f.replace('Filter', ''))}</th>`).join('')}<th>Score</th><th class="num">Mean</th><th class="num">Rel. error</th>${t.rows.some(r => r.fom) ? '<th class="num" title="Figure of merit, 1 / (relative error squared x run time in s). Larger is better; compare runs of the same model.">FOM</th>' : ''}</tr></thead><tbody>` +
+        t.rows.map(r => `<tr>${r.labels.map(l => `<td>${esc(l)}</td>`).join('')}${nl ? '' : ''}<td>${esc(r.score)}</td><td class="num">${sci(r.mean)}</td><td class="num ${relClass(r.rel_err)}">${r.rel_err === null ? '—' : (100 * r.rel_err).toFixed(1) + '%'}</td>${t.rows.some(x => x.fom) ? `<td class="num">${r.fom ? sci(r.fom) : '—'}</td>` : ''}</tr>`).join('') +
         '</tbody></table></div>';
     } else {
       const v = t.values[t.scores[0]], nz = v.filter(x => x > 0);

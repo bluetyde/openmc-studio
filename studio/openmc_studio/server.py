@@ -742,7 +742,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(409, str(exc))
         if path == "/api/runs":
             return self._send(200, {"runs": self.studio.list_runs()})
-        m = re.match(r"^/api/runs/([^/]+)/(stream|results|project|script)$", path)
+        m = re.match(r"^/api/runs/([^/]+)/(stream|results|project|script|record-check|report)$", path)
         if not m:
             return self._error(404, "Not found")
         rid, what = m.groups()
@@ -755,9 +755,19 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, (run_dir / "project.json").read_bytes())
         if what == "script":
             return self._send(200, (run_dir / "model.py").read_bytes(), "text/plain; charset=utf-8")
+        if what == "record-check":
+            from . import run_checks
+            try:
+                return self._send(200, run_checks.record_check(run_dir))
+            except Exception as e:
+                return self._error(500, f"Couldn't check the record: {e}")
         try:
-            from . import results
-            return self._send(200, results.load(run_dir))
+            from . import results, run_checks
+            data = run_checks.augment(run_dir, results.load(run_dir))
+            if what == "report":
+                return self._send(200, run_checks.report_html(run_dir, data).encode("utf-8"), "text/html; charset=utf-8",
+                                  {"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"})
+            return self._send(200, data)
         except Exception as e:  # results are best effort; report instead of crashing the page
             return self._error(500, f"Couldn't read results: {e}")
 

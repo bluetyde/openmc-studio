@@ -205,8 +205,11 @@ the package, and nothing else.
   - MCNP companion `BURN` card export: time steps, power levels, volume tracking (`MATVOL`), and CINDER90 inventory tracking (manual §10.3.3, Example 57).
   - **Hand-off format first, no engine of our own** (FEED and RAFT import it): a schema-versioned `depletion.json` beside a run record with time
     steps (days), power history, k with its sigma, regions (name, OpenMC cell ids, heavy-metal mass), burnup per region and step in MWd/tU,
-    optional isotopics, and the run's provenance block. Studio would drive `openmc.deplete`. **Open question posted to FEED's log**: is OFFBEAT's
-    per-cell `Bu` file MWd per tonne of oxide or of heavy metal, and how do Studio regions map to FEED cells? Nothing is built.
+    optional isotopics, and the run's provenance block. Studio would drive `openmc.deplete`. **FEED answered (2026-10-07)**: OFFBEAT's per-cell `Bu` is
+    MWd per tonne of the fuel material, i.e. of oxide for UO2, not of heavy metal. A consumer converts with the uranium mass fraction of the oxide
+    (0.8815 for UO2: oxide burnup = heavy-metal burnup x 0.8815); the record stays on heavy metal. FEED's case is one radial slice, so what it can
+    take is **one value per axial slice**, written into every fuel cell; write regions as axial slices of the fuel for FEED. The basis is not defined
+    for U-ZrH (TRIGA fuel), so FEED would refuse non-oxide fuel. A radial profile would need a burnup-dependent property model first. Nothing is built.
 
 
 

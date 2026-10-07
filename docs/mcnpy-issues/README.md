@@ -56,6 +56,16 @@ about 11 py4j calls per cell, mostly repeated reflection lookups, so about 11 N^
   `commitMcnpImport`, as `test/test_mcnp_import_gate.cjs` does).
 - Possible exact fixes: a `get_universe` that reads the already-held universe list, and cached reflection lookups in `metapy`.
 
+## 3. With numpy 2, a translated cell makes MCNPy send `np.float64(0.25)` to Java (a bug; found 2026-10-07, **not reported**)
+
+OpenMC stores `Cell.translation` as a numpy array of `float64`. MCNPy builds the Java call from the text of those values; under numpy 2 the text of a
+scalar is `np.float64(0.25)`, so the Java side raises `NumberFormatException: For input string: "np.float64(0.25)"` (a `Py4JError` in `eSet`).
+Under numpy 1.x the same value prints as `0.25`. Standalone repro (needs the MCNPy gateway, port 25333): [`numpy2_translation.py`](numpy2_translation.py).
+Measured with numpy 2.4.6 and OpenMC 0.15.3: it fails with default printing and translates with `np.set_printoptions(legacy="1.25")`.
+Where it showed up: a TRISO packing from `openmc.model.pack_spheres` and `create_triso_lattice` (one translated `FILL` cell per particle). Our exporter's
+own lattice path did not hit it in our tests (not investigated why). A fix on MCNPy's side would convert with `float(x)` before formatting.
+A workaround in our code is the `legacy` print option, or converting translations to Python floats where they are set.
+
 ## What we did about it in the exporter (openmc-mcnp-project)
 
 - `world_complement.py` (exporter `c765b21`): the rest-of-the-world cell as `#cell` complements, 2.99 M to 2.06 M calls.

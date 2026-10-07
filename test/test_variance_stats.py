@@ -437,6 +437,23 @@ class TestFalsificationEdgeCases(unittest.TestCase):
         self.assertEqual(len(res["reasons"]), 1)
         self.assertIn("max_abs_z_limit", res["reasons"][0])
 
+class TestAddedByTheDispatcher(unittest.TestCase):
+    """Added by the dispatcher after a mutation check showed a gap in the brief's test list."""
+
+    def test_a_limit_is_met_when_the_measure_equals_it(self):
+        """One bin, analog (0, sigma 1), windowed (1, sigma 0): z is exactly 1, so rms_z and max_abs_z are exactly 1.
+        A limit of exactly 1 holds (the comparison is less than or equal), a limit just below 1 does not."""
+        analog = [(0.0, 1.0)]
+        windowed = [(1.0, 0.0)]
+        holds = {"rms_z_limit": {"value": 1.0, "source": "own choice"}, "max_abs_z_limit": {"value": 1.0, "source": "own choice"}}
+        res = unbiasedness_summary(analog, windowed, holds)
+        self.assertEqual(res["rms_z"], 1.0)
+        self.assertEqual(res["max_abs_z"], 1.0)
+        self.assertEqual(res["verdict"], "consistent")
+        self.assertEqual(res["reasons"], [])
+        fails = {"rms_z_limit": {"value": 0.999999, "source": "own choice"}}
+        self.assertEqual(unbiasedness_summary(analog, windowed, fails)["verdict"], "inconsistent")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

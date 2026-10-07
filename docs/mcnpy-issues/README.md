@@ -1,8 +1,14 @@
 # MCNPy 0.0.7: issues found while speeding up model.mcnp (2026-10-06)
 
-MCNPy (PyPI `mcnpy` 0.0.7, MIT, by Peter J. Kowal, RPI; the package metadata gives no repository URL) is the Java-backed
-OpenMC-to-MCNP translator behind Studio's model.mcnp tab. These are notes and runnable examples for a report to its
-author; nothing has been sent. Test case throughout: the NE403 graphite pile imported from
+MCNPy 0.0.7 (MIT, author Peter J. Kowal, RPI) is the Java-backed OpenMC-to-MCNP translator behind Studio's model.mcnp tab.
+**It is not on PyPI or public GitHub.** It comes from the RPI NuCoMP group's GitHub Enterprise server
+(`github.rpi.edu/NuCoMP/mcnpy`, built into a wheel and installed from a local file; docs at
+`pages.github.rpi.edu/NuCoMP/mcnpy_docs`; see the exporter's `CLAUDE.md`, "MCNPy install notes"), and may need RPI access
+to reach. Do **not** confuse it with two unrelated projects that share the name: `sandialabs/mcnpy` (Sandia, C++/pybind11,
+MCNP PTRAC particle-tracking analysis, BSD-3) and PyPI `mcnpy` (monleon96/MCNPy, versions 0.1.0 to 0.2.5, GPL): neither has
+`deck_formatter.py`, `metapy` or the OpenMC translator, so neither is where these issues go.
+
+These are notes and runnable examples for a report to the RPI NuCoMP authors; nothing has been sent. Test case throughout: the NE403 graphite pile imported from
 [`test/fixtures/mcnp/graphite_pile.mcnp`](../../test/fixtures/mcnp/graphite_pile.mcnp) (267 cells, 309 surfaces, 2 materials).
 Numbers are cold runs in WSL Ubuntu, Python 3.11.15, on a loaded machine (about +-40%); call counts are exact.
 
@@ -36,7 +42,8 @@ about 11 py4j calls per cell, mostly repeated reflection lookups, so about 11 N^
   2,988,277 with the world cell expanded, 2,060,072 with it written as `#cell` complements.
 - Translate time by number of cells (first k cells of the same model): 25 -> 21.5 s, 50 -> 32.6, 100 -> 61.0, 200 -> 148.6,
   267 -> 407.1: about 0.6 s a cell to 100 cells, then steeper.
-- Examples (need the MCNPy gateway, port 25333, and the exporter on `PYTHONPATH` via the project folder argument):
+- Examples (need the MCNPy gateway on the machine-wide port 25333, so post `CLAIM: MCNPy` in `messages/openmc.md` before
+  running them; each takes the exporter project folder as an argument):
   [`time_stages.py`](time_stages.py) (each pipeline stage), [`phase_timer.py`](phase_timer.py) (MCNPy's own stage lines with
   timestamps), [`sample_translate.py`](sample_translate.py) (stack sampling), [`count_rpc.py`](count_rpc.py) (call counts).
   Usage is in each file's docstring; they expect the pile's `model.xml` in a folder (`generate` it with the page's

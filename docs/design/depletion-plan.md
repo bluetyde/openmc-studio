@@ -8,7 +8,7 @@ Status (2026-10-07): **planned, not started.** Goal: Studio runs a fixed-power d
 | Piece | State |
 |---|---|
 | `studio/openmc_studio/depletion_record.py` | merged (`5d37195`): burnup arithmetic in MWd/tU, `build_record`, `write`, `read`, `validate`, `to_oxide_basis`. 7 tests, 14 of 14 deliberate breaks caught. Exercised only with hand-made numbers; **no caller**. |
-| FEED's answer on the basis | OFFBEAT `Bu` is per tonne of oxide; factor 0.8815 for UO2 applied by the consumer; one value per axial slice; refused for non-oxide fuel. The record stays on heavy metal. |
+| FEED's answer on the basis | OFFBEAT `Bu` is per tonne of oxide; the consumer applies the oxide factor of the model it uses (**0.8815** in OFFBEAT's Lassmann burnup model; **0.881** in the `UO2MATPRO` conductivity, which divides by 0.881: FEED's plan 10, section 2); one value per axial slice; refused for non-oxide fuel. The record stays on heavy metal. |
 | Depletion chain file | **present**: `/root/nuclear_data/chains/chain_endfb80_pwr.xml` (27.5 MB, 3,820 nuclides, 7 reaction types in the chain, fission yields loaded; installed 2026-09-27). The deep-dive session's note that no chain file exists was wrong. Its licence and its source version are not recorded anywhere yet. |
 | OpenMC 0.15.3 | `Model.deplete(method, ...)`, `CoupledOperator`, integrators (`Predictor`, `CECM`, `CELI`, `LEQI`, `EPCRK4`, `CF4` and the SI variants), `Results` (`get_keff`, `get_atoms`, `get_times`, `get_source_rates`, `get_mass`, ...). |
 | Studio's run path | `server.py` `Studio.start` runs `python model.py`; `results.py` reads a statepoint; `provenance.py` writes `provenance.json` per run. Eigenvalue runs exist. The headless runner (SEED's path) refuses eigenvalue runs (`headless.py`: `E_UNSUPPORTED`). |
@@ -35,7 +35,7 @@ run folder, log stream, Stop button and `provenance.json` as a transport run, wi
 - burnup per region and step in MWd/tU from the record module's own arithmetic, **cross-checked against OpenMC's** (the module refuses a record whose burnup disagrees with its power history);
 - optional isotopics (atoms/b-cm) for a listed set (U-235, U-238, Pu-239, Pu-240, Pu-241, Xe-135, Sm-149 by default);
 - the run's provenance block plus the chain file and its hash.
-The writer never changes the burnup basis: oxide conversion stays the consumer's job (factor 0.8815 for UO2, given by FEED).
+The writer never changes the burnup basis: oxide conversion stays the consumer's job, with the factor of the consumer's own model (0.881 or 0.8815, see above).
 
 **The view.** A Depletion results tab: k versus burnup with its error bars, a nuclide inventory chart (U-235, Pu-239, Xe-135, Sm-149 over time), a burnup table per region, and "Export depletion.json".
 
@@ -76,6 +76,17 @@ This is the point at which that branch can merge. Studio does not edit FEED.
 - **Normalisation:** OpenMC's fission-q normalisation is the default; changing it changes burnup. Record the mode.
 - **Volume accuracy:** stochastic volumes carry statistical error that scales every burnup number; record the volume and its uncertainty.
 - **Heavy-metal mass:** burnup per tU needs the initial heavy-metal mass; for a material with no uranium it is undefined and the writer refuses.
+
+## Alignment with FEED's plan 10 (burnup as a frozen state; `fuel-performance-studio/docs/plans/10-burnup.md`, read 2026-10-07)
+
+FEED plans to take a burnup from a depletion record only at its milestone M6, and says what it needs from Studio:
+- **A real writer that a run calls.** This plan is that (D1 to D3). FEED's M6 waits for it.
+- **A record id.** FEED's case carries `burnup.source`, "a depletion record's id". `studio.depletion/0.1` has **no id field today** (`depletion_record.py`, top-level keys: schema, time steps, regions, k, isotopics, provenance). Add one in D2: the SHA-256 of the record's canonical JSON with the id left out, written by `build_record`, checked by `validate`. A schema addition: bump to `studio.depletion/0.2` or keep `0.1` while unreleased (to decide with FEED; nothing consumes the record yet).
+- **Heavy-metal basis in MWd/kgHM or MWd/tHM, one value per slice.** The record is in MWd/tU; FEED accepts both units. No change.
+- **The oxide factor is the consumer's.** FEED's plan notes the model constant is 0.881, not 0.8815, for its `UO2MATPRO` law. The record carries no factor, so nothing here changes; the TODO's earlier line (oxide burnup = heavy-metal x 0.8815) is corrected to say the factor depends on the consumer's model.
+- **The chain file exists** (`/root/nuclear_data/chains/chain_endfb80_pwr.xml`). FEED's plan lists "no chain file" among its M6 blockers; that blocker is not real. What is still open is the chain's recorded source and licence (decision 3 below).
+- **Oxide only.** FEED refuses non-oxide fuel; Studio's depletion examples for FEED should be UO2.
+- FEED's first fuel is an LWR UO2 pin with Zircaloy: the PWR chain's thermal-spectrum yields fit it. A good D0 model is the same pin (so FEED's later M6 test has a matching record).
 
 ## Not in this plan
 

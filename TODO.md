@@ -27,7 +27,7 @@ the package, and nothing else.
      (`LAT=2`, refused at `mcnp_import.py:207`; the adapter can't read them): Studio's own step, needs MCNP's hex index order, pitch and
      orientation turned into an `openmc.HexLattice`, a fixture and a byte-for-byte check against OpenMC; about 1 to 2 days.
   4. **Nodal core package, P2** (reflector-aware factors; [plan](docs/design/nodal-package-plan.md)); the BEAVRS lesson in RAFT is its first user.
-  5. **One shared pre-run check** with an error level, used by the page, `/api/run` and the headless runner (section 0).
+  5. **Shared pre-run check: done (2026-10-07)**: `prerun_check.py` holds the page's errors in Python; `/api/run` refuses a project with errors (422, before any run folder exists) and the headless runner adds them after its own capability checks. Held equal to the page by 73 golden cases (`test/fixtures/prerun/cases.json`, `test_prerun_check_page.js`, `test_prerun_check.py`). **Not covered yet** (page and geometry check only): the rules for imported CAD components and the surface tally of a part inside a lattice; a script that posts no project is not checked.
   6. **Graphs**: lethargy spectrum and 1D line cuts with +/-1 sigma bands (see the backlog below).
   7. **Future: a diff-based export** so that CAD and part edits rebuild only what changed
      ([plan](docs/design/mcnp-diff-export-plan.md); phases 0 to 6, about 6 days to phase 4); hard because one edit (a material, a cell) touches
@@ -107,8 +107,7 @@ the package, and nothing else.
   uncertainty of the mean"). The OpenMC-documentation sources for the last two are **not confirmed** (docs were offline). About 2 days.
 - **Re-run command over `provenance.json`**: verify the stored `model.py` / `project.json` hashes, list differences from today's environment
   (the 13 GB library is one hash of `cross_sections.xml`, not its contents), then run through the headless runner. About 1 day.
-- **One shared pre-run check**: today the page checks in JavaScript (`problems()`), the headless runner has its own short list, and `/api/run` does
-  not re-check. One Python function with an error level for every run path; the page asks it. 3 to 5 days (the rules live in JavaScript).
+- **One shared pre-run check**: done, see the order above.
 - **Model-stages guide** (materials, parts, source, tally, settings: done / missing) and a **New menu** (Blank, Demo, examples). The findings badge
   and click-to-select already exist (`renderProblems`). 1 day and 1 to 2 days.
 - **Godiva regression case** from `mit-crpg/benchmarks` (MIT; `icsbep/heu-met-fast-001`): import its MCNP input into Studio, run in OpenMC, compare

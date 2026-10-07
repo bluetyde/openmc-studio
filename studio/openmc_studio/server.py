@@ -66,6 +66,20 @@ class Run:
             pass
 
 
+def prerun_gate(project):
+    """None when the project may run, else the 422 body: what is wrong, before any run folder is made. The same errors the page
+    refuses (prerun_check.py); a check that itself breaks never stops a run."""
+    from . import prerun_check
+    try:
+        errors = prerun_check.check(project)
+    except Exception:  # noqa: BLE001
+        return None
+    if not errors:
+        return None
+    n = len(errors)
+    return {"error": f"Not run: the project has {n} error{'' if n == 1 else 's'}. First: {errors[0]['message']}", "findings": errors}
+
+
 PROJECT_TAG = "@studio-project-v1"
 
 
@@ -808,8 +822,13 @@ class Handler(BaseHTTPRequestHandler):
             script = body.get("script")
             if not isinstance(script, str) or not script.strip():
                 return self._error(400, "No script to run.")
+            project = body.get("project") or {}
+            if project:  # the page always sends it; a script that does not cannot be checked
+                refused = prerun_gate(project)
+                if refused:
+                    return self._send(422, refused)
             try:
-                run = self.studio.start(script, body.get("project") or {}, str(body.get("name") or "model"))
+                run = self.studio.start(script, project, str(body.get("name") or "model"))
             except RuntimeError as e:
                 return self._error(409, str(e))
             return self._send(200, run.meta())

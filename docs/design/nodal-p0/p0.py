@@ -139,6 +139,6 @@ core = openmc.RectLattice(name="core")
 core.pitch = (ASM, ASM)
 core.lower_left = (-NC * ASM / 2, -NC * ASM / 2)
 core.universes = [[R if (i in (0, NC - 1) or j in (0, NC - 1)) else (A if (i + j) % 2 == 0 else B) for i in range(NC)] for j in range(NC)]
-core.outer = R
+# (R must not be core.outer: openndm treats the outer universe as outside the core)
 case("core 8x8", core, "vacuum", NC, "vacuum")
 print(f"total {time.time() - t_all:.0f} s")

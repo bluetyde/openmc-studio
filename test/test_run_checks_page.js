@@ -4,7 +4,8 @@
 const fs = require('fs'), vm = require('vm'), path = require('path'), assert = require('assert');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'studio', 'openmc_studio', 'static', 'index.html'), 'utf8');
-const el = {addEventListener() {}, insertAdjacentHTML() {}, querySelector: () => el, querySelectorAll: () => [], style: {}, dataset: {},
+const listeners = [];
+const el = {addEventListener(type, fn) { listeners.push([type, fn]); }, insertAdjacentHTML() {}, querySelector: () => el, querySelectorAll: () => [], style: {}, dataset: {},
   classList: {add() {}, remove() {}, toggle() {}}, setAttribute() {}, appendChild() {}, append() {}, add() {}, remove() {}, getContext: () => null,
   parentElement: {}};
 // Every write to a stub's innerHTML is recorded: renderResults writes the results box first and other boxes after it.
@@ -82,6 +83,14 @@ test('the record check says what differs', () => {
   assert.equal(sev, 'warn');
   assert.match(text, /2 files changed, 1 missing, 1 environment difference to look at, 3 minor/);
   assert.match(text, /openmc\.python: 0\.15\.2 then, 0\.15\.3 now/);
+});
+
+test('the Results buttons call the report and the record check, and only those', () => {
+  run('window.__calls = []; saveRunReport = () => window.__calls.push("report"); checkRunRecord = () => window.__calls.push("record"); exportParaview = () => window.__calls.push("vtk");');
+  const click = id => { run('window.__calls = []'); for (const [t, fn] of listeners) if (t === 'click') { try { fn({target: {closest: sel => sel === id ? {} : null}}); } catch (e) { /* other click handlers expect more of the event */ } } return json(run('window.__calls')); };
+  assert.deepEqual(click('#reportBtn'), ['report']);
+  assert.deepEqual(click('#recordBtn'), ['record']);
+  assert.deepEqual(click('#paraviewBtn'), ['vtk']);
 });
 
 (async () => {

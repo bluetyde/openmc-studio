@@ -147,10 +147,16 @@ class CadJobLifecycle(unittest.TestCase):
 
     # ── timeout ──
     def test_timeout_kills_the_whole_process_group(self):
-        m = self.manager(timeout=1)
+        # The job timeout starts when the worker process starts, and the fake worker needs two Python start-ups
+        # (itself, then the child it spawns) before the child's pid file exists. With 1 s that was a race: on a
+        # loaded machine the job timed out first and there was no child to check (2 of 5 runs failed with 40 busy
+        # loops on 16 cores). 8 s leaves room; the timeout, not the worker, still ends the job.
+        m = self.manager(timeout=8)
         done = self.run_job(m, "hang")
         self.assertEqual(done["state"], "timed_out")
-        (pid,) = self.children().values()
+        children = self.children()
+        self.assertEqual(len(children), 1, f"the worker did not start its child before the timeout: {children}")
+        (pid,) = children.values()
         time.sleep(0.2)
         self.assertFalse(alive(pid), "a descendant of a timed-out worker survived")
         self.assertFalse((self.tmp / "jobs" / done["id"] / "work").exists(), "timed-out scratch must be deleted")

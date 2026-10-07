@@ -63,6 +63,7 @@ const CASES = [
   ['box source inverted', p => src(p, {space: 'box', x0: 5, x1: -5})],
   ['point source outside the world', p => src(p, {x: 500})],
   ['point source center not a number', p => src(p, {y: null})],
+  ['point source exactly on the world boundary', p => src(p, {x: 100})],
   ['sphere source radius zero', p => src(p, {space: 'sphere', r: 0})],
   ['cylinder source height zero', p => src(p, {space: 'cylinder', h: 0})],
   ['beam direction zero', p => src(p, {angle: 'mono', u: 0, v: 0, w: 0})],
@@ -94,6 +95,9 @@ const CASES = [
   ['tally with no scores', p => tal(p, {scores: []})],
   ['energy bins not rising', p => tal(p, {ebins: '5, 1'})],
   ['several errors at once', p => set(src(part(p, {r: 0}), {strength: 0}), {particles: 0})],
+  ['he-3 detector with no material named: the page picks the He-3 one', p => tal(p, {detector: 'he3', responseMat: '', scores: ['flux']})],
+  ['he-3 detector and no He-3 material to pick', p => { p.materials = p.materials.filter(m => m.id !== 'm3'); p.parts = p.parts.filter(x => x.material !== 'm3'); p.tallies[0].cells = []; return tal(p, {detector: 'he3', responseMat: '', scores: ['flux'], cells: ['world']}); }],
+  ['tabulated source with a leading zero probability', p => src(p, {energy: 'tabulated', tab_p: '0, 0.2, 0.5, 0.3'})],
   // runs the page allows
   ['he-3 detector tally, flux only', p => tal(p, {detector: 'he3', responseMat: 'm3', scores: ['flux']})],
   ['surface tally, current', p => tal(p, {kind: 'surface', surfaces: ['p1'], scores: ['current']})],
@@ -108,7 +112,8 @@ const CASES = [
 
 // The cases the page lets through: Python must let them through too.
 const ALLOWED = new Set(['baseline: the demo model', 'eigenvalue with fuel', 'he-3 detector tally, flux only', 'surface tally, current', 'cylindrical mesh, valid',
-  'tabulated source, valid', 'Watt source, valid', 'uniform source, valid', 'box source, valid', 'sphere source, valid', 'dose tally in a fixed-source run']);
+  'tabulated source, valid', 'Watt source, valid', 'uniform source, valid', 'box source, valid', 'sphere source, valid', 'dose tally in a fixed-source run',
+  'he-3 detector with no material named: the page picks the He-3 one', 'tabulated source with a leading zero probability']);
 const build = () => CASES.map(([name, mutate]) => { const project = mutate(base()); return {name, project, errors: pageErrors(project)}; });
 
 if (process.argv.includes('--write')) {

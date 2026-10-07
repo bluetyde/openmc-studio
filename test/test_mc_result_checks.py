@@ -471,6 +471,24 @@ class TestMCResultChecks(unittest.TestCase):
                 codes = {f["code"]: f for f in findings}
                 self.assertEqual(codes["k-missing"]["level"], "error")
 
+    def test_boundaries_added_by_the_dispatcher(self):
+        """Added by the dispatcher (gaps in the brief): the edges of two comparisons.
+
+        One lost particle is already a warning. Entropy that settles exactly at the first active batch
+        (0-based index equal to n_inactive) is a warning, one batch later it is fine.
+        """
+        base = {"run_mode": "eigenvalue", "batches": 10, "particles": 1000, "n_inactive": 1, "keff": [1.0, 0.001]}
+        lost = [f for f in check_eigenvalue(base, lost_particles=1) if f["code"] == "lost-particles"][0]
+        self.assertEqual(lost["level"], "warning")
+        self.assertIn("1", lost["message"])
+        series = [10.0, 1.0, 1.1, 0.9, 1.0, 1.1, 0.9, 1.0, 1.1, 0.9]
+        self.assertEqual(entropy_settling_batch(series, 3), 1)
+        limits = {"entropy_band_sigma": {"value": 3, "source": "own choice, not from a standard"}}
+        for n_inactive, level in ((1, "warning"), (2, "info")):
+            summary = dict(base, n_inactive=n_inactive, entropy=series)
+            found = [f for f in check_eigenvalue(summary, thresholds=limits) if f["code"] == "entropy-settled"][0]
+            self.assertEqual(found["level"], level, n_inactive)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

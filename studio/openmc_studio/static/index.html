@@ -2688,7 +2688,7 @@ async function importMcnpDeck(text, fileName) {
 const MCNP_OPTS = {};
 function mcnpScript(probs) { return buildScript(probs, false, MCNP_OPTS).text; }
 
-/* ───────── MCNP equivalents (NE403 lab notation) shown beside sources and tallies ───────── */
+/* ───────── MCNP equivalents (course lab notation) shown beside sources and tallies ───────── */
 const mcnpNum = v => fin(v) ? String(+v.toPrecision(6)) : '?';
 function mcnpSource(s) {
   const parts = [`SDEF PAR=${s.particle === 'photon' ? 2 : 1}`], cards = [];
@@ -9405,7 +9405,7 @@ function drawViewport() {
     .concat(cells.map(({c}) => csgCellRgb(c)));
   const fillM = matById(S.settings.worldFill), worldRgb = fillM ? hexRgb(fillM.color) : [30, 34, 39], outside = [14, 16, 19];
   // Same answer as cellIndexAt, but each pixel only tests parts that cross the slice plane and whose bounding
-  // box covers it (a model like a graphite pile with 130 apertures is otherwise seconds per frame).
+  // box covers it (a lattice model with 130 apertures is otherwise seconds per frame).
   const [uA, vA, wA] = {xy:[0, 1, 2], xz:[0, 2, 1], yz:[1, 2, 0]}[view.plane];
   const cand = [];
   S.parts.forEach((p, k) => {

@@ -1,4 +1,4 @@
-"""Count MCNPy's py4j round trips for translate on the pile: old (world cell expanded) vs new (#cell complements).
+"""Count MCNPy's py4j round trips for translate on the lattice test deck: old (world cell expanded) vs new (#cell complements).
 python count_rpc.py <project> <folder> old|new"""
 import contextlib, io, os, sys, time
 

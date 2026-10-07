@@ -26,7 +26,7 @@ def read_ids(deck):
 
 
 root = Path(__file__).parent / 'generated'
-for name in ('detectors', 'current_box', 'rect_tally', 'hex_tally', 'graphite_pile'):
+for name in ('detectors', 'current_box', 'rect_tally', 'hex_tally', 'aperture_block'):
     with tempfile.TemporaryDirectory(prefix='studio_ids_') as folder:
         openmc.reset_auto_ids()
         ns = runpy.run_path(str(root / f'{name}_mcnp.py'), run_name='test_export')
@@ -46,7 +46,7 @@ for name in ('detectors', 'current_box', 'rect_tally', 'hex_tally', 'graphite_pi
         assert actual == expected, (name,actual,expected)
         for head in re.findall(r'^(?:F|FMESH)(\d+):N',deck,re.M):
             assert ('tally',head) in records, (name,head)
-        if 'tally' in name or name == 'graphite_pile':
+        if 'tally' in name or name == 'aperture_block':
             for group in ids['lattice'].values():
                 assert any(kind == 'surface' and r['id'] == group['id'] for (kind,_),r in records.items()), name
         # Reusing translated geometry must still use the new request's stable IDs.

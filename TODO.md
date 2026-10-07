@@ -12,7 +12,7 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
 
 - **Next up (2026-09-27), in order:**
   1. **Slow model.mcnp for big MCNP imports: mostly done** ([plan](docs/design/mcnp-import-speed-plan.md)). The 267-cell
-     pile took 23.5 min to export (MCNPy translate 407 s, validate 973 s). Now translate is about 14 s and validate 30 s, all in
+     lattice test deck took 23.5 min to export (MCNPy translate 407 s, validate 973 s). Now translate is about 14 s and validate 30 s, all in
      the exporter, byte-identical decks: validate uses `openmc.lib` (`410d9d9`), the world cell is written as `#cell`
      complements (`c765b21`), plain cells' regions are written directly (`f7f78c2`), and MCNPy's own round trips are cut
      (`776bc09`: `fast_add`, `cached_reflection`, a `line_wrap` that cannot loop; deck identical on and off in
@@ -39,7 +39,7 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
      wrap itself is intended. Standalone, no Java: [`line_wrap_hang.py`](docs/mcnpy-issues/line_wrap_hang.py). Ask for a split
      after `:` or a clear error. Ours: add a guard that wraps MCNPy's own long tokens in the normal translate path too.
   2. **`Deck.add` re-reads all universes through Java for every cell** (O(N^2) calls; the cell-adding stage, "Translating
-     Universes and Cells", is 292 of 311 s on the pile). Verify the per-read call count, then report; examples [`phase_timer.py`](docs/mcnpy-issues/phase_timer.py),
+     Universes and Cells", is 292 of 311 s on the lattice test deck). Verify the per-read call count, then report; examples [`phase_timer.py`](docs/mcnpy-issues/phase_timer.py),
      [`count_rpc.py`](docs/mcnpy-issues/count_rpc.py), [`sample_translate.py`](docs/mcnpy-issues/sample_translate.py),
      [`time_stages.py`](docs/mcnpy-issues/time_stages.py).
 - **Flaky test to watch**: `test/test_generated_models.py` failed once in a full run (2026-09-26):
@@ -47,9 +47,9 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
 - **MontePy upgrade**: 1.1.3 in the env vs 1.5.0 upstream; needs a Python 3.12 env. Not decided.
 - **MCNP lattices, remaining**:
   - Rectangular lattices export as `LAT=1`/`FILL` and hexagonal ones as `LAT=2`/`FILL`, and both pass the
-    geometry check. Tested: the pile, a deleted site, 3D and 2D arrays, an outer universe, hex arrays in both
+    geometry check. Tested: the lattice test deck, a deleted site, 3D and 2D arrays, an outer universe, hex arrays in both
     orientations and with two axial levels.
-  - Still open: prove it once in real MCNP. Plot the pile deck and a hex deck with lattice index labels
+  - Still open: prove it once in real MCNP. Plot the lattice test deck and a hex deck with lattice index labels
     (manual p. 290), or compare short runs against the cell-by-cell decks.
   - **RPP macrobody element**: done. The `LAT=1` element is one `RPP` card instead of six planes, and
     `geometry_check.py` reads it (its facet order gives the same index directions, manual p. 278, 760).
@@ -65,8 +65,6 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
     refuses it, since OpenMC then counts crossings of the whole surface inside the outer part).
 - **He-3 reaction**: confirm with the course which reaction is meant. The pre-lab names (n,alpha) and
   (n,2alpha), MT 107/108, but ENDF/B-VIII.0 He-3 has neither; Studio uses MT 103, He-3(n,p)T.
-- **PuBe spectrum**: the pile uses a Maxwell stand-in (T = 2.8 MeV). Paste the course's starter SI/SP
-  cards into the tabulated source.
 - **3D view at scale**: time the WebGL 2 BVH view on a few thousand parts; the 10,000-part figure is a
   target, not a measurement. The 128-candidate-per-ray limit tints overflowing pixels magenta.
 - **Snap to grid**: re-check that a rotate drag lands on the typed step (e.g. 45°) in the browser.
@@ -114,7 +112,7 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
     holes and part turns included; checked against brute force and pixel by pixel on the GPU), **Glow**
     (emission-absorption, strength slider), and half-resolution drawing while the camera moves.
   - Stage 3: functional expansion tallies (`SpatialLegendreFilter`, `ZernikeFilter`, ...) for a smooth flux
-    field with real error bars instead of a million voxels. Experiment on the pile first; MCNP has no
+    field with real error bars instead of a million voxels. Experiment on the lattice test deck first; MCNP has no
     equivalent, so the export must refuse it with a reason.
   - Stage 4: Gaussian splats for **event clouds** (fission, collision and source sites, track vertices), where
     each splat is one event. Not for mesh tallies: a fitted cloud smooths across material boundaries and is
@@ -299,13 +297,13 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
   and cylindrical); every other card, and any card with a value it can't read, is listed in the Log with the
   reason (tests: `test/test_mcnp_cards_in.py`, `test/test_mcnp_import_physics.js`). **Next:** hexagonal lattices
   (upstream in the adapter, or Studio's own step); `F1`/`F2`/`F5` tallies; tallies on cells repeated in a lattice.
-  **Known issue (partly fixed 2026-10-06):** the live model.mcnp tab was unusable on big imports (the pile, 266
+  **Known issue (partly fixed 2026-10-06):** the live model.mcnp tab was unusable on big imports (the lattice test deck, 266
   cells, took 23.5 min). Measured: validate 973 s (OpenMC's Python `Geometry.find` once per sample point; fixed in
   the exporter, now 16-36 s) and MCNPy translate 407 s (about 0.6 s a cell up to 100 cells, steeper beyond). The
   translate cost remains; see the plan for the diff-from-baseline fix.
   Original notes:
   - We already write MCNP decks *and* check them against the OpenMC model point by point. Import closes the
-    loop: read a hand-written deck (e.g. the user's NE403 graphite deck) into Studio's scene graph, then run
+    loop: read a hand-written deck (e.g. a course lab deck) into Studio's scene graph, then run
     the existing geometry check to prove the round trip.
   - Expect gaps: macrobodies, lattices, transforms and repeated structures each need mapping back, and Studio
     parts are shapes rather than raw cells, so some decks will import as geometry we can display but not edit
@@ -420,7 +418,7 @@ every speed claim below is from the manual or from reasoning, never from a timin
   - The "10-25% speedup" is not in the manual. A search of the text found nothing; it needs a citation.
   - Our geometry check cannot catch a wrong `u=-n`: the regions are unchanged, only MCNP's tracking differs.
     Every other MCNP feature we export has a check that fails when we get it wrong. This one would have none.
-  - The graphite pile has no cell that qualifies anyway: the aperture spans the full depth of its element and
+  - The lattice test model has no cell that qualifies anyway: the aperture spans the full depth of its element and
     touches its faces, and the graphite around it is unbounded.
   - What would change our mind: an opt-in switch, restricted to cells whose bounding box sits strictly inside
     the element with a margin, plus one real MCNP run compared against the same deck without it.
@@ -449,7 +447,7 @@ every speed claim below is from the manual or from reasoning, never from a timin
   - Lattices: one shape function for parts and lattice units (every shape works), 3D lattices so units
     sit at the element centre (one-layer arrays off z = 0 were misplaced), top-row-first y order for
     deleted sites, and a check that members are identical and on the grid (else cell by cell, with a
-    warning). model.mcnp writes arrays cell by cell; the pile's deck validates again (87,500 points).
+    warning). model.mcnp writes arrays cell by cell; the lattice test deck validates again (87,500 points).
   - Surface current: SurfaceFilter of the part's own surfaces + CellFromFilter (it passed a region before).
   - MCNP previews: Muir source as `SP -4` (no comment inside SDEF), cylindrical FMESH J = z, K = angle.
   - The exporter handles CylindricalMesh (FMESH GEOM=CYL).

@@ -14,12 +14,12 @@ and tallies are next.
 **Test decks with a known answer:** the six MCNP-bundle decks. Each is Studio's export of an OpenMC model that is
 kept (`mcnp-bundle/work/<case>/export/model.xml`). The decks cover point, box and sphere geometry, macrobodies
 (`RPP`, `RCC`), general planes and `GQ` (rotated boxes), `#` complements, a `LAT=1` lattice with a translated
-`FILL` (the graphite pile), a `LAT=2` hex lattice, photon decks (`MODE N P`, `IMP:n,p`), and S(α,β) (`MT`).
+`FILL` (a lab lattice deck), a `LAT=2` hex lattice, photon decks (`MODE N P`, `IMP:n,p`), and S(α,β) (`MT`).
 
 **Check:** 3,000 random points in each model's bounding box; at each point, the material found by OpenMC's own
 C++ geometry (`openmc.lib.find_material`, what transport uses), compared by atom density (void = 0) between the
 converted model and the original. (A first version used the pure-Python `Geometry.find`, which ignores fill
-translations and so blamed the adapter for the pile; the C++ lookup is the right oracle.)
+translations and so blamed the adapter for the lattice test deck; the C++ lookup is the right oracle.)
 
 ## Results
 
@@ -30,7 +30,7 @@ translations and so blamed the adapter for the pile; the C++ lookup is the right
 | current_box (plug cut from a box) | 3000/3000 | 3000/3000, S(α,β) dropped |
 | dose_tank (photons) | 3000/3000 | **fails** (`IMP:n,p=`) |
 | hex_array (`LAT=2`) | **refused**: "Hexagonal lattices not supported" | **fails** |
-| graphite_pile (`LAT=1`, translated `FILL`, rotated boxes as `GQ`) | 3000/3000 | **fails** |
+| a lab lattice deck (`LAT=1`, translated `FILL`, rotated boxes as `GQ`) | 3000/3000 | **fails** |
 | a course draft deck, typo fixed (`*TR` in degrees, `LAT=1`, universes) | converts: 5 cells, 1 lattice | converts, but the lattice is lost (a plain fill) |
 
 A draft course deck as it was doesn't convert with the adapter: surface 1 is `RPP -2.54 2.54 -2.54 -2.54 0 20.32`, zero

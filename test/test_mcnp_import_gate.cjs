@@ -80,8 +80,8 @@ check('shielding demo: 4 material cells, materials by name, what isn\'t imported
   assert.ok(run('S.tallies.filter(t => t.kind === "cell").every(t => t.cells.length === 1)'));
 });
 
-check('graphite pile: a translated LAT=1 fill laid out element by element', () => {
-  const r = commitAndCompare('graphite_pile.mcnp');
+check('aperture block: a translated LAT=1 fill laid out element by element', () => {
+  const r = commitAndCompare('aperture_block.mcnp');
   assert.ok(r.cells > 200, r.cells);
   assert.ok(run('S.csg.components.every(k => k.cells.length <= 1000)'));
 });

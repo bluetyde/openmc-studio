@@ -635,45 +635,42 @@ class TestMcnpCardsIn(unittest.TestCase):
         f34_refused = [r for r in res["refused"] if r["card"] == "F34:N"]
         self.assertEqual(len(f34_refused), 1)
 
-    def test_fixture_graphite_pile(self):
-        path = FIXTURES_DIR / "graphite_pile.mcnp"
+    def test_fixture_aperture_block(self):
+        path = FIXTURES_DIR / "aperture_block.mcnp"
         res = mcnp_cards_in.parse(path.read_text())
 
-        # Box source
+        # Box source with a tabulated spectrum
         self.assertEqual(len(res["sources"]), 1)
         src = res["sources"][0]
         self.assertEqual(src["space"], "box")
-        self.assertEqual((src["x0"], src["x1"]), (-0.9525, 0.9525))
-        self.assertEqual((src["y0"], src["y1"]), (-10.16, 10.16))
-        self.assertEqual((src["z0"], src["z1"]), (-122.8725, -120.9675))
+        self.assertEqual((src["x0"], src["x1"]), (-2.5, 2.5))
+        self.assertEqual((src["y0"], src["y1"]), (-10.0, 10.0))
+        self.assertEqual((src["z0"], src["z1"]), (-62.5, -57.5))
         self.assertEqual(src["energy"], "tabulated")
         edges = [float(x.strip()) for x in src["tab_e"].split(",")]
         probs = [float(x.strip()) for x in src["tab_p"].split(",")]
-        self.assertEqual(len(edges), 40)
-        self.assertEqual(edges[0], 0.05)
-        self.assertEqual(edges[-1], 10.75)
-        self.assertEqual(len(probs), 39)
-        self.assertAlmostEqual(probs[0], 0.00520663846404, places=12)
+        self.assertEqual(edges, [0.0, 0.5, 1.0, 2.0, 4.0, 6.0, 8.0, 10.0])
+        self.assertEqual(probs, [0.05, 0.1, 0.2, 0.25, 0.2, 0.12, 0.08])
 
         # NPS
-        self.assertEqual(res["settings"]["nps"], 100000)
+        self.assertEqual(res["settings"]["nps"], 4000)
 
-        # FMESH 4, 14, 24, 94 imported
+        # FMESH 4, 14 and 34 imported
         imported_mesh_names = {t["name"] for t in res["tallies"]}
-        for name in ["FMESH4", "FMESH14", "FMESH24", "FMESH94"]:
+        for name in ["FMESH4", "FMESH14", "FMESH34"]:
             self.assertIn(name, imported_mesh_names)
         fmesh4 = [t for t in res["tallies"] if t["name"] == "FMESH4"][0]
-        self.assertEqual(fmesh4["nx"], 96)
-        self.assertEqual(fmesh4["lx"], -121.92)
-        self.assertEqual(fmesh4["ux"], 121.92)
+        self.assertEqual(fmesh4["nx"], 56)
+        self.assertEqual(fmesh4["lx"], -90.0)
+        self.assertEqual(fmesh4["ux"], 90.0)
         self.assertEqual(fmesh4["ny"], 1)
-        self.assertEqual(fmesh4["ly"], -21.59)
-        self.assertEqual(fmesh4["uy"], -19.05)
+        self.assertEqual(fmesh4["ly"], 18.5)
+        self.assertEqual(fmesh4["uy"], 21.5)
 
-        # FMESH34 44 54 64 74 84 refused
-        refused_cards = {r["card"] for r in res["refused"]}
-        for n in [34, 44, 54, 64, 74, 84]:
-            self.assertIn(f"FMESH{n}:N", refused_cards)
+        # FMESH24 (the He-3 response, with an FM card) is refused, and says why
+        refused = [r for r in res["refused"] if r["card"] == "FMESH24:N"]
+        self.assertEqual(len(refused), 1)
+        self.assertIn("FM", refused[0]["reason"])
 
     def test_fixture_outside_features(self):
         path = FIXTURES_DIR / "outside_features.mcnp"

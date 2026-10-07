@@ -6458,11 +6458,12 @@ function renderMcnp(P) {
   }
   pane.classList.toggle('stale', !fresh);
   if (fresh) {
-    if (r.ok) setMcnpStatus('ok', `✓ Current · validated · ${r.seconds} s${r.translation_cached ? ' (geometry unchanged)' : ''}`);
-    else setMcnpStatus('err', r.error ? '⚠ Not exportable — see the message below' : '⚠ Didn’t validate — see Log');
-    if (LIVE.loggedFor !== r) { // log each new result once
+    const [state, text] = liveStatus(r);
+    setMcnpStatus(state, text);
+    if (!r.validation_pending && LIVE.loggedFor !== r) { // log each new result once, when its verdict is in
       LIVE.loggedFor = r;
-      if (!r.ok && r.validation) r.validation.trim().split('\n').filter(l => /\[ERROR\]|FAILED/.test(l)).forEach(l => log('error', `model.mcnp: ${esc(l.trim())}`));
+      if (r.validation_error) log('error', `model.mcnp: the check against OpenMC could not run: ${esc(r.validation_error)}`);
+      else if (!r.ok && r.validation) r.validation.trim().split('\n').filter(l => /\[ERROR\]|FAILED/.test(l)).forEach(l => log('error', `model.mcnp: ${esc(l.trim())}`));
     }
   } else if (LIVE.failure) setMcnpStatus('err', r && r.deck ? 'Outdated · update failed; showing the previous deck. See warnings and Refresh to retry.' : 'Update failed · Refresh to retry');
   else if (LIVE.pending) setMcnpStatus('busy', 'Regenerating · displayed deck is outdated');
@@ -6481,6 +6482,45 @@ function liveMcnpTick(P) {
   LIVE.timer = setTimeout(() => sendLive(), 900);
 }
 let MCNP_POLL_TIMER = null;
+// The live deck is shown as soon as it is translated; the server checks it against OpenMC in a separate process and the
+// verdict arrives here. Only the deck that was asked about can take the verdict: a newer deck replaces LIVE.report, and
+// the server answers "superseded" for an id it has dropped.
+let VALIDATION_TIMER = null;
+// The status of a deck that is current (the model hasn't changed since it was translated): [state, text].
+function liveStatus(r) {
+  if (r.validation_pending) return ['busy', validatingText(r)];
+  if (r.validation_error) return ['err', '⚠ The check against OpenMC could not run — see Log'];
+  if (r.validation_stopped) return ['warn', 'Not validated · the check was stopped · Refresh to run it again'];
+  if (r.ok) return ['ok', `✓ Current · validated · ${r.seconds} s${r.validation_seconds ? ` + ${r.validation_seconds} s checking` : ''}${r.translation_cached ? ' (geometry unchanged)' : ''}`];
+  return ['err', r.error ? '⚠ Not exportable — see the message below' : '⚠ Didn’t validate — see Log'];
+}
+function validatingText(r) {
+  return `Current · checking against OpenMC… ${r.validation_elapsed ? `(${Math.round(r.validation_elapsed)} s) ` : ''}The deck is shown; it isn't validated yet.`;
+}
+function stopValidationWatch() { if (VALIDATION_TIMER) { clearInterval(VALIDATION_TIMER); VALIDATION_TIMER = null; } }
+function watchValidation(r) {
+  stopValidationWatch();
+  const started = Date.now();
+  const finish = fields => {
+    stopValidationWatch();
+    Object.assign(r, {validation_pending:false}, fields);
+    if (LIVE.report === r) renderMcnp(problems());
+  };
+  VALIDATION_TIMER = setInterval(async () => {
+    if (LIVE.report !== r) { stopValidationWatch(); return; }
+    if (Date.now() - started > 20 * 60 * 1000) { finish({validation_error:'It took more than 20 minutes.'}); return; }
+    let v;
+    try { v = await api(`/api/mcnp-validation?id=${encodeURIComponent(r.validation_id)}`); } catch (e) { return; }  // one missed poll is fine
+    if (LIVE.report !== r) { stopValidationWatch(); return; }
+    if (v.status === 'running') {
+      r.validation_elapsed = v.elapsed;  // only the status line: re-drawing a big deck every second would be wasteful
+      const P = problems();
+      if (LIVE.sentScript === mcnpScript(P) && !LIVE.pending && !LIVE.failure) setMcnpStatus('busy', validatingText(r));
+    } else if (v.status === 'done') finish({ok:!!v.ok, validation:v.validation || '', validation_seconds:v.seconds});
+    else if (v.status === 'error') finish({ok:false, validation_error:v.error || 'unknown error', validation_seconds:v.seconds});
+    else finish({validation_stopped:true});  // "superseded": the server dropped this deck's check
+  }, 1000);
+}
 function pollMcnpProgress(fn) {
   stopMcnpProgress();
   MCNP_POLL_TIMER = setInterval(async () => {
@@ -6532,6 +6572,7 @@ async function sendLive(force) {
   if (r.deck) {
     MCNP_EDITOR.previous = MCNP_EDITOR.deck; MCNP_EDITOR.deck = r.deck;
     LIVE.sentScript = script; LIVE.ctx = ctx; LIVE.report = r; LIVE.deckProject = snapshot;
+    if (r.validation_pending && r.validation_id != null) watchValidation(r); else stopValidationWatch();
   } else {
     LIVE.failure = r;
     if (!LIVE.report) LIVE.report = r;
@@ -6669,7 +6710,10 @@ function savedMcnp() {
   const r = LIVE.report;
   if (!r || !r.deck) return null;
   const current = LIVE.sentScript === mcnpScript(problems()) && !LIVE.pending && !LIVE.failure;
-  const notes = [r.ok ? '' : 'Note: this deck did not validate.',
+  const notes = [r.validation_pending ? 'Note: this deck was still being checked against OpenMC when it was saved.' :
+      r.validation_error ? 'Note: the check against OpenMC could not run for this deck.' :
+      r.validation_stopped ? 'Note: the check against OpenMC was stopped before it finished.' :
+      r.ok ? '' : 'Note: this deck did not validate.',
     current ? '' : 'It is the deck from before your latest changes (they are still translating, or the translation failed), with the project as it was then. Save again once the model.mcnp tab says Validated to include them.'];
   return {name:`${r.name || 'model'}.mcnp`, text:LIVE.deckProject ? withProject(r.deck, 'c ', LIVE.deckProject) : r.deck, note:notes.filter(Boolean).join(' '), current};
 }

@@ -4,7 +4,7 @@ Status (2026-10-07): **largely done; see the TODO.** The lattice test deck's exp
 `openmc.lib` cell lookup (exporter `410d9d9`), the world cell written as `#cell` complements (`c765b21`), plain cells' regions written
 directly (`f7f78c2`), and MCNPy's own round trips cut without changing the deck (`776bc09`). What the measurements showed differs from
 the guesses below: MCNPy's cost was Java round trips, mainly its cell-adding loop (the 292 s sits in the stage printed as
-"Translating Universes and Cells", not "Making Universes"), not region terms alone. Still open: H (validate in the background) and the
+"Translating Universes and Cells", not "Making Universes"), not region terms alone. H (validate in the background) is done too: the live tab shows the deck at once and the check follows. Still open: the
 future diff-based export ([mcnp-diff-export-plan.md](mcnp-diff-export-plan.md)). The sections below are the original plan and the first
 measurements, kept as history. It narrows
 `openmc-large-import-export.md` (the broader proposal of 2026-10-04, in the shared plans folder): same rules

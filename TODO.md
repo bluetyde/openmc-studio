@@ -16,7 +16,9 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
      the exporter, byte-identical decks: validate uses `openmc.lib` (`410d9d9`), the world cell is written as `#cell`
      complements (`c765b21`), plain cells' regions are written directly (`f7f78c2`), and MCNPy's own round trips are cut
      (`776bc09`: `fast_add`, `cached_reflection`, a `line_wrap` that cannot loop; deck identical on and off in
-     `tests/test_mcnpy_speed_identity.py`). Still open: showing the deck before validation finishes (H in the plan).
+     `tests/test_mcnpy_speed_identity.py`). The live model.mcnp tab now shows the deck as soon as it is translated and checks it against OpenMC in a
+     separate process (H in the plan; `mcnp_validate.py`, `server.Validator`; a newer deck stops the older check; the Export button still
+     validates before it writes).
      **Future: a diff-based export** so that CAD and part edits rebuild only what changed
      ([plan](docs/design/mcnp-diff-export-plan.md)); hard because one edit (a material, a cell) touches several cards that
      refer to each other, and because of universes and lattices. Not urgent now; measure first.

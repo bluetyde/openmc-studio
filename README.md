@@ -234,7 +234,7 @@ neutron tracks and the world boundary.
   bright where nothing is in front of them and faint behind geometry. Turn on Cutaway
   to see the flux map across the whole cut.
 - The 3D view needs WebGL 2. Part data sits in a texture and a bounding-volume hierarchy picks the
-  parts each ray can hit, so there is no fixed part limit; the 134-part graphite pile draws smoothly,
+  parts each ray can hit, so there is no fixed part limit; the 134-part lattice test model draws smoothly,
   and much larger models haven't been timed yet. The slice view and the exports always use every part.
 
 ## Editing in the code tabs

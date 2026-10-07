@@ -40,7 +40,7 @@ without editing three vectors by hand.
 
 - In the tally properties, a button **Add the other two planes**: copies the selected map twice, flipping the
   flat axis, names them `<name> (XY)` / `(XZ)` / `(YZ)`, and keeps bins and extents consistent.
-- The graphite pile model already does this by hand; this is the same thing without the typing.
+- A lattice lab model already did this by hand; this is the same thing without the typing.
 
 ## 4. Tell the user when a map is edge-on
 
@@ -120,14 +120,14 @@ These tally the **moments of a basis expansion during transport**, so the smooth
 uncertainties on each coefficient. A Gaussian fitted to voxels afterwards is a picture of the data; an
 expansion tally is the data.
 
-- **Experiment first, no UI.** One script, one model: the graphite pile with a `SpatialLegendreFilter` in z
+- **Experiment first, no UI.** One script, one model: a lattice block (like the `aperture_block` test model) with a `SpatialLegendreFilter` in z
   along a channel, order ~6-10, beside the existing mesh map of the same line. Compare the curve and the error
   bars against the 96-bin mesh for the same particle count, and see which is smoother per CPU second.
 - Only if that reads well: a Studio tally kind "profile (Legendre)" with an axis, a range and an order, drawn
   as a curve with an error band in the Results panel rather than as a layer in the viewport.
 - **MCNP has no equivalent**, so such a tally must be refused by the exporter with that reason, the way
   surface currents were before `FS`. Studio would say so in Problems before the export does.
-- For the pile this is a natural fit: flux against depth as one smooth curve with error bars, instead of
+- For a lattice block like this it is a natural fit: flux against depth as one smooth curve with error bars, instead of
   96 noisy bins, is exactly the plot the lab asks for.
 
 # Stage 4: Gaussian splats, for event clouds rather than meshes

@@ -1,13 +1,13 @@
 # Diff-based model.mcnp export: short plan (future work)
 
 Status (2026-10-06): **not started, on purpose.** Decided after the translate speedups (exporter `776bc09`, pending merge): a full translate
-of the 267-cell imported pile is now about 14 s (407 s before), so diffing is no longer urgent. It is still the way to make edits
+of the 267-cell imported lattice test deck is now about 14 s (407 s before), so diffing is no longer urgent. It is still the way to make edits
 (CAD edits especially) feel instant, like OpenMC's own export. Plan only; nothing here is built.
 
 ## Goal
 
 After a small edit, rebuild only what the edit touches. Target: a CAD or part edit shows its new model.mcnp in about a second, not
-the 6-14 s fixed cost of a full translate (Java bridge, per-cell work), then remediate (2.7 s on the pile) and validate (30 s).
+the 6-14 s fixed cost of a full translate (Java bridge, per-cell work), then remediate (2.7 s on the lattice test deck) and validate (30 s).
 
 ## What is already instant, and what isn't
 

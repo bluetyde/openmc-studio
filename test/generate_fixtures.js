@@ -52,8 +52,31 @@ const cellTally = (id, cells, extra = {}) => ({id, name: id, kind: 'cell', cells
 const meshTally = (id, lo, hi, n = [4, 4, 2]) => ({id, name: id, kind: 'mesh', cells: [], scores: ['flux'], ebins: '',
   nx: n[0], ny: n[1], nz: n[2], lx: lo[0], ly: lo[1], lz: lo[2], ux: hi[0], uy: hi[1], uz: hi[2]});
 
-// 1. The NE403 graphite pile example (a 12 x 1 x 11 RectLattice of tilted boxes)
-write('graphite_pile', JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'examples', 'ne403-graphite-pile', 'graphite-pile.openmc-studio.json'), 'utf8')), {flatTwin: true});
+// 1. A generic lattice block: a 14 x 1 x 9 RectLattice of square channels turned 45 degrees (tilted boxes) through a steel
+//    block, a source cavity under it holding a box source with a tabulated spectrum, and mesh tallies (flux, and a He-3
+//    response). It stands for any large lattice of rotated boxes: a translated lattice fill, GQ surfaces for the turned
+//    boxes, and more than 200 cells once its deck is imported. Everything here is invented; nothing comes from a course.
+//    The MCNP deck test/fixtures/mcnp/aperture_block.mcnp is this project exported (make_aperture_block.py).
+{
+  const air = {id: 'm_air', name: 'Air', color: '#8fb8cf', density: 0.001205, frac: 'ao', comps: 'N:0.78, O:0.21, Ar:0.01', sab: '', ref: ''};
+  const COLS = 14, ROWS = 9, PITCH = 12, DEPTH = 60, SIDE = 6;
+  const parts = [];
+  for (let iz = ROWS - 1; iz >= 0; iz--) for (let ix = 0; ix < COLS; ix++)
+    parts.push(part(`ch_${ix}_${iz}`, 'box', PITCH * (ix - (COLS - 1) / 2), 0, 10 + PITCH * (iz - (ROWS - 1) / 2),
+      {sx: SIDE, sy: DEPTH, sz: SIDE, ry: 45}, 'm_air', 'g_channels'));
+  parts.push(part('cavity', 'box', 0, 0, -60, {sx: 6, sy: 24, sz: 6}, 'm_air'));
+  parts.push(part('block', 'box', 0, 0, 0, {sx: 180, sy: DEPTH, sz: 150}, 'm_steel'));
+  const source = {...pointSource(), id: 's_cavity', name: 'Cavity source', space: 'box', x0: -2.5, x1: 2.5, y0: -10, y1: 10, z0: -62.5, z1: -57.5,
+    energy: 'tabulated', preset: '', tab_e: '0, 0.5, 1, 2, 4, 6, 8, 10', tab_p: '0.05, 0.1, 0.2, 0.25, 0.2, 0.12, 0.08'};
+  const he3Mesh = meshTally('t_he3_x', [-90, 18.5, 4], [90, 21.5, 10], [56, 1, 1]);
+  Object.assign(he3Mesh, {name: 'He-3 response across x', detector: 'he3', responseMat: 'm_he3', responseScore: '(n,p)', responseScale: 'macro'});
+  write('aperture_block', {materials: [steel, air, he3], parts, sources: [source],
+    groups: [{id: 'g_channels', name: 'Channels (14x9 array)', parent: null, x: 0, y: 0, z: 10,
+      lattice: {nx: COLS, ny: 1, nz: ROWS, dx: PITCH, dy: DEPTH, dz: PITCH, fill: 'm_steel', asLattice: true}}],
+    tallies: [meshTally('t_x', [-90, 18.5, 4], [90, 21.5, 10], [56, 1, 1]), meshTally('t_y', [-3, -30, 4], [3, 30, 10], [1, 30, 1]), he3Mesh,
+      meshTally('t_map', [-90, 18.5, -70], [90, 21.5, 70], [60, 1, 40])],
+    settings: settings({name: 'Aperture block', worldR: 100})}, {flatTwin: true});
+}
 
 // 2. A 3 x 2 x 1 array of steel rods in water, off the origin in z, with one site deleted (ix 2, iy 0):
 //    checks z placement of a one-layer lattice and the top-row-first y order of RectLattice.universes

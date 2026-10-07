@@ -116,7 +116,7 @@ def same(a, b):
 
 class Previews(unittest.TestCase):
     def test_preview_meshes_fit_the_3d_budget(self):
-        rep = mcnp_import.import_deck(FIX / "graphite_pile.mcnp")
+        rep = mcnp_import.import_deck(FIX / "aperture_block.mcnp")
         self.assertLessEqual(sum(k["display"]["count"] for k in rep["components"]), mcnp_import.PREVIEW_TRIANGLES)
         for k in rep["components"]:
             d = k["display"]

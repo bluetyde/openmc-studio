@@ -26,7 +26,7 @@ with contextlib.redirect_stdout(io.StringIO()):
 stamp("0 imports + Java bridge", t)
 
 os.chdir(folder)
-model_xml, translated, runnable = "model.xml", "pile.mcnp", "pile_runnable.mcnp"
+model_xml, translated, runnable = "model.xml", "deck.mcnp", "deck_runnable.mcnp"
 for f in (model_xml, translated, runnable):
     if os.path.exists(f):
         os.remove(f)

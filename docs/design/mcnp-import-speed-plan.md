@@ -1,6 +1,6 @@
 # Fix the slow model.mcnp for big MCNP imports: plan
 
-Status (2026-10-07): **largely done; see the TODO.** The pile's export went from 23.5 min to about 45 s: validate fixed by the
+Status (2026-10-07): **largely done; see the TODO.** The lattice test deck's export went from 23.5 min to about 45 s: validate fixed by the
 `openmc.lib` cell lookup (exporter `410d9d9`), the world cell written as `#cell` complements (`c765b21`), plain cells' regions written
 directly (`f7f78c2`), and MCNPy's own round trips cut without changing the deck (`776bc09`). What the measurements showed differs from
 the guesses below: MCNPy's cost was Java round trips, mainly its cell-adding loop (the 292 s sits in the stage printed as
@@ -13,7 +13,7 @@ measurements, kept as history. It narrows
 ## 1. The problem
 
 After Convert > Import MCNP deck, the model.mcnp tab re-translates the imported geometry through MCNPy. The
-NE403 graphite pile (266 cells) was still translating after 10 minutes (2026-09-26, a single uncontrolled
+lattice lab deck (266 cells) was still translating after 10 minutes (2026-09-26, a single uncontrolled
 observation). A small native model takes about 8 s. The tab is unusable on a deck of this size, and every edit
 of geometry or materials pays it again.
 
@@ -24,14 +24,14 @@ of geometry or materials pays it again.
   (5) `validate_deck()`, which checks the deck against the OpenMC model at 20,000 sample points.
 - The worker caches stage 2 by a hash of the geometry and materials XML, so only the first export of a geometry
   is slow. The cache lives in a temporary folder and dies with the worker.
-- The pile as Studio imports it (`import_deck`, measured in WSL, 26.8 s for the import itself): 266 flat cells,
+- The lattice test deck as Studio imports it (`import_deck`, measured in WSL, 26.8 s for the import itself): 266 flat cells,
   4 components, 285 surfaces (231 generic planes, 26 x, 24 z, 4 y), about 20 half-spaces per cell (median 612
   bytes of region JSON). That is not a huge model, so something in the pipeline scales badly. The lattice was
   expanded element by element, so MCNPy sees 266 plain cells and none of the original `LAT`/`FILL` structure.
 - Studio's own progress line only distinguishes stages inside MCNPy; the ten minutes were never split by stage.
   I called it "MCNPy" in the notes without evidence.
 
-## 3a. First measurement (2026-10-06, the pile, one cold run, WSL Ubuntu, openmc-mcnp 3.11.15)
+## 3a. First measurement (2026-10-06, the lattice test deck, one cold run, WSL Ubuntu, openmc-mcnp 3.11.15)
 
 | Stage | Seconds |
 |---|---|
@@ -67,7 +67,7 @@ but G gets the same gain without the risk that surface numbers differ between pi
 
 **Why validate is slow (found 2026-10-06 by stack sampling; 100 samples took 384 s, 20,000 took 973 s).**
 `check_geometry` (exporter `src/geometry_check.py`) checks `n_samples` random points plus 500 points in each
-cell with a finite bounding box (about 25 of the pile's 266; cells of tilted planes have none): about 32,000
+cell with a finite bounding box (about 25 of the lattice test deck's 266; cells of tilted planes have none): about 32,000
 points. The deck side is numpy and fast (`deck.locate`). The OpenMC side calls the pure-Python
 `openmc.Geometry.find()` once per point, and every sampled stack sits inside it (`Universe.find >
 Cell.__contains__ > Region.__contains__ > Surface.evaluate`): about 30 ms a point with 267 cells, which is the
@@ -76,7 +76,7 @@ Cell.__contains__ > Region.__contains__ > Surface.evaluate`): about 30 ms a poin
 
 ## 3. Step 1: measure (no code change; needs the MCNPy claim)
 
-Time each stage on the pile, three runs, cold and warm (cache hit), with `time.perf_counter()` around the five
+Time each stage on the lattice test deck, three runs, cold and warm (cache hit), with `time.perf_counter()` around the five
 stages in a throwaway copy of the worker loop (scratch folder, no repo change). Then find the scaling by
 running stage 2 and stage 5 on slices of the same import (the first 25, 50, 100 and all 266 cells, same
 surfaces): linear, or worse? Also record peak memory and, for stage 2, how many Java calls it makes.
@@ -106,12 +106,12 @@ write imported cells directly only when the deck uses nothing the writer doesn't
 the validated MCNPy path or refuse, with the reason in the Log. This is the biggest gain and the biggest risk,
 and `validate_deck` stays on as the proof.
 
-**D. Validation cost (measured to dominate on the pile; cause found, see 3a):** find the OpenMC cell of every
+**D. Validation cost (measured to dominate on the lattice test deck; cause found, see 3a):** find the OpenMC cell of every
 sample point with `openmc.lib.find_cell` (C++) instead of `Geometry.find` in Python. Same points, same
 comparisons, same errors. `check_geometry` keeps the Python `find` for the one case that needs the whole
 instance path (lattice bin chains) and as the fallback when `openmc.lib` can't start (no nuclear data). The
 initialisation needs the model XML and the cross-section library, so it belongs in the validation subprocess
-of H. Expected: 973 s to about 10 s on the pile. The sample count and the checks stay the same; do not lower
+of H. Expected: 973 s to about 10 s on the lattice test deck. The sample count and the checks stay the same; do not lower
 them to save time.
 
 **E / F. Remediate and model.py:** fix only what stage timing blames.
@@ -159,7 +159,7 @@ passed / failed".
 
 - Old and new decks agree: run `validate_deck` (point by point against OpenMC) on both, and compare the cell,
   surface and material cards structurally (same regions per cell number), not as text.
-- Every deck in `test/fixtures/mcnp/` (shielding demo, pile, hex array, outside features) plus a mixed project
+- Every deck in `test/fixtures/mcnp/` (shielding demo, lattice test deck, hex array, outside features) plus a mixed project
   (an imported component and a native part).
 - Edits after import: a changed material density, a changed source and tally, a moved native part. A stale
   export must never replace a newer one.
@@ -170,7 +170,7 @@ passed / failed".
 
 ## 6. Target
 
-From the existing plan, kept: at least 5x lower median end-to-end time on the pile (cold), no more than 10%
+From the existing plan, kept: at least 5x lower median end-to-end time on the lattice test deck (cold), no more than 10%
 regression on small models beyond noise. The absolute number is set after step 1, not before. If 5x isn't
 reachable, report the measured bottleneck and revise the target in writing.
 

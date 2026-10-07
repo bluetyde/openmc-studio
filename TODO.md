@@ -11,11 +11,15 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
 ## Open items carried over
 
 - **Next up (2026-09-27), in order:**
-  1. **Slow model.mcnp for big MCNP imports** ([plan](docs/design/mcnp-import-speed-plan.md)): measured
-     2026-10-06 on the pile (267 cells): MCNPy translate 407 s, validate 973 s, everything else under 40 s.
-     Validate is fixed (exporter `410d9d9`: the geometry check finds cells with `openmc.lib`, 973 s to 16-36 s).
-     Still open: translate (superlinear in the cell count) by converting only the diff from the imported
-     baseline (G in the plan), and showing the deck before validation finishes (H).
+  1. **Slow model.mcnp for big MCNP imports: mostly done** ([plan](docs/design/mcnp-import-speed-plan.md)). The 267-cell
+     pile took 23.5 min to export (MCNPy translate 407 s, validate 973 s). Now translate is about 14 s and validate 30 s, all in
+     the exporter, byte-identical decks: validate uses `openmc.lib` (`410d9d9`), the world cell is written as `#cell`
+     complements (`c765b21`), plain cells' regions are written directly (`f7f78c2`), and MCNPy's own round trips are cut
+     (`776bc09`: `fast_add`, `cached_reflection`, a `line_wrap` that cannot loop; deck identical on and off in
+     `tests/test_mcnpy_speed_identity.py`). Still open: showing the deck before validation finishes (H in the plan).
+     **Future: a diff-based export** so that CAD and part edits rebuild only what changed
+     ([plan](docs/design/mcnp-diff-export-plan.md)); hard because one edit (a material, a cell) touches several cards that
+     refer to each other, and because of universes and lattices. Not urgent now; measure first.
   2. **Prove the MCNP export in real MCNP**: run the user's MCNP bundle (lattices, lattice tallies, surface
      currents, dose) and compare with OpenMC; waiting on the user's runs.
   3. **H\*(10)**: transcribe and check the conversion table (sources found: PNNL-19273; IAEA/Griffith,

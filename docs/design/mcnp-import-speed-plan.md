@@ -1,6 +1,12 @@
 # Fix the slow model.mcnp for big MCNP imports: plan
 
-Status (2026-10-06): approved by the user, with their diff idea (G) as the preferred direction. Measured (section 3a); validate fixed in the exporter (410d9d9, 973 s to 16-36 s); translate (G) and background validation (H) still to do. This is the concrete plan for my branch. It narrows
+Status (2026-10-07): **largely done; see the TODO.** The pile's export went from 23.5 min to about 45 s: validate fixed by the
+`openmc.lib` cell lookup (exporter `410d9d9`), the world cell written as `#cell` complements (`c765b21`), plain cells' regions written
+directly (`f7f78c2`), and MCNPy's own round trips cut without changing the deck (`776bc09`). What the measurements showed differs from
+the guesses below: MCNPy's cost was Java round trips, mainly its cell-adding loop (the 292 s sits in the stage printed as
+"Translating Universes and Cells", not "Making Universes"), not region terms alone. Still open: H (validate in the background) and the
+future diff-based export ([mcnp-diff-export-plan.md](mcnp-diff-export-plan.md)). The sections below are the original plan and the first
+measurements, kept as history. It narrows
 `openmc-large-import-export.md` (the broader proposal of 2026-10-04, in the shared plans folder): same rules
 (measure first, never bypass a later edit, keep the validated path as the fallback), with what I found in the code.
 

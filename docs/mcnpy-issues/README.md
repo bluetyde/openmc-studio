@@ -31,8 +31,10 @@ empty. A union of 18 terms (109 characters) wraps; 22 terms (133 characters) nev
 ## 2. Exporting N cells costs O(N^2) Java round trips (performance; to verify before reporting)
 
 Stack samples of the main thread during `openmc_to_mcnp` put all of the time in py4j `socket.readinto`. MCNPy's own stage
-lines show where: "Translating Universes and Cells" is short and **"Making Universes" is almost all of it** (292 s of 311 s
-on the pile with full regions; 116 s of 125 s with one-term placeholder regions). The sampled chain is
+lines show where. MCNPy prints a stage's name when the stage *starts*, so the gap before the "Making Universes" line is the
+"Translating Universes and Cells" stage, the loop that builds each cell and adds it to the deck: **292 s of 311 s** on the pile
+with full regions, 116 s of 125 s with one-term placeholder regions ("Making Universes" itself takes under a second; our first
+reading attached the gap to the wrong stage, found by the second agent's design note). The sampled chain is
 `Deck.add -> Deck.get_universe -> Deck.universes -> wrap.py getter -> return_value_converter -> is_instance_of / __getattr__ ->
 send_command` (`deck.py` lines about 557-605, `wrap.py` about 216 and 448), i.e. every `Deck.add` re-reads the deck's whole
 universe collection through Java. A second agent's reading (not yet verified by us): each read walks all cells added so far,

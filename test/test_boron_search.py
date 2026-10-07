@@ -478,5 +478,44 @@ class TestFindCritical(unittest.TestCase):
         self.assertIn("666.66", str(cm.exception))
 
 
+class TestAddedByTheDispatcher(unittest.TestCase):
+    """Tests added by the dispatcher after mutation checks showed gaps in the brief's test list."""
+
+    def test_illinois_converges_where_plain_false_position_does_not(self):
+        """k(x) = 1 + 0.4 (exp(-x/100) - exp(-0.5)) is strongly curved; the root is x = 50. Plain regula falsi keeps one
+        end fixed and does not converge within 12 runs; the Illinois rule does (10 runs)."""
+        def f(x):
+            return 1.0 + 0.4 * (math.exp(-x / 100.0) - math.exp(-0.5))
+
+        res = find_critical(lambda x: (f(x), 1e-9), 1.0, 0.0, 1000.0, 2.0, 12)
+        self.assertEqual(res["status"], "converged")
+        self.assertLessEqual(len(res["runs"]), 12)
+        self.assertLessEqual(abs(res["k"] - 1.0), 2e-9)
+        self.assertLess(abs(res["x"] - 50.0), 1e-5)
+
+    def test_zero_sigma_nonlinear_function_converges_to_1e_12(self):
+        res = find_critical(lambda x: (1.3 / (1.0 + 0.001 * x), 0.0), 1.0, 0.0, 1000.0, 2.0, 40)
+        self.assertEqual(res["status"], "converged")
+        self.assertLessEqual(abs(res["k"] - 1.0), 1e-12)
+        self.assertLess(abs(res["x"] - 300.0), 1e-6)
+
+    def test_best_point_is_judged_by_distance_in_sigmas(self):
+        """Both ends are above the target. The low end is 0.2 away with sigma 0.05 (4 sigma), the high end 0.19 away
+        with sigma 0.0001 (1900 sigma): the best point is the low end, although the high end is closer in k."""
+        values = {0.0: (1.2, 0.05), 1000.0: (1.19, 0.0001)}
+        res = find_critical(lambda x: values[x], 1.0, 0.0, 1000.0)
+        self.assertEqual(res["status"], "not-bracketed")
+        self.assertEqual(len(res["runs"]), 2)
+        self.assertEqual(res["x"], 0.0)
+
+    def test_tolerance_sigma_argument_is_used(self):
+        """A constant k of 1.003 with sigma 0.001 is 3 sigma from the target: not converged at 2, converged at 5."""
+        run = lambda x: (1.003, 0.001)
+        self.assertEqual(find_critical(run, 1.0, 0.0, 100.0, 2.0)["status"], "not-bracketed")
+        res = find_critical(run, 1.0, 0.0, 100.0, 5.0)
+        self.assertEqual(res["status"], "converged")
+        self.assertEqual(len(res["runs"]), 2)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

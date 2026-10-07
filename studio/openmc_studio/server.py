@@ -202,7 +202,7 @@ class Studio:
     def mcnp_live(self, script, name, seq, client=""):
         """Live model.mcnp tab: same worker, one reused folder; stale requests are skipped."""
         slug = re.sub(r"[^a-z0-9]+", "-", (name or "model").lower()).strip("-")[:40] or "model"
-        report = self.mcnp.run(script, slug, self.root / "mcnp-live", seq=seq, client=client)
+        report = self.mcnp.run(script, slug, self.root / "mcnp-live", seq=seq, client=client, validate=False)
         report.update(name=slug)
         return report
 
@@ -293,6 +293,88 @@ class Studio:
         return p if p.is_dir() else None
 
 
+class Validator:
+    """Validates a live deck in its own process (mcnp_validate.py: no MCNPy, no Java), so the model.mcnp tab can show the
+    deck as soon as it is translated. One validation at a time: a newer deck kills the older one, and a verdict is only
+    ever returned for the id it was made for (a stale verdict can never be attached to a newer deck).
+
+    The deck and model.xml are copied first: the live folder is reused by the next job."""
+
+    def __init__(self, project_getter, command=None):
+        self.project = project_getter
+        self.command = command  # tests: command(work, deck_name, samples) -> argv
+        self.lock = threading.Lock()
+        self.state = None
+        self.proc = None
+
+    def start(self, jid, folder, report):
+        deck, model_xml = Path(report["runnable"]), Path(report["model"])
+        with self.lock:
+            self._kill()
+            work = Path(folder) / "validation" / str(jid)
+            shutil.rmtree(work.parent, ignore_errors=True)
+            work.mkdir(parents=True)
+            shutil.copyfile(deck, work / deck.name)
+            shutil.copyfile(model_xml, work / "model.xml")
+            samples = int(report.get("samples") or 20000)
+            argv = (self.command(work, deck.name, samples) if self.command else
+                    [sys.executable, "-W", "ignore", str(Path(__file__).with_name("mcnp_validate.py")),
+                     str(self.project()), deck.name, str(samples)])
+            log = open(work / "validate.log", "w", encoding="utf-8")
+            proc = subprocess.Popen(argv, cwd=str(work), env=dict(os.environ, PYTHONUNBUFFERED="1", PYTHONDONTWRITEBYTECODE="1"),
+                                    stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+            log.close()
+            self.proc = proc
+            self.state = {"id": jid, "status": "running", "started": time.time()}
+        threading.Thread(target=self._wait, args=(jid, proc, work), daemon=True).start()
+        return jid
+
+    def _wait(self, jid, proc, work):
+        code = proc.wait()
+        with self.lock:
+            if not self.state or self.state["id"] != jid:
+                return  # a newer deck replaced this one
+            try:
+                res = json.loads((work / "result.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                try:
+                    tail = "\n".join((work / "validate.log").read_text(encoding="utf-8", errors="replace").strip().splitlines()[-6:])
+                except OSError:
+                    tail = ""
+                self.state = {"id": jid, "status": "error",
+                              "error": f"The validation process stopped without a result (exit {code}). {tail}".strip()}
+                return
+            if res.get("error"):
+                self.state = {"id": jid, "status": "error", "error": res["error"], "seconds": res.get("seconds")}
+            else:
+                self.state = {"id": jid, "status": "done", "ok": bool(res.get("ok")), "validation": res.get("validation", ""),
+                              "seconds": res.get("seconds")}
+
+    def get(self, jid):
+        with self.lock:
+            if self.state and self.state["id"] == jid:
+                s = dict(self.state)
+                if s["status"] == "running":
+                    s["elapsed"] = round(time.time() - s.pop("started"), 1)
+                else:
+                    s.pop("started", None)
+                return s
+        return {"id": jid, "status": "superseded"}
+
+    def stop(self):
+        with self.lock:
+            self._kill()
+            self.state = None
+
+    def _kill(self):
+        if self.proc and self.proc.poll() is None:
+            try:
+                os.killpg(self.proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+        self.proc = None
+
+
 class McnpWorker:
     """One long-running `python -m openmc_studio.mcnp_worker` process (MCNPy's Java bridge stays up).
 
@@ -308,6 +390,7 @@ class McnpWorker:
         self.latest = {}  # page-load id -> newest sequence number seen (numbers restart on reload)
         self.job = 0
         self.progress = None
+        self.validator = Validator(self._project)
 
     def _remembered_path_file(self):
         return self.runs_root / "mcnp_project_path.txt"
@@ -396,7 +479,7 @@ class McnpWorker:
                 pass
         self.proc = None
 
-    def run(self, script, name, folder, seq, client=""):
+    def run(self, script, name, folder, seq, client="", validate=True):
         if seq is not None:
             if len(self.latest) > 50:
                 self.latest.clear()
@@ -408,12 +491,14 @@ class McnpWorker:
                 err = self._start()
                 if err:
                     return {"ok": False, "error": err, "seq": seq}
+            if not validate:
+                self.validator.stop()  # the deck being validated is about to be replaced: free the CPU for this translation
             folder = Path(folder)
             folder.mkdir(parents=True, exist_ok=True)
             (folder / "model.py").write_text(script, encoding="utf-8")
             self.job += 1
             self.progress = {"id": self.job, "step": 0, "total": 8, "stage": "start", "text": "Starting...", "elapsed": 0.0}
-            job = {"id": self.job, "folder": str(folder), "name": name, "samples": 20000}
+            job = {"id": self.job, "folder": str(folder), "name": name, "samples": 20000, "validate": validate}
             try:
                 self.proc.stdin.write(json.dumps(job) + "\n")
                 self.proc.stdin.flush()
@@ -425,6 +510,8 @@ class McnpWorker:
                 self.stop()
                 return {"ok": False, "error": "The MCNP worker stopped or timed out; it will restart on the next request.", "seq": seq}
             result["seq"] = seq
+            if result.get("validation_pending"):
+                result["validation_id"] = self.validator.start(job["id"], folder, result)
             return result
 
 
@@ -630,6 +717,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, self._health())
         if path == "/api/mcnp-progress":
             return self._send(200, self.studio.mcnp.get_progress() or {})
+        if path == "/api/mcnp-validation":
+            try:
+                jid = int((q.get("id") or [""])[0])
+            except ValueError:
+                return self._error(400, "id must be the validation_id of a live result.")
+            return self._send(200, self.studio.mcnp.validator.get(jid))
         if path == "/api/convert/status":
             return self._send(200, self.studio.cad_status())
         if path == "/api/convert/progress":

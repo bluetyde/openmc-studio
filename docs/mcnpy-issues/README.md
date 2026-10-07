@@ -3,8 +3,11 @@
 MCNPy 0.0.7 (MIT, author Peter J. Kowal, RPI) is the Java-backed OpenMC-to-MCNP translator behind Studio's model.mcnp tab.
 **It is not on PyPI or public GitHub.** It comes from the RPI NuCoMP group's GitHub Enterprise server
 (`github.rpi.edu/NuCoMP/mcnpy`, built into a wheel and installed from a local file; docs at
-`pages.github.rpi.edu/NuCoMP/mcnpy_docs`; see the exporter's `CLAUDE.md`, "MCNPy install notes"), and may need RPI access
-to reach. Do **not** confuse it with two unrelated projects that share the name: `sandialabs/mcnpy` (Sandia, C++/pybind11,
+`pages.github.rpi.edu/NuCoMP/mcnpy_docs`; see the exporter's `CLAUDE.md`, "MCNPy install notes"). The repository can be
+read without logging in (checked 2026-10-06: the page answers HTTP 200 and `git ls-remote` lists HEAD anonymously); whether an
+issue can be opened without an account on that server is not known. Its newest commit (2025-08-07, a second RPI developer)
+post-dates our installed wheel (built 2025-07-28); the only difference in `deck.py` is one removed `isinstance` check, so
+nothing here depends on it. Do **not** confuse it with two unrelated projects that share the name: `sandialabs/mcnpy` (Sandia, C++/pybind11,
 MCNP PTRAC particle-tracking analysis, BSD-3) and PyPI `mcnpy` (monleon96/MCNPy, versions 0.1.0 to 0.2.5, GPL): neither has
 `deck_formatter.py`, `metapy` or the OpenMC translator, so neither is where these issues go.
 

@@ -22,6 +22,16 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
      OSTI XA0053408).
   4. **Hexagonal lattices in imported decks** (`LAT=2`, refused today; the adapter can't read them).
   5. Graphs: lethargy spectrum and 1D line cuts with +/-1 sigma bands (see the backlog below).
+- **MCNPy issues to report upstream** (found 2026-10-06; nothing sent; details, numbers and runnable examples in
+  [docs/mcnpy-issues/](docs/mcnpy-issues/README.md)). MCNPy 0.0.7 is on PyPI (MIT, Peter J. Kowal, RPI); its metadata has no
+  repository URL, so find where issues go first. Draft the report from the README and send it only when the user says so.
+  1. **`line_wrap` hangs on a token with no blank longer than the line limit** (a union of 22 terms; 18 is fine). The 128-column
+     wrap itself is intended. Standalone, no Java: [`line_wrap_hang.py`](docs/mcnpy-issues/line_wrap_hang.py). Ask for a split
+     after `:` or a clear error. Ours: add a guard that wraps MCNPy's own long tokens in the normal translate path too.
+  2. **`Deck.add` re-reads all universes through Java for every cell** (O(N^2) calls; "Making Universes" is 292 of 311 s on
+     the pile). Verify the per-read call count, then report; examples [`phase_timer.py`](docs/mcnpy-issues/phase_timer.py),
+     [`count_rpc.py`](docs/mcnpy-issues/count_rpc.py), [`sample_translate.py`](docs/mcnpy-issues/sample_translate.py),
+     [`time_stages.py`](docs/mcnpy-issues/time_stages.py).
 - **Flaky test to watch**: `test/test_generated_models.py` failed once in a full run (2026-09-26):
   `model.run()` returned no statepoint. It passed alone and in the next full run; find the cause if it recurs.
 - **MontePy upgrade**: 1.1.3 in the env vs 1.5.0 upstream; needs a Python 3.12 env. Not decided.

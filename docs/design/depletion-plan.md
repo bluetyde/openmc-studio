@@ -44,8 +44,20 @@ The writer never changes the burnup basis: oxide conversion stays the consumer's
 **D0: feasibility (1 day).** On a generated UO2 pin cell in WSL: `model.deplete` with the present chain, 5 steps, 20 W/gHM-class power, predictor-corrector, 4 threads. Measure time per step, memory and
 the size of `depletion_results.h5`; confirm `get_keff`, `get_atoms`, `get_source_rates` give what the writer needs. Output: a note with the numbers. Stop if a step costs more than a few minutes on this machine.
 
+**D0 result (2026-10-07, done).** UO2 3.5 % pin cell, 38 W/gHM (183.6 W), 2D reflective, OpenMC 0.15.3 in WSL, scratch script outside the repo.
+- **It works end to end.** `Results` gave the times, k with sigma, source rates and nuclide counts; `depletion_record.build_record` took them and validated; burnup 38.0 and 190.0 MWd/tU = power x time / heavy-metal mass.
+  U-235 fell 0.69 % in 5 days; Pu-239, Xe-135 and Sm-149 appeared. Qualitative only; no accuracy claim.
+- **The full chain (3,820 nuclides) is impractical here**: one step at 10,000 x 40 did not finish in 15 minutes (a first CE/CM run was stopped after 1 h 27 min). The time is spent inside OpenMC's transport, scoring reaction rates for thousands of nuclides.
+  `reduce_chain_level` is required. Level 3 from {U-234/235/236/238, O-16} keeps 1,285 nuclides: a small run (2,000 x 20, predictor, 2 threads, 3 transport solves) took 296 s with 3.76 GB peak memory and a 1.2 MB results file.
+- **Chain reduction by level, measured** (seed U-234/235/236/238, O-16; nuclides kept / key nuclides still missing): level 1: 1,167 (no Pu-239); 2: 1,223 (no Pu-239); 3: 1,285 (no Pu-240, Pu-241, Am); 4: 1,333 (no Pu-241); 5: 1,365 (no Pu-242, Am-241); 6: 1,396 (no Am-243, Cm-244); 7: 1,426. **About 1,100 of the nuclides at level 1 are fission products** (they come with the fission yields); each actinide level adds only 30 to 60. So the size of the chain is set by the fission products, not by how far up the actinide chain it reaches.
+- **A "gradual" chain that steps up as nuclides become significant** (asked 2026-10-07) is feasible in principle (run in segments with `prev_results`, rebuild the chain from the nuclides above a threshold) but **not useful**: going from level 3 to level 6 costs 9 % more nuclides, so a fixed higher level (6) is simpler and nearly as cheap; the real cost lever is the fission products, which `Chain.reduce` cannot trim. Whether a segmented restart even keeps the previous inventory when the chain changes was not tried. Recommended: a fixed level chosen from the run length (default 6), the nuclides the user asked for always kept, and the chosen level and the kept-nuclide count written into the record's provenance.
+- **Timing is contaminated**: the machine's load was 14 to 17 on 16 cores (another agent's BEAVRS sweep). Quote no timing from D0; repeat on an idle machine.
+- **Gate:** the "a few minutes per step" rule cannot be judged on this load; proceed with the reduced chain.
+
 **D1: model side (2 to 3 days).** Depletable-material flag, volume per burnable material (from the stochastic calculation Studio already runs, or the analytic volume for primitives where Studio has one), the
-Depletion settings block, the `deplete.py` generation, Problems checks (no fuel, no volume, no power, fixed-source run, MCNP export refused with a named message).
+Depletion settings block, the `deplete.py` generation, Problems checks (no fuel, no volume, no power, fixed-source run, MCNP export refused with a named message). **Base the generation on the merged `depletion_script.py`**
+(text only, eight integrators, injection-safe quoting, 14 tests) and extend it, because as written it (a) loads `model.py` with `runpy.run_path`, and Studio's `model.py` computes volumes only inside its `if __name__ == "__main__"` block, so a depletion
+run would start with no material volumes; (b) has no `reduce_chain_level` or other operator options; (c) takes one power for the whole run, not a list per step; (d) never writes the record. Each is a small change plus tests.
 
 **D2: the writer (2 days).** `depletion_writer.py` plus tests (below), wired into the run. Provenance gets the chain hash.
 

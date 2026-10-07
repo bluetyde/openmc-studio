@@ -207,9 +207,9 @@ the package, and nothing else.
     steps (days), power history, k with its sigma, regions (name, OpenMC cell ids, heavy-metal mass), burnup per region and step in MWd/tU,
     optional isotopics, and the run's provenance block. Studio would drive `openmc.deplete`. **FEED answered (2026-10-07)**: OFFBEAT's per-cell `Bu` is
     MWd per tonne of the fuel material, i.e. of oxide for UO2, not of heavy metal. A consumer converts with the uranium mass fraction of the oxide
-    (0.8815 for UO2: oxide burnup = heavy-metal burnup x 0.8815); the record stays on heavy metal. FEED's case is one radial slice, so what it can
+    (the uranium mass fraction of the oxide: 0.8815 in OFFBEAT's Lassmann burnup model, 0.881 in its `UO2MATPRO` conductivity, which divides by 0.881; oxide burnup = heavy-metal burnup x the factor of the consumer's model); the record stays on heavy metal. FEED's case is one radial slice, so what it can
     take is **one value per axial slice**, written into every fuel cell; write regions as axial slices of the fuel for FEED. The basis is not defined
-    for U-ZrH (TRIGA fuel), so FEED would refuse non-oxide fuel. A radial profile would need a burnup-dependent property model first. Nothing is built.
+    for U-ZrH (TRIGA fuel), so FEED would refuse non-oxide fuel. A radial profile would need a burnup-dependent property model first. The plan: [docs/design/depletion-plan.md](docs/design/depletion-plan.md) (D0 feasibility on a UO2 pin first; the record gets an id; the chain file exists at `/root/nuclear_data/chains/chain_endfb80_pwr.xml`, source and licence unrecorded). Nothing is built.
 
 
 

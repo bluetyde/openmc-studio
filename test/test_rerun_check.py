@@ -456,26 +456,23 @@ class TestRerunCheck(unittest.TestCase):
                 "environment_info": 0,
             })
 
-            # 5. unreadable file inside folder (chmod 000) -> unreadable
+            # 5. a recorded file that cannot be read -> unreadable. A directory in its place fails the read for any user, root
+            # included (a chmod 000 file is still readable by root, which the suite runs as in WSL).
             unreadable = p / "unreadable.txt"
-            unreadable.write_text("cant read me")
-            unreadable.chmod(0o000)
-            try:
-                (p / "provenance.json").write_text(json.dumps(make_record(files={"unreadable.txt": "expected_hash"})))
-                res = rerun_check.check(p, current=BASE_ENV)
-                self.assertEqual(res["status"], "differences")
-                self.assertEqual(res["files"][0]["name"], "unreadable.txt")
-                self.assertEqual(res["files"][0]["state"], "unreadable")
-                self.assertIsNone(res["files"][0]["actual"])
-                self.assertEqual(res["counts"], {
-                    "files_changed": 0,
-                    "files_missing": 0,
-                    "files_other": 1,
-                    "environment_warnings": 0,
-                    "environment_info": 0,
-                })
-            finally:
-                unreadable.chmod(0o644)
+            unreadable.mkdir()
+            (p / "provenance.json").write_text(json.dumps(make_record(files={"unreadable.txt": "expected_hash"})))
+            res = rerun_check.check(p, current=BASE_ENV)
+            self.assertEqual(res["status"], "differences")
+            self.assertEqual(res["files"][0]["name"], "unreadable.txt")
+            self.assertEqual(res["files"][0]["state"], "unreadable")
+            self.assertIsNone(res["files"][0]["actual"])
+            self.assertEqual(res["counts"], {
+                "files_changed": 0,
+                "files_missing": 0,
+                "files_other": 1,
+                "environment_warnings": 0,
+                "environment_info": 0,
+            })
 
             # 6. non-path run_dir programming error propagates TypeError
             with self.assertRaises(TypeError):

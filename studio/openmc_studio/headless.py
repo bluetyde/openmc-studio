@@ -111,6 +111,13 @@ def check_project(project):
         problems.append(_problem("E_UNSUPPORTED", "/settings/maxTracks", "track output is not supported"))
     if not (project.get("tallies") or []):
         problems.append(_problem("E_SCHEMA_INVALID", "/tallies", "the project has no tally, so the run would produce no result"))
+    # then the errors the page and /api/run refuse too (prerun_check.py), after the capability checks above so their codes come first
+    from . import prerun_check
+    said = {"settings-particles": "/settings/particles", "settings-batches": "/settings/batches", "settings-seed": "/settings/seed"}
+    for f in prerun_check.check(project):
+        if f["code"] in said and any(x["path"] == said[f["code"]] for x in problems):
+            continue  # already reported above with its own path
+        problems.append(_problem("E_SCHEMA_INVALID", f["path"], f["message"]))
     return problems
 
 

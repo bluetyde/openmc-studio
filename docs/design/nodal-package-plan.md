@@ -41,9 +41,20 @@ agreement within a stated number of pcm and a stated percent in assembly power, 
 **P3: the tab (3 to 4 days).** Core tab with the lattice map, group structure choice, "Solve", the nodal k and power map beside OpenMC's k, and the P2 note.
 Absent package: the tab is not shown, and the operation says "needs the nodal package" with a setup route (SEED's rule: a missing capability blocks that operation only).
 
-**P4: package manifest (1 to 2 days, after the SEED agent's manifest format is fixed).** Component ID, version, dependencies (openndm wheel, Studio version range),
-capabilities declared (`group_constants`, `nodal_solve`), size, hash, licence notices (openndm MIT notice in the package's third-party file). Provenance gets the installed
-component versions. Fake-artifact tests first, as SEED's plan 11 does.
+**P4: package manifest (1 to 2 days).** Follows SEED's component manifest format (`seed.component-manifest/0.1`, SEED branch `claude/w2-runtime-contract`,
+`docs/runtime-contract.md` and `schema/component-manifest.schema.json`; the SEED agent's note is in `messages/openmc.md`, 2026-10-07). One file, `seed.components.json`,
+in this repo, with a component of kind `addon`:
+- `id` `nodal-core`, our own semantic version, `title`, `description`; `platforms` limited to what openndm's wheel really supports (not yet checked: Windows via WSL x64 is the
+  tested case; macOS arm64 only if a wheel or a build is confirmed);
+- `appVersions.min` the Studio version that has the Core tab (P3);
+- `dependsOn` the app's core runtime component (its id comes from Studio's own core manifest, to be written with the CAD add-on; not invented here) with a minimum version;
+- `capabilities` `group-constants` and `nodal-solve`: the names SEED's note gives as examples, so a Studio operation can refuse with a message naming the missing component;
+- `artifacts` the pinned openndm wheel (https URL, sha256, download and expanded sizes, archive type), and our wrapper if shipped separately;
+- `license` `spdx: MIT`, with the notices file hash (openndm's MIT notice goes in the package's third-party notices).
+SEED pins the manifest hash in its own catalog; a project or agent never supplies a manifest or an install command. Studio keeps owning its capability checks. Models, results and
+custom materials stay out of the component folder (removing the add-on must not touch them). The install root, the "only a human presses Add" rule and the trust source are
+**undecided by the user**: do not depend on them. Provenance records the installed component versions on every nodal result. Fake-artifact tests first. The manifest for the CAD add-on
+comes first (the plan's first case), and the core runtime component's id and version come with it.
 
 **P5: RAFT handoff (1 day).** A result file: nodal k, power map, critical boron, rod worth, with the full provenance and the P2 comparison. RAFT reads that file and nothing else.
 The BEAVRS reference data (boron letdown, HZP states) stays RAFT's side; `virtual-reactor/validation/m8_beavrs_hzp.py` already compares against it.
@@ -72,4 +83,4 @@ Depletion; the pin-power table and IFP kinetics (separate items from the investi
 
 1. Studio owns the package; RAFT is the first consumer, SEED packages and installs it. (Proposed.)
 2. The pass line in P2: decided after the first comparison numbers, by the user.
-3. Start with P0 now, or wait until the SEED agent fixes the manifest format? Recommended: start P0 (it needs no manifest), hold P4.
+3. Start with P0 now. The manifest format is now written (SEED W2, pending its merge to SEED main), so only the open install-root and trust questions remain with the user. Recommended: start P0; write the manifest after the CAD add-on's manifest exists.

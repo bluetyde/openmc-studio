@@ -24,8 +24,8 @@ Run every test with `node test/run_all.cjs [quick|browser|physics|full]` (summar
   5. Graphs: lethargy spectrum and 1D line cuts with +/-1 sigma bands (see the backlog below).
 - **MCNPy issues to report upstream** (found 2026-10-06; nothing sent; details, numbers and runnable examples in
   [docs/mcnpy-issues/](docs/mcnpy-issues/README.md)). MCNPy 0.0.7 is RPI NuCoMP's (MIT, Peter J. Kowal); it is
-  **not** on PyPI or public GitHub (source: `github.rpi.edu/NuCoMP/mcnpy`, may need RPI access; the user may know the
-  right contact). Do not confuse it with `sandialabs/mcnpy` or PyPI `mcnpy`, two unrelated projects with the same name.
+  **not** on PyPI or public GitHub (source: `github.rpi.edu/NuCoMP/mcnpy`, RPI's GitHub Enterprise server; readable without a login, but
+  opening an issue may need an RPI account, so ask the user how they want to reach the authors). Do not confuse it with `sandialabs/mcnpy` or PyPI `mcnpy`, two unrelated projects with the same name.
   Draft the report from the README and send it only when the user says so.
   Running the Java-backed examples (everything except `line_wrap_hang.py`) uses the machine-wide MCNPy port 25333, so post
   `CLAIM: MCNPy` in `messages/openmc.md` first (see `messages/INSTRUCTIONS.md`); the `line_wrap` repro needs no claim.

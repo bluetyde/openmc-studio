@@ -362,5 +362,15 @@ class TestDepletionScriptValidation(unittest.TestCase):
                 self.assertIn("power_w", str(ctx.exception))
 
 
+class TestAddedByTheDispatcher(unittest.TestCase):
+    """Added by the dispatcher after a mutation check showed a gap in the brief's test list."""
+
+    def test_integers_are_written_as_floats(self):
+        """10 must appear as 10.0 and a power of 1000000 as 1000000.0 (the brief says floats via float())."""
+        text = build_script(dict(VALID_SETTINGS, time_steps_days=[10, 20, 30], power_w=1000000))
+        self.assertIn("[10.0, 20.0, 30.0]", text)
+        self.assertIn("power=1000000.0,", text)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

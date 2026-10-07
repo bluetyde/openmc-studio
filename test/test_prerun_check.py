@@ -1,6 +1,6 @@
 """The refusals every run path shares (studio/openmc_studio/prerun_check.py) against the page's own list of errors.
 
-test/fixtures/prerun/cases.json holds 69 projects and, for each, the errors the page's problems() gives it (made and kept
+test/fixtures/prerun/cases.json holds 73 projects and, for each, the errors the page's problems() gives it (made and kept
 current by test/test_prerun_check_page.js). Python must give the same objects the same number of errors: a project the
 page refuses must be refused here and one the page allows must be allowed, or a script could run what the page forbids, or be
 stopped from running what the page allows.

@@ -1221,6 +1221,77 @@ function parseComps(str) {
   });
   return {out, errs};
 }
+// ───────── Material from engineering inputs ─────────
+// A port of studio/openmc_studio/material_assistant.py: the same arithmetic, held equal to it by golden cases (test/fixtures/material_assistant/cases.json).
+// No default density is invented: the theoretical density of UO2 and the density of the water come from the person, and the thermal scattering
+// table of heavy water is theirs to choose. Oxygen is taken as pure O-16, as the module states.
+const MA = (() => {
+  const AVOGADRO = 6.02214076e23;
+  const M = {H1: 1.007825031898, H2: 2.014101777844, O16: 15.99491461926, B10: 10.012936862, B11: 11.009305166, U235: 235.043928117, U238: 238.050786936};
+  const B10_NATURAL = 0.1982;
+  const bad = (name, why, val) => ({error: `Argument '${name}' ${why}; got ${val}`});
+  const check = (name, val, lo, hi, loExcl, hiExcl) => {
+    if (typeof val !== 'number' || !Number.isFinite(val)) return bad(name, 'must be a finite number', val);
+    if (loExcl ? val <= lo : val < lo) return bad(name, `must be ${loExcl ? '>' : '>='} ${lo}`, val);
+    if (hi !== undefined && (hiExcl ? val >= hi : val > hi)) return bad(name, `must be ${hiExcl ? '<' : '<='} ${hi}`, val);
+    return {value: val};
+  };
+  function uranium_dioxide(enrichmentWtPct, percentTd, theoreticalDensity) {
+    const a = check('enrichment_wt_pct', enrichmentWtPct, 0, 100, true), b = check('percent_td', percentTd, 0, 100, true), c = check('theoretical_density_g_cm3', theoreticalDensity, 0, undefined, true);
+    for (const r of [a, b, c]) if (r.error) return r;
+    const w5 = a.value / 100, w8 = 1 - w5;
+    const inv5 = w5 / M.U235, inv8 = w8 / M.U238, x5 = inv5 / (inv5 + inv8);
+    const mU = x5 * M.U235 + (1 - x5) * M.U238, mUO2 = mU + 2 * M.O16;
+    const density = c.value * b.value / 100, nUO2 = density * AVOGADRO / mUO2 * 1e-24;
+    return {density_g_cm3: density,
+      mass_fractions: {U235: (mU / mUO2) * w5, U238: w8 > 0 ? (mU / mUO2) * w8 : 0, O16: 2 * M.O16 / mUO2},
+      atom_density_per_b_cm: {U235: x5 * nUO2, U238: 1 - x5 > 0 ? (1 - x5) * nUO2 : 0, O16: 2 * nUO2}};
+  }
+  function borated_water(boronPpm, solutionDensity, deuteriumFraction = 0, b10AtomFraction = B10_NATURAL) {
+    const a = check('boron_ppm', boronPpm, 0, 1e6, false, true), b = check('solution_density_g_cm3', solutionDensity, 0, undefined, true),
+      c = check('deuterium_fraction', deuteriumFraction, 0, 1), d = check('b10_atom_fraction', b10AtomFraction, 0, 1);
+    for (const r of [a, b, c, d]) if (r.error) return r;
+    const wB = a.value * 1e-6, wWater = 1 - wB, f = c.value, bf = d.value, rho = b.value;
+    const mH = (1 - f) * M.H1 + f * M.H2, mW = 2 * mH + M.O16, mB = bf * M.B10 + (1 - bf) * M.B11;
+    const mf = {
+      H1: 1 - f > 0 ? wWater * 2 * (1 - f) * M.H1 / mW : 0, H2: f > 0 ? wWater * 2 * f * M.H2 / mW : 0, O16: wWater * M.O16 / mW,
+      B10: wB > 0 && bf > 0 ? wB * bf * M.B10 / mB : 0, B11: wB > 0 && 1 - bf > 0 ? wB * (1 - bf) * M.B11 / mB : 0};
+    const ad = {};
+    for (const n of Object.keys(mf)) ad[n] = mf[n] > 0 ? rho * mf[n] * AVOGADRO / M[n] * 1e-24 : 0;
+    return {density_g_cm3: rho, mass_fractions: mf, atom_density_per_b_cm: ad};
+  }
+  return {uranium_dioxide, borated_water, B10_NATURAL};
+})();
+// What the helper in the material editor remembers between edits: kept for the session, not in the project.
+const ENG = {kind: 'uo2', enrich: NaN, td: NaN, tdDensity: NaN, ppm: 0, rho: NaN, dFrac: 0, b10: NaN};
+const engResult = () => {
+  const n = v => typeof v === 'number' ? v : NaN;
+  return ENG.kind === 'uo2' ? MA.uranium_dioxide(n(ENG.enrich), n(ENG.td), n(ENG.tdDensity))
+    : MA.borated_water(n(ENG.ppm), n(ENG.rho), n(ENG.dFrac), Number.isFinite(ENG.b10) ? ENG.b10 / 100 : MA.B10_NATURAL);
+};
+const engComps = r => Object.entries(r.mass_fractions).filter(([, v]) => v > 0).map(([k, v]) => `${k}:${+v.toPrecision(12)}`).join(', ');
+const engSummary = r => r.error ? esc(r.error) : `${fmtNum(+r.density_g_cm3.toPrecision(8))} g/cm³ · ` +
+  Object.entries(r.mass_fractions).filter(([, v]) => v > 0).map(([k, v]) => `${esc(k)} ${+v.toPrecision(6)}`).join(', ') + ' (mass fractions) · ' +
+  Object.entries(r.atom_density_per_b_cm).filter(([, v]) => v > 0).map(([k, v]) => `${esc(k)} ${v.toPrecision(5)}`).join(', ') + ' atoms/(b·cm)';
+function applyEngineering(m) {
+  const r = engResult();
+  if (r.error) { log('warn', `Can't set the material from these inputs: ${esc(r.error)}.`); return false; }
+  HISTORY.boundary = true;
+  m.density = +r.density_g_cm3.toPrecision(12);
+  m.frac = 'wo';
+  m.comps = engComps(r);
+  m.ref = ENG.kind === 'uo2' ? `Engineering inputs: UO2, ${ENG.enrich} wt % U-235, ${ENG.td} % of ${ENG.tdDensity} g/cm³`
+    : `Engineering inputs: borated water, ${ENG.ppm} ppm boron, ${r.density_g_cm3} g/cm³` + (ENG.dFrac ? `, ${ENG.dFrac} of hydrogen as H-2` : '');
+  delete m.pristine; m.lib = '';
+  let tail = '';
+  if (ENG.kind === 'borated') {
+    if (!ENG.dFrac) { m.sab = 'c_H_in_H2O'; tail = ' The light-water thermal scattering table c_H_in_H2O is set.'; }
+    else tail = ' Choose the thermal scattering table for the deuterium yourself (Studio does not guess one for heavy water).';
+  } else tail = ' Oxygen is taken as pure O-16.';
+  log('ok', `Set ${esc(m.name)} from engineering inputs: ${engSummary(r)}.${tail}`);
+  renderProps(); renderTree(); schedule();
+  return true;
+}
 // "14.1:1, 2.45:0.5" -> line energies in MeV with relative intensities (MCNP SI L / SP D)
 function parseLines(str) {
   const out = [], errs = [];
@@ -4656,6 +4727,41 @@ function meshMapFields(o, isRegular) {
   fields.push({type:'note', show:isRegular, html:`<span id="meshInfo">${esc(meshInfoText(o))}</span>`});
   return fields;
 }
+// UO2 from enrichment and percent of theoretical density, or borated water from ppm boron: the material's density, fractions and (for light
+// water) thermal scattering table are set from the inputs. The inputs are not stored in the project; the material keeps what they gave.
+function engineeringFields(o) {
+  const row = (label, hint, build) => ({type:'custom', label, hint, build});
+  const num = (key, unit, placeholder) => ctl => {
+    const i = document.createElement('input');
+    i.type = 'number'; i.step = 'any'; i.className = 'eng-in'; i.dataset.key = key;
+    if (placeholder) i.placeholder = placeholder;
+    i.value = Number.isFinite(ENG[key]) ? ENG[key] : '';
+    i.addEventListener('input', () => {
+      ENG[key] = i.value === '' ? NaN : parseFloat(i.value);
+      const out = $('#engPreview'); if (out) out.innerHTML = engSummary(engResult());
+    });
+    ctl.appendChild(i);
+    ctl.insertAdjacentHTML('beforeend', `<span class="unit">${unit}</span>`);
+  };
+  const uo2 = () => ENG.kind === 'uo2';
+  return [
+    row('Calculate', 'Fill in the density and the nuclide fractions from engineering numbers.', ctl => {
+      const sl = document.createElement('select'); sl.id = 'engKind';
+      [['uo2', 'UO2 fuel'], ['borated', 'Borated water']].forEach(([v, t]) => sl.add(new Option(t, v, false, v === ENG.kind)));
+      sl.addEventListener('change', () => { ENG.kind = sl.value; renderProps(); });
+      ctl.appendChild(sl);
+    }),
+    {...row('Enrichment', 'Weight percent of U-235 in the uranium. (Studio\'s own pin examples use atom fractions; this is weight percent.)', num('enrich', 'wt %', 'e.g. 3.5')), show: uo2},
+    {...row('Density', 'Percent of the theoretical density.', num('td', '% TD', 'e.g. 95')), show: uo2},
+    {...row('Theoretical density', 'Of UO2, in g/cm³. Studio does not supply one: use the value your reference gives.', num('tdDensity', 'g/cm³')), show: uo2},
+    {...row('Boron', 'Parts per million by mass of the solution (0 for pure water).', num('ppm', 'ppm')), show: () => !uo2()},
+    {...row('Water density', 'g/cm³ at the temperature and pressure you mean. Studio does not supply one.', num('rho', 'g/cm³')), show: () => !uo2()},
+    {...row('Hydrogen as H-2', 'Fraction of the hydrogen atoms that are deuterium (0 is light water).', num('dFrac', '0 to 1')), show: () => !uo2()},
+    {...row('B-10 in boron', 'Atom percent; blank is natural boron (19.82 %).', num('b10', 'atom %', '19.82')), show: () => !uo2()},
+    row('Result', '', ctl => { const d = document.createElement('div'); d.id = 'engPreview'; d.className = 'envline'; d.innerHTML = engSummary(engResult()); ctl.appendChild(d); }),
+    {type:'buttons', btns:[['Set this material from these inputs', () => applyEngineering(o)]]},
+  ];
+}
 function specFor(kind, o) {
   const st = S.settings;
   if (kind === 'material') {
@@ -4676,6 +4782,7 @@ function specFor(kind, o) {
         F('check', 'burnable', 'Burnable', {show:() => st.depletion, text:'Burns in a depletion run', hint:'Marks this material as fuel that depletion changes: its uranium, plutonium or thorium is tracked step by step. Needs a part that uses it. Turn depletion on in Settings.'}),
         note(o.ref ? `Source: <code>${esc(o.ref)}</code>${o.ref.startsWith('PNNL') ? ' — PNNL-15870 Rev. 1.' : ''}` : 'Custom material.')
       ]},
+      {title:'From engineering inputs', fields:engineeringFields(o)},
       {title:'MCNP equivalent', fields:[{type:'mcnp', text:() => mcnpMaterial(o)}]}
     ];
   }

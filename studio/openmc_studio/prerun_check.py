@@ -7,18 +7,22 @@ warnings and notes stay on the page). `test/test_prerun_check.py` and `test/test
 on the same projects: a project the page refuses must be refused here with the same objects named, and the reverse.
 
 Not here yet, and so refused only by the page (and by the geometry check): the rules about imported CAD components (a material
-missing, a part reaching into one, a component past the world) and the tally of surfaces of a part that sits in a lattice. A
+missing, a part reaching into one, a component past the world), the tally of surfaces of a part that sits in a lattice and a burnable
+material used by a part inside a lattice. A
 project that breaks only those still runs from a script. Findings: {level, code, path, message}; `path` is a JSON pointer into
 the project (`/settings`, `/materials/m1`, `/sources/s1`, `/tallies/t2`, `/parts/p3`, `/world`).
 """
 import math
 import re
 
+from .depletion_script import INTEGRATORS
+
 _NUM = r"([0-9]*\.?[0-9]+(?:[eE][-+]?\d+)?)"
 _COMP_RE = re.compile(r"^([A-Z][a-z]?)(\d{1,3}(?:_m\d)?)?\s*:\s*" + _NUM + r"$")
 _LINE_RE = re.compile(r"^" + _NUM + r"\s*(?::\s*" + _NUM + r")?$")
 _TRACK_RE = re.compile(r"^(\d+)\s*,\s*(\d+)\s*,\s*(\d+)$")
 FISSILE = ("U", "Pu", "U233", "U235", "Pu239", "Pu241")
+HEAVY_METAL = ("U", "Pu", "Th")
 NO_NATURAL = ("Tc", "Pm", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Np", "Pu", "Am", "Cm", "Bk", "Cf")
 NAN = float("nan")
 
@@ -341,6 +345,31 @@ def check(project):
             vals, ok = parse_nums(ebins)
             if not ok or len(vals) < 2 or any(i and vals[i] <= vals[i - 1] for i in range(len(vals))) or vals[0] < 0:
                 add("tally-energy-bins", path, f"{name}: energy bin edges need 2 or more rising values in MeV, like 0, 1e-6, 1, 20.")
+
+    # depletion
+    if st.get("depletion") is True:
+        burn = [m for m in materials if m.get("burnable") and m.get("id") in used]
+        if not eig:
+            add("depletion-not-eigenvalue", "/settings", "Depletion needs an eigenvalue run. Switch Run mode to Eigenvalue, or turn depletion off.")
+        if not burn:
+            add("depletion-no-burnable", "/settings", "Depletion needs a fuel material marked Burnable (select the material) that a part uses.")
+        for m in burn:
+            name, path = m.get("name"), f"/materials/{m.get('id')}"
+            if not any(c["el"] in HEAVY_METAL for c in parse_comps(m.get("comps"))[0]):
+                add("depletion-no-heavy-metal", path, f"{name}: a burnable material needs uranium, plutonium or thorium, so burnup has a heavy-metal mass to divide by.")
+            if m.get("id") == st.get("worldFill"):
+                add("depletion-world-fill", path, f"{name}: a material that fills the world can't be burnable.")
+            if any(c.get("material") == m.get("id") for k in csg if isinstance(k, dict) for c in (k.get("cells") or []) if isinstance(c, dict)):
+                add("depletion-csg", path, f"{name}: burnable material in imported CAD geometry isn't supported yet.")
+        steps, steps_ok = parse_nums(st.get("depSteps"))
+        if not pos(st.get("depPower")):
+            add("depletion-power", "/settings", "Depletion power must be above 0 W per gram of heavy metal.")
+        if not steps_ok or not steps or any(not v > 0 for v in steps):
+            add("depletion-steps", "/settings", "Depletion time steps: write one or more lengths in days above 0, like 1, 4, 10, 25, 60.")
+        if st.get("depIntegrator") not in INTEGRATORS:
+            add("depletion-integrator", "/settings", "Pick a depletion integrator.")
+        if not (is_int(st.get("depReduce")) and st["depReduce"] >= 1):
+            add("depletion-chain-level", "/settings", "Depletion chain level must be a whole number of 1 or more.")
 
     # settings
     if not (is_int(st.get("particles")) and st["particles"] >= 1):

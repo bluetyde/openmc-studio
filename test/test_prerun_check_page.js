@@ -98,6 +98,20 @@ const CASES = [
   ['he-3 detector with no material named: the page picks the He-3 one', p => tal(p, {detector: 'he3', responseMat: '', scores: ['flux']})],
   ['he-3 detector and no He-3 material to pick', p => { p.materials = p.materials.filter(m => m.id !== 'm3'); p.parts = p.parts.filter(x => x.material !== 'm3'); p.tallies[0].cells = []; return tal(p, {detector: 'he3', responseMat: '', scores: ['flux'], cells: ['world']}); }],
   ['tabulated source with a leading zero probability', p => src(p, {energy: 'tabulated', tab_p: '0, 0.2, 0.5, 0.3'})],
+  ['depletion with a burnable fuel in an eigenvalue run', p => { eig(p); set(p, {depletion: true}); p.materials.find(m => m.id === 'm9').burnable = true; return p; }],
+  ['depletion in a fixed-source run', p => { eig(p); set(p, {depletion: true, runMode: 'fixed source'}); p.materials.find(m => m.id === 'm9').burnable = true; return p; }],
+  ['depletion with no burnable material', p => set(eig(p), {depletion: true})],
+  ['burnable material with no heavy metal', p => { eig(p); set(p, {depletion: true}); p.materials.find(m => m.id === 'm9').burnable = true; p.materials[0].burnable = true; return p; }],
+  ['burnable material that fills the world', p => { eig(p); set(p, {depletion: true, worldFill: 'm9'}); p.materials.find(m => m.id === 'm9').burnable = true; return p; }],
+  ['depletion power zero', p => { eig(p); set(p, {depletion: true, depPower: 0}); p.materials.find(m => m.id === 'm9').burnable = true; return p; }],
+  ['depletion time steps unreadable', p => { eig(p); set(p, {depletion: true, depSteps: 'a, b'}); p.materials.find(m => m.id === 'm9').burnable = true; return p; }],
+  ['depletion time step of zero', p => { eig(p); set(p, {depletion: true, depSteps: '1, 0'}); p.materials.find(m => m.id === 'm9').burnable = true; return p; }],
+  ['depletion with no time steps', p => { eig(p); set(p, {depletion: true, depSteps: ''}); p.materials.find(m => m.id === 'm9').burnable = true; return p; }],
+  ['depletion with an unknown integrator', p => { eig(p); set(p, {depletion: true, depIntegrator: 'Bogus'}); p.materials.find(m => m.id === 'm9').burnable = true; return p; }],
+  ['depletion chain level zero', p => { eig(p); set(p, {depletion: true, depReduce: 0}); p.materials.find(m => m.id === 'm9').burnable = true; return p; }],
+  ['burnable material in imported CAD geometry', p => { eig(p); set(p, {depletion: true}); p.materials.find(m => m.id === 'm9').burnable = true;
+    p.csg = {components: [{id: 'k1', name: 'Block', bounds: [40, 40, 40, 50, 50, 50], cells: [{id: 'k1c1', name: 'block cell', material: 'm9'}]}]}; return p; }],
+  ['burnable flag with depletion off changes nothing', p => { eig(p); p.materials.find(m => m.id === 'm9').burnable = true; p.materials[0].burnable = true; return p; }],
   // runs the page allows
   ['he-3 detector tally, flux only', p => tal(p, {detector: 'he3', responseMat: 'm3', scores: ['flux']})],
   ['surface tally, current', p => tal(p, {kind: 'surface', surfaces: ['p1'], scores: ['current']})],
@@ -113,7 +127,8 @@ const CASES = [
 // The cases the page lets through: Python must let them through too.
 const ALLOWED = new Set(['baseline: the demo model', 'eigenvalue with fuel', 'he-3 detector tally, flux only', 'surface tally, current', 'cylindrical mesh, valid',
   'tabulated source, valid', 'Watt source, valid', 'uniform source, valid', 'box source, valid', 'sphere source, valid', 'dose tally in a fixed-source run',
-  'he-3 detector with no material named: the page picks the He-3 one', 'tabulated source with a leading zero probability']);
+  'he-3 detector with no material named: the page picks the He-3 one', 'tabulated source with a leading zero probability',
+  'depletion with a burnable fuel in an eigenvalue run', 'burnable flag with depletion off changes nothing']);
 const build = () => CASES.map(([name, mutate]) => { const project = mutate(base()); return {name, project, errors: pageErrors(project)}; });
 
 if (process.argv.includes('--write')) {

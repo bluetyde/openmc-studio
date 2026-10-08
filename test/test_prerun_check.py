@@ -1,6 +1,6 @@
 """The refusals every run path shares (studio/openmc_studio/prerun_check.py) against the page's own list of errors.
 
-test/fixtures/prerun/cases.json holds 73 projects and, for each, the errors the page's problems() gives it (made and kept
+test/fixtures/prerun/cases.json holds 86 projects and, for each, the errors the page's problems() gives it (made and kept
 current by test/test_prerun_check_page.js). Python must give the same objects the same number of errors: a project the
 page refuses must be refused here and one the page allows must be allowed, or a script could run what the page forbids, or be
 stopped from running what the page allows.
@@ -51,6 +51,15 @@ class ParityWithThePage(unittest.TestCase):
         codes = set(re.findall(r'add\(\s*"([a-z0-9-]+)"', src))
         seen = {f["code"] for c in CASES for f in prerun_check.check(c["project"])}
         self.assertEqual(sorted(codes - seen), [], "rules no case reaches")
+
+
+class Integrators(unittest.TestCase):
+    def test_the_page_offers_exactly_the_integrators_the_script_writer_knows(self):
+        import re
+        html = (ROOT / "studio" / "openmc_studio" / "static" / "index.html").read_text(encoding="utf-8")
+        block = html[html.index("const DEP_INTEGRATORS"):html.index("const HEAVY_METAL")]
+        from openmc_studio.depletion_script import INTEGRATORS
+        self.assertEqual(sorted(re.findall(r"[[]'([A-Za-z0-9]+Integrator)'", block)), sorted(INTEGRATORS))
 
 
 class Findings(unittest.TestCase):

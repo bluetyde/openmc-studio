@@ -335,6 +335,44 @@ test('the Results button of a stopped or failed run is enabled (its finished ste
   assert.equal(state('r-running'), 'disabled');
 });
 
+// a run that ends: the stream's "end" event decides what the page does with the run's results
+const endOf = async (status, depletion) => {
+  const handlers = {};
+  sb.EventSource = class { constructor() { this.readyState = 1; } addEventListener(t, fn) { handlers[t] = fn; } close() {} };
+  run('window.__loaded = []; loadResults = async (id) => { window.__loaded.push(id); }; refreshRuns = () => {}; setRunning = () => {}; setOutTab = () => {}; LOCAL.token = "tok"');
+  sb.__dep = depletion; run('S.settings.depletion = __dep');
+  run('streamRun("r9")');
+  await handlers.end({data: JSON.stringify({status, returncode: status === 'done' ? 0 : 1, started: 1, ended: 3})});
+  return JSON.parse(JSON.stringify(run('window.__loaded')));
+};
+test('when a run ends, its results are loaded if it finished, and for a stopped or failed burn too (its steps are a record), not for another kind of run that stopped', async () => {
+  assert.deepEqual(await endOf('done', false), ['r9']);
+  assert.deepEqual(await endOf('done', true), ['r9']);
+  assert.deepEqual(await endOf('stopped', true), ['r9'], 'a stopped burn');
+  assert.deepEqual(await endOf('failed', true), ['r9'], 'a failed burn');
+  assert.deepEqual(await endOf('stopped', false), [], 'a transport run that was stopped has no record to show');
+  assert.deepEqual(await endOf('failed', false), []);
+});
+
+test('Open model on a stopped burn loads its results; on a stopped transport run it does not; a running one never', async () => {
+  const mk = depletion => ({materials: [], parts: [], groups: [], sources: [], tallies: [], settings: {name: 'x', depletion}});
+  const runs = {'r-stopped': 'stopped', 'r-done': 'done', 'r-running': 'running'};
+  let depletion = true;
+  sb.fetch = url => Promise.resolve({ok: true, headers: {get: () => 'application/json'}, json: () => Promise.resolve(/\/project$/.test(url) ? mk(depletion) : {runs: Object.entries(runs).map(([id, status]) => ({id, status, name: id, started: 1}))})});
+  run('validProject = () => true; normalizeProject = () => {}; renderAll = () => {}; clearResults = () => { window.__cleared = true; }; window.__loaded = []; loadResults = (id) => { window.__loaded.push(id); }; LOCAL.on = true; LOCAL.token = "tok"');
+  const open = async id => {
+    run('window.__loaded = []');
+    for (const [t, fn] of listeners) if (t === 'click' && fn.toString().includes('data-load')) await fn({target: {closest: sel => sel === '[data-load]' ? {dataset: {load: id}} : null}});
+    await new Promise(r => setImmediate(r));
+    return JSON.parse(JSON.stringify(run('window.__loaded')));
+  };
+  assert.deepEqual(await open('r-done'), ['r-done']);
+  assert.deepEqual(await open('r-stopped'), ['r-stopped'], 'a burn: its finished steps');
+  assert.deepEqual(await open('r-running'), [], 'running: nothing to load yet');
+  depletion = false;
+  assert.deepEqual(await open('r-stopped'), [], 'a stopped transport run');
+});
+
 (async () => {
   for (const [name, fn] of tests) {
     try { await fn(); console.log('  [PASS]', name); }

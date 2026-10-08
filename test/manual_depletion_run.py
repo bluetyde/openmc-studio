@@ -91,6 +91,8 @@ check("the region is the fuel, with its cell and the heavy-metal mass by hand", 
 check("the record's burnup is 38 W/g x time", all(abs(b - e) / e < 1e-3 for b, e in zip(reg["burnup_mwd_per_tu"], burnup)), f"{[round(b, 3) for b in reg['burnup_mwd_per_tu']]} MWd/tU")
 inv = rec["provenance"]["checks"][reg["name"]]["inventory"]
 check("the inventory check is within its tolerance", inv["ok"], f"ratio {inv['ratio']:.4f} (Q {inv['fission_q_mev']:.1f} MeV)")
+iso = rec["isotopics"][reg["name"]]
+check("the record holds the heavy metal and the listed fission products", all(n in iso for n in ("U235", "Pu239", "Xe135", "Sm149")) and iso["Xe135"][-1] > 0, ", ".join(sorted(iso)))
 check("the chain is named by its hash", rec["provenance"]["chain"]["sha256"] == depletion_run.chain_record(chain)["sha256"], rec["provenance"]["chain"]["sha256"][:16])
 shutil.rmtree(work, ignore_errors=True)
 sys.exit(0 if all(checks) else 1)

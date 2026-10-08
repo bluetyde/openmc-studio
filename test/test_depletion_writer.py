@@ -189,6 +189,13 @@ class ForThePage(unittest.TestCase):
         self.assertIsNone(out["note"])
         self.assertEqual(out["wall_s"], 95.5)
 
+    def test_load_puts_the_depletion_payload_in_the_results_even_with_no_statepoint(self):
+        (self.tmp / "deplete.py").write_text("pass" + chr(10))
+        depletion_record.write(self.tmp, build(PIN))
+        out = results.load(str(self.tmp))
+        self.assertEqual(out["depletion"]["record"]["id"], build(PIN)["id"])
+        self.assertNotIn("depletion", results.load(str(self.tmp / "nowhere")), "a run folder that burned nothing has no payload")
+
     def test_without_a_record_the_reason_is_given(self):
         (self.tmp / "deplete.py").write_text("pass\n")
         self.assertEqual(results._depletion(self.tmp)["note"], "No depletion record yet.")

@@ -135,7 +135,8 @@ def read_run(folder, cells=None, names=None):
     mat_id = mats[0]
     nuclides = list(results[0].index_nuc)
     heavy = [n for n in nuclides if _heavy(n)]
-    atoms = {n: results.get_atoms(mat_id, n, nuc_units="atoms", time_units="d")[1][:len(times)] for n in heavy}
+    wanted = heavy + [n for n in LISTED if n in nuclides and n not in heavy]  # the listed fission products as well as the heavy metal
+    atoms = {n: results.get_atoms(mat_id, n, nuc_units="atoms", time_units="d")[1][:len(times)] for n in wanted}
     hm_atoms = np.sum([atoms[n] for n in heavy], axis=0)
     mass_g = sum(float(atoms[n][0]) * openmc.data.atomic_mass(n) for n in heavy) / openmc.data.AVOGADRO
     present = [n for n in FISSILE if n in atoms and float(atoms[n][-1]) > 0]

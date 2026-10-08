@@ -1,0 +1,204 @@
+{
+ "tally": "Pin power",
+ "score": "kappa-fission",
+ "layer": 0,
+ "layers": 2,
+ "nx": 4,
+ "ny": 3,
+ "pitch_cm": [
+  1.26,
+  1.26
+ ],
+ "lower_cm": [
+  0.0,
+  0.0
+ ],
+ "rows": [
+  {
+   "ix": 0,
+   "iy": 0,
+   "x_cm": 0.63,
+   "y_cm": 0.63,
+   "value": 1.0,
+   "sigma": 0.01,
+   "included": true,
+   "relative_power": 0.9556907037358818,
+   "relative_sigma": 0.009556907037358819
+  },
+  {
+   "ix": 1,
+   "iy": 0,
+   "x_cm": 1.8900000000000001,
+   "y_cm": 0.63,
+   "value": 1.02,
+   "sigma": 0.0102,
+   "included": true,
+   "relative_power": 0.9748045178105995,
+   "relative_sigma": 0.009748045178105996
+  },
+  {
+   "ix": 2,
+   "iy": 0,
+   "x_cm": 3.15,
+   "y_cm": 0.63,
+   "value": 0.98,
+   "sigma": 0.0098,
+   "included": true,
+   "relative_power": 0.9365768896611641,
+   "relative_sigma": 0.00936576889661164
+  },
+  {
+   "ix": 3,
+   "iy": 0,
+   "x_cm": 4.41,
+   "y_cm": 0.63,
+   "value": 1.01,
+   "sigma": 0.0101,
+   "included": true,
+   "relative_power": 0.9652476107732406,
+   "relative_sigma": 0.009652476107732406
+  },
+  {
+   "ix": 0,
+   "iy": 1,
+   "x_cm": 0.63,
+   "y_cm": 1.8900000000000001,
+   "value": 0.99,
+   "sigma": 0.0099,
+   "included": true,
+   "relative_power": 0.946133796698523,
+   "relative_sigma": 0.00946133796698523
+  },
+  {
+   "ix": 1,
+   "iy": 1,
+   "x_cm": 1.8900000000000001,
+   "y_cm": 1.8900000000000001,
+   "value": 1.0,
+   "sigma": 0.01,
+   "included": true,
+   "relative_power": 0.9556907037358818,
+   "relative_sigma": 0.009556907037358819
+  },
+  {
+   "ix": 2,
+   "iy": 1,
+   "x_cm": 3.15,
+   "y_cm": 1.8900000000000001,
+   "value": 0.0,
+   "sigma": 0.0,
+   "included": false,
+   "relative_power": null,
+   "relative_sigma": null
+  },
+  {
+   "ix": 3,
+   "iy": 1,
+   "x_cm": 4.41,
+   "y_cm": 1.8900000000000001,
+   "value": 1.5,
+   "sigma": 0.015,
+   "included": true,
+   "relative_power": 1.4335360556038228,
+   "relative_sigma": 0.014335360556038226
+  },
+  {
+   "ix": 0,
+   "iy": 2,
+   "x_cm": 0.63,
+   "y_cm": 3.15,
+   "value": 1.01,
+   "sigma": 0.0101,
+   "included": true,
+   "relative_power": 0.9652476107732406,
+   "relative_sigma": 0.009652476107732406
+  },
+  {
+   "ix": 1,
+   "iy": 2,
+   "x_cm": 1.8900000000000001,
+   "y_cm": 3.15,
+   "value": 0.97,
+   "sigma": 0.0097,
+   "included": true,
+   "relative_power": 0.9270199826238054,
+   "relative_sigma": 0.009270199826238053
+  },
+  {
+   "ix": 2,
+   "iy": 2,
+   "x_cm": 3.15,
+   "y_cm": 3.15,
+   "value": 1.03,
+   "sigma": 0.0103,
+   "included": true,
+   "relative_power": 0.9843614248479583,
+   "relative_sigma": 0.009843614248479583
+  },
+  {
+   "ix": 3,
+   "iy": 2,
+   "x_cm": 4.41,
+   "y_cm": 3.15,
+   "value": 1.0,
+   "sigma": 0.01,
+   "included": true,
+   "relative_power": 0.9556907037358818,
+   "relative_sigma": 0.009556907037358819
+  }
+ ],
+ "peak": {
+  "relative_power": 1.4335360556038228,
+  "ix": 3,
+  "iy": 1,
+  "n_used": 11,
+  "n_excluded": 1
+ },
+ "noise": {
+  "peaking_factor": 1.4335360556038228,
+  "noise_allowance": 0.0160146432872139
+ },
+ "quarter": [
+  {
+   "ix": 0,
+   "iy": 0,
+   "n_members": 4,
+   "relative_power": 0.9604691572545612,
+   "relative_sigma": 0.004802405219406515,
+   "max_deviation": 0.004975124378109494
+  },
+  {
+   "ix": 1,
+   "iy": 0,
+   "n_members": 4,
+   "relative_power": 0.9556907037358818,
+   "relative_sigma": 0.0047800062637928875,
+   "max_deviation": 0.030000000000000016
+  },
+  {
+   "ix": 0,
+   "iy": 1,
+   "n_members": 2,
+   "relative_power": 1.189834926151173,
+   "relative_sigma": 0.008588065533010515,
+   "max_deviation": 0.20481927710843373
+  },
+  {
+   "ix": 1,
+   "iy": 1,
+   "n_members": 1,
+   "relative_power": 0.9556907037358818,
+   "relative_sigma": 0.009556907037358819,
+   "max_deviation": 0.0
+  }
+ ],
+ "symmetry": {
+  "max_deviation": 0.20481927710843373,
+  "max_z": 17.000000000000004,
+  "within_noise": false,
+  "note": "if the layout is four-fold symmetric, pins that should match differ by this many of their own sigma at most"
+ },
+ "assumes": "each cell of the mesh is one pin, so the mesh must be laid on the lattice (same pitch, same corner); cells that scored nothing are left out of the mean",
+ "alignment": "not checked: Studio does not compare the mesh with the lattice",
+ "csv": "ix,iy,x_cm,y_cm,value,sigma,included,relative_power,relative_sigma\n0,0,0.63,0.63,1.0,0.01,True,0.9556907037358818,0.009556907037358819\n1,0,1.8900000000000001,0.63,1.02,0.0102,True,0.9748045178105995,0.009748045178105996\n2,0,3.15,0.63,0.98,0.0098,True,0.9365768896611641,0.00936576889661164\n3,0,4.41,0.63,1.01,0.0101,True,0.9652476107732406,0.009652476107732406\n0,1,0.63,1.8900000000000001,0.99,0.0099,True,0.946133796698523,0.00946133796698523\n1,1,1.8900000000000001,1.8900000000000001,1.0,0.01,True,0.9556907037358818,0.009556907037358819\n2,1,3.15,1.8900000000000001,0.0,0.0,False,,\n3,1,4.41,1.8900000000000001,1.5,0.015,True,1.4335360556038228,0.014335360556038226\n0,2,0.63,3.15,1.01,0.0101,True,0.9652476107732406,0.009652476107732406\n1,2,1.8900000000000001,3.15,0.97,0.0097,True,0.9270199826238054,0.009270199826238053\n2,2,3.15,3.15,1.03,0.0103,True,0.9843614248479583,0.009843614248479583\n3,2,4.41,3.15,1.0,0.01,True,0.9556907037358818,0.009556907037358819\n"
+}

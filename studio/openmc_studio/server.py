@@ -150,8 +150,8 @@ class Studio:
                 log.flush()
                 run.add(line)
         code = run.proc.wait()
-        if code == 0 and (run.path / "deplete.py").is_file():
-            self._depletion_record(run)
+        if (run.path / "deplete.py").is_file() and (code == 0 or (run.path / "depletion_results.h5").is_file()):
+            self._depletion_record(run)  # a stopped or failed burn leaves a record of the steps it finished
         run.finish(code)
 
     def _depletion_record(self, run):
@@ -166,8 +166,11 @@ class Studio:
             run.add(msg)
             return
         checks = [c["ok"] for reg in rec["provenance"].get("checks", {}).values() for c in reg.values()]
-        provenance.update(run.path, depletion_record={"status": "written", "file": "depletion.json", "id": rec["id"], "checks_ok": all(checks)})
-        run.add(f"Depletion record written: depletion.json, id {rec['id'][:12]}" + ("" if all(checks) else " (a check is outside its tolerance: see provenance.json)"))
+        provenance.update(run.path, depletion_record={"status": "written", "file": "depletion.json", "id": rec["id"], "checks_ok": all(checks), "complete": rec["provenance"].get("complete", True)})
+        done = rec["provenance"]
+        part = "" if done.get("complete", True) else f" (incomplete: {done['steps_done']} of {done['steps_planned']} steps finished)"
+        run.add(f"Depletion record written: depletion.json, id {rec['id'][:12]}" + part
+                + ("" if all(checks) else " (a check is outside its tolerance: see provenance.json)"))
 
     def export_mcnp(self, script, project, name):
         """Export button: validated deck into a new ~/OpenMC-runs/mcnp-exports/<time>-<name>/ folder."""

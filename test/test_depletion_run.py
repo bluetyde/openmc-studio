@@ -186,6 +186,12 @@ class Http(unittest.TestCase):
             self.wait()
             self.assertEqual(self.studio.runs[body["id"]].status, "failed")
             self.assertEqual(called, [], "no record for a failed run")
+            depletion_run.script_text = lambda project, model_path, chain_file: "open('depletion_results.h5', 'w').close()\nraise SystemExit(3)\n"  # a burn stopped after some steps
+            called.clear()
+            status, body = self.call("POST", "/api/run", {"script": "print('model')\n", "project": project(), "name": "dep partial"})
+            self.wait()
+            self.assertEqual(self.studio.runs[body["id"]].status, "failed")
+            self.assertEqual(called, [body["id"]], "a run that left results is asked for a record of the steps it finished")
         finally:
             depletion_run.script_text, depletion_writer.from_run = real_script, real_from_run
 

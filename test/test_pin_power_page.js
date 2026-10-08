@@ -59,6 +59,9 @@ test('the map has a cell for every pin, the hot one outlined, the one that score
   const cs = +hot[3];
   assert.equal(+hot[1], 3 * cs, 'ix = 3 is the right-hand column');
   assert.equal(+hot[2], (3 - 1 - 1) * cs, 'iy = 1 of 3 rows counted from the bottom: the middle row');
+  const yOf = ix => +svg.match(new RegExp(`<rect x="\\d+" y="(\\d+)"[^>]*><title>pin \\(${ix}\\)`))[1];
+  assert.equal(yOf('0, 0'), 2 * cs, 'the first row (iy = 0) is drawn at the bottom');
+  assert.equal(yOf('0, 2'), 0, 'the last row is at the top');
   assert.equal((svg.match(/fill="#2a2d33"/g) || []).length, 1, 'the pin that scored nothing');
   assert.match(svg, /<title>pin \(2, 1\) at x [\d.]+, y [\d.]+ cm: scored nothing, left out of the mean<\/title>/);
 });

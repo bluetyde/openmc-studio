@@ -5579,7 +5579,7 @@ function recordCheckLog(rid, r) {
 // the lattice: Studio does not check the lattice, and the panel says so.
 const pinFmt = v => v === null || v === undefined ? '—' : v.toFixed(3);
 function pinMapSvg(a) {
-  const cs = Math.max(8, Math.min(34, Math.floor(520 / a.nx))), W = cs * a.nx, H = cs * a.ny, labels = cs >= 22 && a.nx <= 20;
+  const cs = Math.max(8, Math.min(46, Math.floor(520 / a.nx))), W = cs * a.nx, H = cs * a.ny, labels = cs >= 22 && a.nx <= 20;
   const inc = a.rows.filter(r => r.included).map(r => r.relative_power), lo = Math.min(...inc), hi = Math.max(...inc), span = (hi - lo) || 1;
   const cells = a.rows.map(r => {
     const x = r.ix * cs, y = (a.ny - 1 - r.iy) * cs;   // iy = 0 is the bottom row, as on the viewport

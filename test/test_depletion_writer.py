@@ -154,6 +154,11 @@ class PowerShares(unittest.TestCase):
         shares = depletion_writer._power_shares(self.tmp, ["1", "2"], FakeResults([1.30, 1.29, 1.28]), 2)
         self.assertEqual(shares, {"1": [0.3, 0.5], "2": [0.7, 0.5]})
 
+    def test_a_material_in_the_tally_that_is_not_burnable_takes_no_share(self):
+        self.put(0, 1.30, ids=(1, 2, 7), values=(3.0, 7.0, 90.0))
+        shares = depletion_writer._power_shares(self.tmp, ["1", "2"], FakeResults([1.30, 1.29]), 1)
+        self.assertEqual(shares, {"1": [0.3], "2": [0.7]})
+
     def test_a_missing_statepoint_is_refused_and_named(self):
         self.put(0, 1.30)
         with self.assertRaises(WriterError) as ctx:

@@ -57,7 +57,7 @@ def analyse(tally, score=None, layer=0):
     except (pin_power_table.TableError, ValueError) as exc:
         raise PinPowerError(str(exc)) from exc
     # Symmetry: among the pins a four-fold symmetric layout would make equal, how far apart are they, in units of the pin's own sigma?
-    max_z, max_dev = 0.0, 0.0
+    max_z, max_dev, no_sigma = 0.0, 0.0, False
     for qr in quarter:
         if qr["n_members"] < 2 or qr["max_deviation"] is None:
             continue
@@ -68,6 +68,8 @@ def analyse(tally, score=None, layer=0):
         max_dev = max(max_dev, qr["max_deviation"])
         if sigma > 0:
             max_z = max(max_z, spread / sigma)
+        elif spread > 0:
+            no_sigma = True  # they differ and nothing says by how much noise: not a pass
     return {
         "tally": tally.get("name"), "score": score, "layer": layer, "layers": nz, "nx": nx, "ny": ny,
         "pitch_cm": [px, py], "lower_cm": [lo[0], lo[1]],
@@ -77,7 +79,7 @@ def analyse(tally, score=None, layer=0):
         # the relative powers have mean 1, so the allowance is already relative to the mean power
         "noise": {"peaking_factor": noise["peaking_factor"], "noise_allowance": noise["noise_allowance_relative"]},
         "quarter": quarter,
-        "symmetry": {"max_deviation": max_dev, "max_z": max_z, "within_noise": max_z <= Z_SYMMETRY,
+        "symmetry": {"max_deviation": max_dev, "max_z": None if no_sigma else max_z, "within_noise": not no_sigma and max_z <= Z_SYMMETRY,
                      "note": "if the layout is four-fold symmetric, pins that should match differ by this many of their own sigma at most"},
         "assumes": ASSUMES,
         "alignment": "not checked: Studio does not compare the mesh with the lattice",

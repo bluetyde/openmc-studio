@@ -150,6 +150,30 @@ test('Save CSV hands the server\'s text to the file saver', async () => {
   assert.equal(text.split('\n')[0], 'ix,iy,x_cm,y_cm,value,sigma,included,relative_power,relative_sigma');
 });
 
+
+test('a score that is not an energy-production score is a "Pin map" of a tally response, said so, and the button says so too', () => {
+  const flux = JSON.parse(JSON.stringify(A)); flux.score = 'flux';
+  const t = JSON.parse(JSON.stringify(TALLY)); t.scores = ['flux']; t.values = {flux: t.values['kappa-fission']}; t.std = {flux: t.std['kappa-fission']};
+  const h = panel(flux, t);
+  assert.match(h, /<b>Pin map<\/b> · flux/);
+  assert.doesNotMatch(h, /<b>Pin power<\/b>/);
+  assert.match(h, /id="pinNotPower"><span class="sev warn">not power<\/span> flux is not an energy-production score/);
+  assert.match(resultsFor([t]), /class="tbtn pinBtn"[^>]*>Pin map…<\/button>/);
+  assert.doesNotMatch(panel(), /pinNotPower/, 'kappa-fission is power');
+  for (const s of ['kappa-fission', 'fission', 'heating', 'heating-local', 'fission-q-prompt', 'fission-q-recoverable']) {
+    const x = JSON.parse(JSON.stringify(A)); x.score = s;
+    assert.match(panel(x), /<b>Pin power<\/b>/, s);
+  }
+  assert.doesNotMatch(panel(Object.assign(JSON.parse(JSON.stringify(A)), {score: 'nu-fission'})), /<b>Pin power<\/b>/, 'nu-fission is not a power score');
+});
+
+test('a symmetry spread with no uncertainty to compare with is not drawn as a number of sigma, and is not a pass', () => {
+  const x = JSON.parse(JSON.stringify(A)); x.symmetry = {max_deviation: 2.0, max_z: null, within_noise: false};
+  const h = panel(x);
+  assert.match(h, /not symmetric<\/span> pins that a four-fold symmetric layout would make equal differ by up to a spread with no uncertainty to compare it with, 200\.0 % of the mean/);
+  assert.doesNotMatch(h, /null|NaN/);
+});
+
 (async () => {
   for (const [name, fn] of tests) {
     try { await fn(); console.log('  [PASS]', name); }

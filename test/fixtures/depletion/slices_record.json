@@ -159,7 +159,8 @@
    "power_w": "W",
    "burnup_mwd_per_tu": "MWd per tonne of initial heavy metal",
    "isotopics": "atoms in the whole region",
-   "heavy_metal_mass_kg": "kg, at the start of the run"
+   "heavy_metal_mass_kg": "kg, at the start of the run",
+   "heavy_metal_atoms_start": "atoms of every nuclide with Z of 90 or more in the whole region, at the start of the run"
   },
   "checks": {
    "UO2 3.5%": {
@@ -181,11 +182,15 @@
     }
    }
   },
+  "heavy_metal_atoms_start": {
+   "UO2 3.5%": 7.706633453542422e+21,
+   "UO2 5%": 7.707970408096504e+21
+  },
   "complete": true,
   "steps_done": 2,
   "steps_planned": 2,
   "region_power": "the source rate split by each material's kappa-fission tally of the transport solve at the beginning of each step",
   "notes": []
  },
- "id": "f133c6d6642a94c06833376a7758f5e0e5358a1a202bf5639d1e1e695be5d48b"
+ "id": "493771131fd41acfee31b9442f4a84024a583bea9d815784f84bd215b8e4e022"
 }

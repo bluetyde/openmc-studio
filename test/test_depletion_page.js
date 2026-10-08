@@ -373,6 +373,17 @@ test('Open model on a stopped burn loads its results; on a stopped transport run
   assert.deepEqual(await open('r-stopped'), [], 'a stopped transport run');
 });
 
+test('the labels at the ends of the inventory lines do not print over each other, and every label is still inside the plot', () => {
+  const rec = JSON.parse(JSON.stringify(REC)), name = rec.regions[0].name, iso = rec.isotopics[name];
+  iso.Pu239 = [0, 1e19, 1e20]; iso.U236 = [0, 1e19, 1e20];   // two series that end on the same value
+  const inv = render(dep(rec)).split('class="dep-inv"')[1].split('</svg>')[0];
+  const ys = [...inv.matchAll(/<text x="[\d.]+" y="([\d.]+)" fill="#[0-9a-f]{6}" font-size="10" font-family="sans-serif">([A-Za-z0-9]+)<\/text>/g)].map(m => [+m[1], m[2]]);
+  assert.ok(ys.length >= 5, 'the series labels: ' + ys.map(v => v[1]).join(' '));
+  const sorted = ys.map(v => v[0]).sort((a, b) => a - b);
+  for (let i = 1; i < sorted.length; i++) assert.ok(sorted[i] - sorted[i - 1] >= 10.99, `labels ${sorted[i - 1]} and ${sorted[i]} are too close`);
+  assert.ok(sorted[sorted.length - 1] <= 190, 'inside the plot');
+});
+
 (async () => {
   for (const [name, fn] of tests) {
     try { await fn(); console.log('  [PASS]', name); }

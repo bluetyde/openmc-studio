@@ -7,6 +7,8 @@ the depletion.json hand-off record.
 Run with:  python test/test_depletion_record.py
 """
 import copy
+import hashlib
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -526,6 +528,96 @@ class TestRecordId(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="depl-id-") as tmp:
             write(tmp, rec)
             self.assertEqual(read(tmp)["id"], rec["id"])
+
+
+def canonical_from_tokens(text):
+    """The id's canonical text built from the tokens as the file prints them (sorted keys, no spaces, top-level id left out), the way FEED's
+    reader does it in JavaScript, which cannot re-print a float the way Python does. If the writer changes how it prints numbers or
+    escapes, this and record_id part ways and the test below fails here first."""
+    pos = 0
+
+    def ws():
+        nonlocal pos
+        while text[pos] in " \t\n\r":
+            pos += 1
+
+    def string():
+        nonlocal pos
+        start = pos
+        pos += 1
+        while text[pos] != '"':
+            pos += 2 if text[pos] == chr(92) else 1
+        pos += 1
+        return text[start:pos]
+
+    def value(top):
+        nonlocal pos
+        ws()
+        c = text[pos]
+        if c == "{":
+            pos += 1
+            members = []
+            ws()
+            if text[pos] == "}":
+                pos += 1
+                return "{}"
+            while True:
+                ws()
+                key = string()
+                ws()
+                pos += 1
+                val = value(False)
+                if not (top and json.loads(key) == "id"):
+                    members.append((json.loads(key), key + ":" + val))
+                ws()
+                end = text[pos]
+                pos += 1
+                if end == "}":
+                    break
+            return "{" + ",".join(m for _, m in sorted(members)) + "}"
+        if c == "[":
+            pos += 1
+            items = []
+            ws()
+            if text[pos] == "]":
+                pos += 1
+                return "[]"
+            while True:
+                items.append(value(False))
+                ws()
+                end = text[pos]
+                pos += 1
+                if end == "]":
+                    break
+            return "[" + ",".join(items) + "]"
+        if c == '"':
+            return string()
+        start = pos
+        while text[pos] not in ",]} \t\n\r":
+            pos += 1
+        return text[start:pos]
+
+    return value(True)
+
+
+class TestIdFormatIsPinned(unittest.TestCase):
+    """FEED's reader recomputes the id from the file's own text; these keep Studio's writer from drifting away from that."""
+
+    def test_the_committed_real_record_has_the_id_FEED_checks(self):
+        text = (ROOT / "test" / "fixtures" / "depletion" / "pin_record.json").read_text(encoding="utf-8")
+        self.assertEqual(hashlib.sha256(canonical_from_tokens(text).encode("utf-8")).hexdigest(), json.loads(text)["id"])
+        # Also pinned as a literal: FEED holds a copy of this file and asserts the same id.
+        self.assertEqual(json.loads(text)["id"], "adde6fb296433975e5944e27ad317d92cfeab2623e7f44526aaabbcec6c80a21")
+
+    def test_a_written_file_with_awkward_numbers_and_names_has_the_token_id(self):
+        rec = build_record([1.0, 2.5e-05], [{"name": "f\u00fcel \"1\"", "cell_ids": [1], "heavy_metal_mass_kg": 2.0, "power_w": [1000, 1e-05]}],
+                           k=[[1.0, 0.001], [0.99, 0.001], [0.98, 1e-05]], provenance={"note": "caf\u00e9"})
+        with tempfile.TemporaryDirectory(prefix="depl-tok-") as tmp:
+            write(tmp, rec)
+            text = (Path(tmp) / "depletion.json").read_text(encoding="utf-8")
+        self.assertIn("1e-05", text)
+        self.assertIn("1.0", text)
+        self.assertEqual(hashlib.sha256(canonical_from_tokens(text).encode("utf-8")).hexdigest(), rec["id"])
 
 
 if __name__ == "__main__":

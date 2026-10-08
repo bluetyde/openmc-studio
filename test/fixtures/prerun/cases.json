@@ -22178,7 +22178,7 @@
   ]
  },
  {
-  "name": "burnable thorium fuel",
+  "name": "burnable thorium and uranium fuel",
   "project": {
    "materials": [
     {
@@ -22239,7 +22239,7 @@
      "color": "#aaa",
      "density": 10.4,
      "frac": "ao",
-     "comps": "Th:1, O:2",
+     "comps": "Th:0.9, U235:0.1, O:2",
      "sab": "",
      "burnable": true
     }
@@ -22490,9 +22490,7 @@
     "depReduce": 6
    }
   },
-  "errors": [
-   "settings:"
-  ]
+  "errors": []
  },
  {
   "name": "burnable flag with depletion off changes nothing",

@@ -606,8 +606,8 @@ class TestIdFormatIsPinned(unittest.TestCase):
     def test_the_committed_real_record_has_the_id_FEED_checks(self):
         text = (ROOT / "test" / "fixtures" / "depletion" / "pin_record.json").read_text(encoding="utf-8")
         self.assertEqual(hashlib.sha256(canonical_from_tokens(text).encode("utf-8")).hexdigest(), json.loads(text)["id"])
-        # Also pinned as a literal: FEED holds a copy of this file and asserts the same id.
-        self.assertEqual(json.loads(text)["id"], "adde6fb296433975e5944e27ad317d92cfeab2623e7f44526aaabbcec6c80a21")
+        # Also pinned as a literal. (FEED holds a copy of the earlier version of this file, id adde6fb2..., made before provenance gained heavy_metal_atoms_start; it stays a valid record.)
+        self.assertEqual(json.loads(text)["id"], "ac9478238ca221e145a9c15604e264e9c0318e41d868111a34e0d830a4359995")
 
     def test_a_written_file_with_awkward_numbers_and_names_has_the_token_id(self):
         rec = build_record([1.0, 2.5e-05], [{"name": "f\u00fcel \"1\"", "cell_ids": [1], "heavy_metal_mass_kg": 2.0, "power_w": [1000, 1e-05]}],

@@ -1285,11 +1285,12 @@ function applyEngineering(m) {
   m.ref = ENG.kind === 'uo2' ? `Engineering inputs: UO2, ${ENG.enrich} wt % U-235, ${ENG.td} % of ${ENG.tdDensity} g/cm³`
     : `Engineering inputs: borated water, ${ENG.ppm} ppm boron, ${r.density_g_cm3} g/cm³` + (ENG.dFrac ? `, ${ENG.dFrac} of hydrogen as H-2` : '');
   delete m.pristine; m.lib = '';
+  m.sab = '';   // a thermal scattering table belongs to the composition it was chosen for; the one below is set only where this composition has one
   let tail = '';
   if (ENG.kind === 'borated') {
     if (!ENG.dFrac) { m.sab = 'c_H_in_H2O'; tail = ' The light-water thermal scattering table c_H_in_H2O is set.'; }
-    else tail = ' Choose the thermal scattering table for the deuterium yourself (Studio does not guess one for heavy water).';
-  } else tail = ' Oxygen is taken as pure O-16.';
+    else tail = ' Choose the thermal scattering table for the deuterium yourself (Studio does not guess one for heavy water); the old table was cleared.';
+  } else tail = ' Oxygen is taken as pure O-16. Any thermal scattering table the material had was cleared.';
   log('ok', `Set ${esc(m.name)} from engineering inputs: ${engSummary(r)}.${tail}`);
   renderProps(); renderTree(); schedule();
   return true;
@@ -5465,8 +5466,9 @@ function streamRun(id) {
     const m = JSON.parse(ev.data);
     const secs = m.ended && m.started ? ` in ${(m.ended - m.started).toFixed(1)} s` : '';
     if (m.status === 'done') { log('ok', `Run finished${secs}. Loading results…`); await loadResults(id, true); }
-    else if (m.status === 'stopped') log('warn', 'Run stopped.');
+    else if (m.status === 'stopped') log('warn', 'Run stopped.' + (S.settings.depletion ? ' Loading the steps it finished…' : ''));
     else log('error', `Run ${esc(m.status)} (exit code ${m.returncode}). Read the output above for the OpenMC error.`);
+    if (m.status !== 'done' && S.settings.depletion) await loadResults(id, true);  // a burn that stopped part way leaves a record of its finished steps
     refreshRuns();
   });
   es.onerror = () => { if (es.readyState === EventSource.CLOSED && LOCAL.run === id) { LOCAL.run = null; setRunning(false); log('error', 'Lost the connection to the Studio server.'); } };
@@ -5686,6 +5688,8 @@ function recordCheckLog(rid, r) {
 // ───────── Pin power (a mesh tally read as a pin map) ─────────
 // The numbers come from the server (/api/runs/<id>/pin-power: pin_power_view.py); the page draws them. The mesh must be one cell to a pin and laid on
 // the lattice: Studio does not check the lattice, and the panel says so.
+const PIN_POWER_SCORES = ['kappa-fission', 'fission', 'heating', 'heating-local', 'fission-q-prompt', 'fission-q-recoverable'];
+const pinIsPower = scores => (scores || []).some(s => PIN_POWER_SCORES.includes(s));
 const pinFmt = v => v === null || v === undefined ? '—' : v.toFixed(3);
 function pinMapSvg(a) {
   const cs = Math.max(8, Math.min(46, Math.floor(520 / a.nx))), W = cs * a.nx, H = cs * a.ny, labels = cs >= 22 && a.nx <= 20;
@@ -5709,16 +5713,18 @@ function pinPowerHtml(P, tally) {
   const sel = (scores.length > 1 ? pick('pinScore', 'Score', scores.map(x => [x, x]), a.score) : '') +
     (a.layers > 1 ? pick('pinLayer', 'Layer', Array.from({length: a.layers}, (_, i) => [i, `${i + 1} of ${a.layers}`]), a.layer) : '');
   const hot = a.rows.filter(r => r.included).sort((x, y) => y.relative_power - x.relative_power).slice(0, 5);
-  return `<div class="pin-panel" id="pinPanel"><p class="envline"><b>Pin power</b> · ${esc(a.score)} · ${a.nx} × ${a.ny} pins · pitch ${+a.pitch_cm[0].toFixed(4)} × ${+a.pitch_cm[1].toFixed(4)} cm ` +
+  const power = PIN_POWER_SCORES.includes(a.score);
+  return `<div class="pin-panel" id="pinPanel"><p class="envline"><b>${power ? 'Pin power' : 'Pin map'}</b> · ${esc(a.score)} · ${a.nx} × ${a.ny} pins · pitch ${+a.pitch_cm[0].toFixed(4)} × ${+a.pitch_cm[1].toFixed(4)} cm ` +
     `<button class="tbtn pinCsv" type="button" title="Every pin: position, value, relative power and its uncertainty">Save CSV…</button> <button class="tbtn pinClose" type="button">Close</button></p>` +
     (sel ? `<p>${sel}</p>` : '') + pinMapSvg(a) +
+    (power ? '' : `<p class="envline" id="pinNotPower"><span class="sev warn">not power</span> ${esc(a.score)} is not an energy-production score, so these are relative tally responses, not power.</p>`) +
     `<p class="envline" id="pinPeak">Highest: <b>${pinFmt(a.peak.relative_power)}</b> of the mean, at pin (${a.peak.ix}, ${a.peak.iy}) · ${a.peak.n_used} pin${a.peak.n_used === 1 ? '' : 's'} in the mean` +
     `${a.peak.n_excluded ? `, ${a.peak.n_excluded} left out (scored nothing)` : ''}. Noise alone would lift the largest of ${a.peak.n_used} equal pins by about ${pinFmt(a.noise.noise_allowance)} here: ` +
     `a size to compare the peak with, not a correction.</p>` +
     `<table class="rtable" id="pinTop"><thead><tr><th>Pin</th><th class="num">x, y (cm)</th><th class="num">Relative power</th><th class="num">1 sigma</th></tr></thead><tbody>` +
     hot.map(r => `<tr><td>(${r.ix}, ${r.iy})</td><td class="num">${+r.x_cm.toFixed(3)}, ${+r.y_cm.toFixed(3)}</td><td class="num">${pinFmt(r.relative_power)}</td><td class="num">${pinFmt(r.relative_sigma)}</td></tr>`).join('') + '</tbody></table>' +
     `<p class="envline" id="pinSym">${sym.within_noise ? `If this layout is four-fold symmetric, it is: pins that should match differ by at most ${sym.max_z.toFixed(1)} of their own sigma.` :
-      `<span class="sev warn">not symmetric</span> pins that a four-fold symmetric layout would make equal differ by up to ${sym.max_z.toFixed(1)} sigma (${(100 * sym.max_deviation).toFixed(1)} % of the mean). Expected if the loading is not symmetric.`}</p>` +
+      `<span class="sev warn">not symmetric</span> pins that a four-fold symmetric layout would make equal differ by up to ${sym.max_z === null ? 'a spread with no uncertainty to compare it with, ' : sym.max_z.toFixed(1) + ' sigma, '}${(100 * sym.max_deviation).toFixed(1)} % of the mean. Expected if the loading is not symmetric.`}</p>` +
     `<p class="envline" id="pinAssumes">Assumes ${esc(a.assumes)}. Lattice alignment is not checked.</p></div>`;
 }
 async function loadPinPower(name, score, layer) {
@@ -5775,7 +5781,7 @@ function depInventoryCharts(rec) { return rec.regions.map(reg => depInventoryCha
 function depInventoryChart(rec, reg) {
   const iso = (rec.isotopics || {})[reg.name];
   if (!iso) return '';
-  const start = depHeavyStart(iso);
+  const start = ((rec.provenance || {}).heavy_metal_atoms_start || {})[reg.name] || depHeavyStart(iso);  // the record's own total, else the listed heavy nuclides
   if (!(start > 0)) return '';
   const bu = depRegionBurnups(reg), series = DEP_TRACK.filter(([n]) => iso[n]).map(([n, c]) => ({n, c, v: iso[n].map(a => a / start)}));
   const pos = series.flatMap(s => s.v.filter(v => v > 0));
@@ -5880,7 +5886,7 @@ function renderResults() {
       const d = meshDisplay(t);
       h += `<h4>${esc(t.name)}</h4><p class="envline">${t.dims.join(' × ')} mesh · ${esc(t.scores[0])} ${nz.length ? `${sci(Math.min(...nz) * d.f)} to ${sci(Math.max(...nz) * d.f)}` : 'all zero'}${d.unit ? ' ' + esc(d.unit) : ''}` +
         (t.dose ? ` · effective dose, ${esc(t.dose.data.toUpperCase().replace('ICRP', 'ICRP-'))} ${esc(t.dose.geometry)}${t.dose.source_rate ? '' : ' (set Source emission rate in Settings for µSv/h)'}` : '') + ' · shown on the viewport' +
-        (t.mesh_type === 'regular' && t.dims[0] > 1 && t.dims[1] > 1 && !t.dose ? ` <button class="tbtn pinBtn" type="button" data-tally="${esc(t.name)}" title="Read this mesh as one cell per pin: relative power, the highest pin, symmetry, CSV">Pin power…</button>` : '') + '</p>';
+        (t.mesh_type === 'regular' && t.dims[0] > 1 && t.dims[1] > 1 && !t.dose ? ` <button class="tbtn pinBtn" type="button" data-tally="${esc(t.name)}" title="Read this mesh as one cell per pin: relative ${pinIsPower(t.scores) ? 'power' : 'response'}, the highest pin, symmetry, CSV">${pinIsPower(t.scores) ? 'Pin power…' : 'Pin map…'}</button>` : '') + '</p>';
       if (LOCAL.pins && LOCAL.pins.rid === LOCAL.resultsRun && LOCAL.pins.tally === t.name) h += pinPowerHtml(LOCAL.pins, t);
     }
   });
@@ -5904,7 +5910,7 @@ async function refreshRuns() {
   $('#runs').innerHTML = list.length ? list.map(r =>
     `<div class="runrow"><span class="statusdot ${esc(r.status)}" title="${esc(r.status)}"></span><span class="rname">${esc(r.name)} <span class="rmeta">${esc(r.id)}</span></span>` +
     `<span class="rmeta">${esc(r.status)} · ${when(r.started)}</span>` +
-    `<button class="tbtn" type="button" data-results="${esc(r.id)}" ${r.status === 'done' ? '' : 'disabled'}>Results</button>` +
+    `<button class="tbtn" type="button" data-results="${esc(r.id)}" ${r.status === 'running' ? 'disabled' : ''}>Results</button>` +
     `<button class="tbtn" type="button" data-load="${esc(r.id)}">Open model</button></div>`).join('')
     : '<p class="envline">No runs yet.</p>';
 }
@@ -5921,7 +5927,7 @@ $('#runs').addEventListener('click', async e => {
       log('ok', `Opened the model from run ${esc(runId)}.`); renderAll();
       try {
         const meta = (await api('/api/runs')).runs.find(x => x.id === runId);
-        if (meta && meta.status === 'done') {
+        if (meta && (meta.status === 'done' || (meta.status !== 'running' && S.settings.depletion))) {
           loadResults(runId, false);
         } else {
           clearResults();

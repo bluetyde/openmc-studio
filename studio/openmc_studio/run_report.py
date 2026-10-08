@@ -53,17 +53,10 @@ def build_report(record: dict, summary: dict | None = None, findings: list[dict]
 
     if "error" in record:
         err = record["error"]
-        return {
-            "title": "Run report (record unusable)",
-            "environment": [],
-            "settings": [],
-            "normalization": [],
-            "files": [],
-            "results": [],
-            "findings": [],
-            "counts": {"error": 0, "warning": 0, "info": 0, "not-compared": 0},
-            "notes": [f"provenance record could not be made: {err}"],
-        }
+        rest = build_report({}, summary, findings)  # what was supplied is still reported
+        rest.update(title="Run report (record unusable)", environment=[], settings=[], normalization=[], files=[])
+        rest["notes"] = [f"provenance record could not be made: {err}"]  # the usual notes (no summary, no findings) say nothing here beyond the error
+        return rest
 
     kind = record.get("kind")
     written = record.get("written")

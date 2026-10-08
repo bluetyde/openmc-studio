@@ -240,9 +240,13 @@ test('every point of the inventory chart is inside the plot, and a record with n
   assert.ok(cy.every(v => v >= 14 && v <= 160), 'inside the axes: ' + cy.join(' '));
   const none = JSON.parse(JSON.stringify(REC));
   none.isotopics = {'UO2 3.5%': {Xe135: [0, 1e15, 2e15]}};
+  delete none.provenance.heavy_metal_atoms_start;   // an older record, without the total: the listed heavy nuclides are all there is to divide by
   const h = render(dep(none));
   assert.doesNotMatch(h, /dep-inv/);
   assert.doesNotMatch(h, /NaN/);
+  // with the total in the record the chart is drawn: the fission product against the heavy metal the record says there was
+  none.provenance.heavy_metal_atoms_start = {'UO2 3.5%': 1e24};
+  assert.match(render(dep(none)), /dep-inv/);
 });
 
 test('the Depletion settings carry the estimate as a note, only when depletion is on', () => {
@@ -300,6 +304,20 @@ test('a finished depletion run stores how long a solve took; an incomplete one d
 
 test('without browser storage the estimate still works', () => {
   assert.match(estimate({depIntegrator: 'PredictorIntegrator', depSteps: '1'}), /^About 2 transport solves/);
+});
+
+
+test('the inventory chart divides by the record\'s own starting heavy metal when it has one, by the listed heavy nuclides when it does not', () => {
+  // thorium fuel with a little U-235: Th-232 is not a listed nuclide, so the listed heavy metal is 1e22 of the 1e24 that is really there
+  const th = JSON.parse(JSON.stringify(REC));
+  const name = th.regions[0].name;
+  th.isotopics[name] = {U235: [1e22, 9e21, 8e21], Xe135: [0, 1e18, 2e18]};
+  const withTotal = JSON.parse(JSON.stringify(th)); withTotal.provenance.heavy_metal_atoms_start = {[name]: 1e24};
+  const labels = h => [...h.matchAll(/<text x="44" y="[\d.]+"[^>]*>(1e-?\d+)<\/text>/g)].map(m => +m[1].replace('1e', ''));
+  const old = render(dep(th)), now = render(dep(withTotal));
+  assert.ok(Math.max(...labels(old)) >= 0, 'without the total the starting U-235 is "1": the listed heavy metal is only U-235');
+  assert.ok(Math.max(...labels(now)) <= -2 + 1, 'with it the starting U-235 is 0.01 of the heavy metal');
+  assert.ok(Math.max(...labels(now)) < Math.max(...labels(old)));
 });
 
 (async () => {

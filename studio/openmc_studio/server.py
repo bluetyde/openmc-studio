@@ -68,12 +68,15 @@ class Run:
 
 def prerun_gate(project):
     """None when the project may run, else the 422 body: what is wrong, before any run folder is made. The same errors the page
-    refuses (prerun_check.py); a check that itself breaks never stops a run."""
+    refuses (prerun_check.py). A check that itself breaks on a project refuses it, with the reason: a project the check cannot read
+    is not one it has approved."""
     from . import prerun_check
     try:
         errors = prerun_check.check(project)
-    except Exception:  # noqa: BLE001
-        return None
+    except Exception as exc:  # noqa: BLE001
+        why = f"{type(exc).__name__}: {exc}"
+        return {"error": f"Not run: the pre-run check could not read this project ({why}).",
+                "findings": [{"level": "error", "code": "prerun-check-failed", "path": "/", "message": f"The pre-run check could not read this project ({why})."}]}
     if not errors:
         return None
     n = len(errors)
@@ -150,9 +153,13 @@ class Studio:
                 log.flush()
                 run.add(line)
         code = run.proc.wait()
-        if (run.path / "deplete.py").is_file() and (code == 0 or (run.path / "depletion_results.h5").is_file()):
-            self._depletion_record(run)  # a stopped or failed burn leaves a record of the steps it finished
-        run.finish(code)
+        try:
+            if (run.path / "deplete.py").is_file() and (code == 0 or (run.path / "depletion_results.h5").is_file()):
+                self._depletion_record(run)  # a stopped or failed burn leaves a record of the steps it finished
+        except Exception as exc:  # noqa: BLE001  the record is a courtesy: whatever goes wrong with it, the run still ends
+            run.add(f"The depletion record step failed: {type(exc).__name__}: {exc}")
+        finally:
+            run.finish(code)
 
     def _depletion_record(self, run):
         """A depletion run finished: write depletion.json beside its results, or say why not. The run's status is not changed by this."""

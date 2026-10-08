@@ -37,7 +37,8 @@ JOULES_PER_MEV = 1.602176634e-13
 LISTED = ("U234", "U235", "U236", "U238", "Np237", "Np239", "Pu238", "Pu239", "Pu240", "Pu241", "Pu242", "Am241", "Am243",
           "Cm242", "Cm244", "Xe135", "Sm149")
 UNITS = {"time_steps_days": "days", "power_w": "W", "burnup_mwd_per_tu": "MWd per tonne of initial heavy metal",
-         "isotopics": "atoms in the whole region", "heavy_metal_mass_kg": "kg, at the start of the run"}
+         "isotopics": "atoms in the whole region", "heavy_metal_mass_kg": "kg, at the start of the run",
+         "heavy_metal_atoms_start": "atoms of every nuclide with Z of 90 or more in the whole region, at the start of the run"}
 
 
 class WriterError(ValueError):
@@ -74,17 +75,18 @@ def build(data) -> dict:
     shares = [[float(x) for x in (reg.get("power_fraction") or [1.0] * n)] for reg in data["regions"]]
     if any(len(sh) != n for sh in shares):
         raise WriterError("a region's power shares do not cover every step")
-    if many and any(abs(sum(sh[i] for sh in shares) - 1.0) > 1e-9 for i in range(n)):
+    if any(abs(sum(sh[i] for sh in shares) - 1.0) > 1e-9 for i in range(n)):
         raise WriterError("the regions' shares of the power do not add up to the source rate")
     durations = [times[i + 1] - times[i] for i in range(n)]
     if any(not d > 0 for d in durations):
         raise WriterError("the time points do not increase")
-    regions, isotopics, checks, notes = [], {}, {}, []
+    regions, isotopics, checks, notes, hm_start = [], {}, {}, [], {}
     for reg, share in zip(data["regions"], shares):
         power = [p * f for p, f in zip(rates, share)]
         regions.append({"name": reg["name"], "cell_ids": [int(c) for c in reg["cell_ids"]], "heavy_metal_mass_kg": float(reg["hm_mass_kg"]),
                         "power_w": power})
         isotopics[reg["name"]] = {k: [float(x) for x in v] for k, v in reg["isotopics"].items()}
+        hm_start[reg["name"]] = float(reg["hm_atoms"][0])
         energy_j = sum(p * d * SECONDS_PER_DAY for p, d in zip(power, durations))
         q = float(reg.get("fission_q_mev") or data["fission_q_mev"])
         fissions_by_power = energy_j / (q * JOULES_PER_MEV)
@@ -98,6 +100,7 @@ def build(data) -> dict:
     prov = dict(data.get("provenance") or {})
     prov["units"] = dict(UNITS)
     prov["checks"] = checks
+    prov["heavy_metal_atoms_start"] = hm_start  # the whole starting heavy metal, so a reader need not rebuild it from the listed nuclides
     planned = data.get("steps_planned")
     prov["complete"] = planned is None or n >= int(planned)
     prov["steps_done"] = n
@@ -159,10 +162,9 @@ def read_run(folder, cells=None, names=None):
         atoms = {n: results.get_atoms(mat_id, n, nuc_units="atoms", time_units="d")[1][:len(times)] for n in wanted}
         hm_atoms = np.sum([atoms[n] for n in heavy], axis=0)
         mass_g = sum(float(atoms[n][0]) * openmc.data.atomic_mass(n) for n in heavy) / openmc.data.AVOGADRO
-        present = [n for n in FISSILE if n in atoms and float(atoms[n][-1]) > 0]
-        qs = [r.Q for n in present for r in chain[n].reactions if r.type == "fission"]
+        qs = _fission_qs(chain, atoms, heavy)
         if not qs:
-            raise WriterError("no fissile nuclide (U-233, U-235, Pu-239, Pu-241) in the run, so the inventory check has no fission Q")
+            raise WriterError("no nuclide with a fission reaction in the chain is left in the region, so the inventory check has no fission Q")
         name = names.get(str(mat_id), f"material {mat_id}")
         if sum(1 for m in mats if names.get(str(m), f"material {m}") == name) > 1:
             name = f"{name} (material {mat_id})"
@@ -173,6 +175,15 @@ def read_run(folder, cells=None, names=None):
         regions.append(reg)
     return {"times_days": times, "source_rates_w": rates, "k": k.tolist(), "regions": regions,
             "fission_q_mev": regions[0]["fission_q_mev"]}
+
+
+def _fission_qs(chain, atoms, heavy):
+    """The fission Q values (eV) of the nuclides that can fission and are there at the end: U-233, U-235, Pu-239 and Pu-241 when present; when
+    none is (a fertile blanket that has bred nothing the chain keeps), whichever heavy nuclide left has a fission reaction in the chain."""
+    def qs_of(names):
+        return [r.Q for n in names if n in chain.nuclide_dict for r in chain[n].reactions if r.type == "fission"]
+    qs = qs_of([n for n in FISSILE if n in atoms and float(atoms[n][-1]) > 0])
+    return qs or qs_of([n for n in heavy if float(atoms[n][-1]) > 0])
 
 
 POWER_TALLY = "Depletion power split (kappa-fission per burnable material)"

@@ -97,7 +97,8 @@
    "power_w": "W",
    "burnup_mwd_per_tu": "MWd per tonne of initial heavy metal",
    "isotopics": "atoms in the whole region",
-   "heavy_metal_mass_kg": "kg, at the start of the run"
+   "heavy_metal_mass_kg": "kg, at the start of the run",
+   "heavy_metal_atoms_start": "atoms of every nuclide with Z of 90 or more in the whole region, at the start of the run"
   },
   "checks": {
    "UO2 3.5%": {
@@ -110,11 +111,14 @@
     }
    }
   },
+  "heavy_metal_atoms_start": {
+   "UO2 3.5%": 1.5413349588683939e+22
+  },
   "complete": true,
   "steps_done": 2,
   "steps_planned": 2,
   "region_power": "the whole source rate",
   "notes": []
  },
- "id": "adde6fb296433975e5944e27ad317d92cfeab2623e7f44526aaabbcec6c80a21"
+ "id": "ac9478238ca221e145a9c15604e264e9c0318e41d868111a34e0d830a4359995"
 }

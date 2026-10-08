@@ -84,7 +84,8 @@ test('applying UO2 sets density, weight fractions and a note on where they came 
   assert.match(m.ref, /^Engineering inputs: UO2, 3\.5 wt % U-235, 95 % of 10\.96 g\/cm³$/);
   assert.equal(m.pristine, undefined);
   assert.equal(m.lib, '');
-  assert.equal(m.sab, 'c_Something', 'UO2 has no thermal scattering table to set or clear here');
+  assert.equal(m.sab, '', 'the previous table belonged to the previous composition: cleared');
+  assert.ok(logs().some(([, t]) => /thermal scattering table the material had was cleared/.test(t)));
   assert.ok(logs().some(([l, t]) => l === 'ok' && /Oxygen is taken as pure O-16/.test(t)));
 });
 
@@ -111,8 +112,20 @@ test('heavy water: the deuterium is there and no thermal table is chosen for it,
   assert.equal(run('applyEngineering(__mat)'), true);
   const m = run('JSON.parse(JSON.stringify(__mat))');
   assert.deepEqual(run('parseComps(__mat.comps)').out.map(c => c.sym), ['H2', 'O16']);
-  assert.equal(m.sab, 'c_Old', 'left alone');
+  assert.equal(m.sab, '', 'the old table (light water, say) does not fit heavy water: cleared, and the person is told to choose');
   assert.ok(logs().some(([, t]) => /Choose the thermal scattering table for the deuterium yourself/.test(t)));
+});
+
+test('light water turned into UO2 or heavy water does not keep c_H_in_H2O', () => {
+  setEng({kind: 'uo2', enrich: 3.5, td: 95, tdDensity: 10.96});
+  material({sab: 'c_H_in_H2O'}); run('applyEngineering(__mat)');
+  assert.equal(run('__mat.sab'), '');
+  setEng({kind: 'borated', ppm: 0, rho: 1.1, dFrac: 1, b10: NaN});
+  material({sab: 'c_H_in_H2O'}); run('applyEngineering(__mat)');
+  assert.equal(run('__mat.sab'), '');
+  setEng({kind: 'borated', ppm: 0, rho: 0.7, dFrac: 0, b10: NaN});
+  material({sab: ''}); run('applyEngineering(__mat)');
+  assert.equal(run('__mat.sab'), 'c_H_in_H2O', 'light water gets its own');
 });
 
 test('a boron fraction of B-10 given in atom percent is used, blank is natural', () => {

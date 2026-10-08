@@ -4,6 +4,39 @@ A local app for building OpenMC models, running them and exporting MCNP decks: a
 browser page. It runs on macOS, Linux and Windows (through WSL2), from wherever you put it — an internal
 disk or an external drive.
 
+## Status and limits
+
+**Experimental and educational.** Studio is a teaching and exploration tool. Its results are not validated for safety, licensing or operation of any
+reactor, shield or facility, and it must not be used to make such decisions. Check anything that matters against the tools and data your work
+requires.
+
+- **What works, feature by feature:** [docs/SUPPORT.md](docs/SUPPORT.md) says what the editor, `model.py` and the MCNP export do, what is refused, and
+  the test behind each entry. Open work is in [TODO.md](TODO.md).
+- **MCNP.** This project makes no statement about whether any exported deck has been run in MCNP. MCNP is export-controlled and its output is not shared
+  here. Decks are checked by the exporter's validator (MontePy parse, cards read back against the OpenMC model, sampled geometry comparison) and compared with
+  OpenMC. Check a deck yourself before relying on it.
+- **Tested on:** Windows 11 with WSL2 (Ubuntu), a conda environment with OpenMC 0.15.3 and ENDF/B-VIII.0 data. Other platforms (the Mac launcher, a native Linux
+  install) are not part of the regular test run.
+- **Limits worth knowing:**
+  - *Depletion* burns one or more fuel materials with OpenMC's own depletion module. A burnable material cannot sit in a lattice or in imported CAD geometry yet.
+    The depletion chain is the PWR (thermal-spectrum) chain, reduced for speed; for graphite-moderated or fast systems the fission yields differ. With several
+    burnable materials the power of each is taken from a tally at the start of each step (exact for the predictor integrator, an approximation for the others).
+    Burnup is per tonne of initial heavy metal. Nothing here has been compared with a published depletion benchmark.
+  - *Pin power* reads a mesh tally as one cell per pin. Studio does not check that the mesh lies on the lattice; the panel says so.
+  - *Material from engineering inputs* takes oxygen as pure O-16 and never supplies a density: you enter the theoretical density of UO2 or the water density.
+  - *Result checks* use a threshold only where a source for it is named; where none is, the check says it did not compare.
+
+## What is new
+
+- **Depletion** (Settings > Depletion, and a Burnable flag on a fuel material): runs `openmc.deplete`, writes `depletion.json` (burnup, power, k and
+  isotopics per region and step, with a content id) and shows it under Results, with an estimate of the number of transport solves before the run. A burn that
+  stopped part way leaves a record of the steps it finished, marked incomplete.
+- **Pin power** (Results, on a regular mesh tally with a power score): a map of relative power per pin, the highest pin, the noise that alone could lift the
+  largest pin, a symmetry check, and a CSV.
+- **Material from engineering inputs** (Properties of a material): UO2 from enrichment and percent of theoretical density, borated water from ppm boron.
+- **Checks before and after a run:** the same refusals run in the page and on the server before a run starts; Results lists checks on the run (particles per
+  batch, lost particles, the figure of merit of each tally), can check a run's record against today's environment, and saves a one-page run report.
+
 **Setting up for the first time? See [INSTRUCTIONS.md](INSTRUCTIONS.md)**: conda environment, nuclear data
 download, and how to start the app.
 

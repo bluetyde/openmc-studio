@@ -100,7 +100,7 @@ the lead removed, as one number each. Then a dose map through the shield.
 - **Eigenvalue runs** have no absolute source rate from the user; dose there needs a power normalization.
   Stage 1 refuses dose in eigenvalue mode with that reason.
 - **Photon dose** needs photon transport on; neutron-induced photons count only then. Problems says so.
-- Nothing here is checked against MCNP until the real-MCNP runs happen (see the MCNP bundle item).
+- Dose is checked against OpenMC and the sourced coefficient tables; MCNP output is not shared in this project.
 
 ## Size
 

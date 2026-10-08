@@ -111,6 +111,7 @@ const CASES = [
   ['depletion chain level zero', p => { eig(p); set(p, {depletion: true, depReduce: 0}); p.materials.find(m => m.id === 'm9').burnable = true; return p; }],
   ['burnable material in imported CAD geometry', p => { eig(p); set(p, {depletion: true}); p.materials.find(m => m.id === 'm9').burnable = true;
     p.csg = {components: [{id: 'k1', name: 'Block', bounds: [40, 40, 40, 50, 50, 50], cells: [{id: 'k1c1', name: 'block cell', material: 'm9'}]}]}; return p; }],
+  ['burnable thorium fuel', p => { eig(p); set(p, {depletion: true}); const m = p.materials.find(x => x.id === 'm9'); m.comps = 'Th:1, O:2'; m.burnable = true; return p; }],
   ['burnable flag with depletion off changes nothing', p => { eig(p); p.materials.find(m => m.id === 'm9').burnable = true; p.materials[0].burnable = true; return p; }],
   // runs the page allows
   ['he-3 detector tally, flux only', p => tal(p, {detector: 'he3', responseMat: 'm3', scores: ['flux']})],
@@ -128,7 +129,7 @@ const CASES = [
 const ALLOWED = new Set(['baseline: the demo model', 'eigenvalue with fuel', 'he-3 detector tally, flux only', 'surface tally, current', 'cylindrical mesh, valid',
   'tabulated source, valid', 'Watt source, valid', 'uniform source, valid', 'box source, valid', 'sphere source, valid', 'dose tally in a fixed-source run',
   'he-3 detector with no material named: the page picks the He-3 one', 'tabulated source with a leading zero probability',
-  'depletion with a burnable fuel in an eigenvalue run', 'burnable flag with depletion off changes nothing']);
+  'depletion with a burnable fuel in an eigenvalue run', 'burnable thorium fuel', 'burnable flag with depletion off changes nothing']);
 const build = () => CASES.map(([name, mutate]) => { const project = mutate(base()); return {name, project, errors: pageErrors(project)}; });
 
 if (process.argv.includes('--write')) {

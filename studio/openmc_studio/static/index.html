@@ -5027,7 +5027,7 @@ function specFor(kind, o) {
     ]},
     {title:'Depletion', fields:[
       F('check', 'depletion', 'Depletion', {text:'Run a depletion calculation', hint:'Run burns the fuel step by step with OpenMC (openmc.deplete): a transport solve, then the inventory changes for the time step, and again. Needs an eigenvalue run, a material marked Burnable, and a depletion chain file. Runs take minutes to hours.'}),
-      F('num', 'depPower', 'Power', {unit:'W per g of heavy metal', show:() => st.depletion, hint:'Specific power, constant for the whole run. A typical PWR value is about 38 W/g.'}),
+      F('num', 'depPower', 'Specific power', {unit:'W per g HM', show:() => st.depletion, hint:'Watts per gram of initial heavy metal (HM), constant for the whole run. A typical PWR value is about 38 W/g.'}),
       F('text', 'depSteps', 'Time steps', {unit:'days', show:() => st.depletion, placeholder:'1, 4, 10, 25, 60', hint:'The length of each step in days, separated by commas. Burnup at the end is power times the sum of the steps.'}),
       F('select', 'depIntegrator', 'Integrator', {show:() => st.depletion, options:() => DEP_INTEGRATORS, hint:'Predictor-corrector solves transport twice per step and is more accurate; the plain predictor solves once and is the quick look.'}),
       F('int', 'depReduce', 'Chain level', {show:() => st.depletion, hint:'Keep only the nuclides within this many transmutation steps of the starting fuel. The full chain has thousands of nuclides and a run does not finish; 6 keeps about 1,400 and the main actinides.'}),
@@ -5789,12 +5789,17 @@ function depInventoryChart(rec, reg) {
   const w = 540, h = 190, padL = 50, padR = 70, padT = 14, padB = 30, pw = w - padL - padR, ph = h - padT - padB;
   const lo = Math.floor(Math.log10(Math.min(...pos))), hi = Math.ceil(Math.log10(Math.max(...pos)));
   const bmax = bu[bu.length - 1] || 1, x = b => padL + (b / bmax) * pw, y = v => padT + ph - ((Math.log10(v) - lo) / ((hi - lo) || 1)) * ph;
-  const lines = series.map(s => {
+  // the labels at the line ends: two series that end at nearly the same value would print over each other, so each label is pushed down to 11 px from the one above
+  const ends = series.map((s, k) => { const q = s.v.map((v, i) => v > 0 ? y(v) : null).filter(v => v !== null); return {k, y: q.length ? q[q.length - 1] : null}; })
+    .filter(e => e.y !== null).sort((u, v) => u.y - v.y);
+  const labelY = {};
+  ends.forEach((e, i) => { labelY[e.k] = i && labelY[ends[i - 1].k] + 11 > e.y ? labelY[ends[i - 1].k] + 11 : e.y; });
+  const lines = series.map((s, k) => {
     const p = s.v.map((v, i) => v > 0 ? [x(bu[i]), y(v)] : null).filter(Boolean);
     const last = p[p.length - 1];
     return (p.length > 1 ? `<polyline points="${p.map(q => q.map(t => t.toFixed(1)).join(',')).join(' ')}" fill="none" stroke="${s.c}" stroke-width="1.6"/>` : '') +
       p.map(q => `<circle cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="2.2" fill="${s.c}"/>`).join('') +
-      (last ? `<text x="${(last[0] + 6).toFixed(1)}" y="${(last[1] + 3).toFixed(1)}" fill="${s.c}" font-size="10" font-family="sans-serif">${esc(s.n)}</text>` : '');
+      (last ? `<text x="${(last[0] + 6).toFixed(1)}" y="${(labelY[k] + 3).toFixed(1)}" fill="${s.c}" font-size="10" font-family="sans-serif">${esc(s.n)}</text>` : '');
   }).join('');
   const yt = [];
   for (let e = lo; e <= hi; e++) yt.push(`<text x="${padL - 6}" y="${(y(10 ** e) + 3).toFixed(1)}" fill="#8a9099" font-size="10" text-anchor="end" font-family="sans-serif">1e${e}</text>`);

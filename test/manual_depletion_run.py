@@ -7,6 +7,8 @@ physics and arithmetic say they must.
     node test/generate_depletion_pin.cjs          (Windows or anywhere Node runs: writes test/generated/depletion_pin/)
     OMP_NUM_THREADS=4 python test/manual_depletion_run.py     (WSL, with OpenMC, nuclear data and a depletion chain)
 
+Then the record (depletion_writer.from_run, as the server calls it): id, region, burnup, the inventory check, the chain hash.
+
 Checks: the source rate equals power density x the fuel's heavy-metal mass (the heavy-metal mass computed by hand from the pin's
 dimensions, which does not use OpenMC's volume), within the stochastic volume's error; burnup is power density x time; U-235 falls;
 Pu-239 and Xe-135 appear; k falls. Exit 0 when all hold.
@@ -22,7 +24,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "studio"))
-from openmc_studio import depletion_record, depletion_run  # noqa: E402
+from openmc_studio import depletion_record, depletion_run, depletion_writer, provenance  # noqa: E402
 
 GEN = ROOT / "test" / "generated" / "depletion_pin"
 if not (GEN / "model.py").is_file():
@@ -35,6 +37,8 @@ if chain is None:
 work = Path(tempfile.mkdtemp(prefix="depletion-pin-"))
 shutil.copyfile(GEN / "model.py", work / "model.py")
 (work / "deplete.py").write_text(depletion_run.script_text(project, work / "model.py", chain))
+(work / "project.json").write_text(json.dumps(project))
+provenance.write(work, "run", project, files=("model.py", "project.json", "deplete.py"), extra={"depletion": {"chain": depletion_run.chain_record(chain)}})
 print(f"run folder {work}; chain {chain.name}; steps {project['settings']['depSteps']}; {project['settings']['depIntegrator']}")
 t0 = time.time()
 proc = subprocess.run([sys.executable, "-W", "ignore", "deplete.py"], cwd=work, capture_output=True, text=True, timeout=3600)
@@ -78,8 +82,15 @@ for nuc in ("Pu239", "Xe135"):
     except KeyError:
         check(f"{nuc} appears", False, "not in the reduced chain")
 check("k falls", k[-1, 0] < k[0, 0], f"{k[0, 0]:.5f} to {k[-1, 0]:.5f}")
-rec = depletion_record.build_record(steps, [{"name": "fuel", "cell_ids": [1], "power_w": rates[:len(steps)], "heavy_metal_mass_kg": hm_g / 1000}],
-                                    k=[[float(a), float(b)] for a, b in k], provenance={"chain": depletion_run.chain_record(chain)["sha256"]})
-check("the record builds and validates", rec["regions"][0]["burnup_mwd_per_tu"][-1] > 0, f"burnup {rec['regions'][0]['burnup_mwd_per_tu']} MWd/tU")
+rec = depletion_writer.from_run(work)   # what the server does when the run ends
+back = depletion_record.read(work)      # and what FEED's reader would read
+check("the record was written, validates and keeps its id", back["id"] == rec["id"] == depletion_record.record_id(back), f"id {rec['id'][:16]}")
+reg = rec["regions"][0]
+check("the region is the fuel, with its cell and the heavy-metal mass by hand", reg["name"] == "UO2 3.5%" and reg["cell_ids"] == [1]
+      and abs(reg["heavy_metal_mass_kg"] * 1000 - hm_g) / hm_g < 1e-3, f"{reg['name']}, cells {reg['cell_ids']}, {reg['heavy_metal_mass_kg'] * 1000:.4f} g against {hm_g:.4f} g by hand")
+check("the record's burnup is 38 W/g x time", all(abs(b - e) / e < 1e-3 for b, e in zip(reg["burnup_mwd_per_tu"], burnup)), f"{[round(b, 3) for b in reg['burnup_mwd_per_tu']]} MWd/tU")
+inv = rec["provenance"]["checks"][reg["name"]]["inventory"]
+check("the inventory check is within its tolerance", inv["ok"], f"ratio {inv['ratio']:.4f} (Q {inv['fission_q_mev']:.1f} MeV)")
+check("the chain is named by its hash", rec["provenance"]["chain"]["sha256"] == depletion_run.chain_record(chain)["sha256"], rec["provenance"]["chain"]["sha256"][:16])
 shutil.rmtree(work, ignore_errors=True)
 sys.exit(0 if all(checks) else 1)

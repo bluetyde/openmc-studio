@@ -156,6 +156,32 @@ class Http(unittest.TestCase):
         self.assertEqual(rec["settings"]["depIntegrator"], "CECMIntegrator")
         self.assertEqual(self.studio.runs[body["id"]].status, "failed", "the posted script has no model, so deplete.py stops: this is not a real depletion")
 
+    def test_a_depletion_run_that_ends_well_gets_its_record_and_one_that_fails_does_not(self):
+        from openmc_studio import depletion_writer
+        chain = self.tmp / "chain_hook_pwr.xml"
+        chain.write_text("<depletion_chain/>")
+        os.environ["OPENMC_CHAIN_FILE"] = str(chain)
+        real_script, real_from_run = depletion_run.script_text, depletion_writer.from_run
+        called = []
+        depletion_writer.from_run = lambda folder: called.append(Path(folder).name) or {"id": "f" * 64, "provenance": {"checks": {}}}
+        try:
+            depletion_run.script_text = lambda project, model_path, chain_file: "print('burned')\n"  # stands in for a successful burn
+            status, body = self.call("POST", "/api/run", {"script": "print('model')\n", "project": project(), "name": "dep hook"})
+            self.assertEqual(status, 200, body)
+            self.wait()
+            run = self.studio.runs[body["id"]]
+            self.assertEqual(run.status, "done")
+            self.assertEqual(called, [body["id"]], "the record is written after the run ends well")
+            self.assertTrue(any("Depletion record written" in line for line in run.lines))
+            depletion_run.script_text = lambda project, model_path, chain_file: "raise SystemExit(3)\n"  # a burn that fails
+            called.clear()
+            status, body = self.call("POST", "/api/run", {"script": "print('model')\n", "project": project(), "name": "dep fail"})
+            self.wait()
+            self.assertEqual(self.studio.runs[body["id"]].status, "failed")
+            self.assertEqual(called, [], "no record for a failed run")
+        finally:
+            depletion_run.script_text, depletion_writer.from_run = real_script, real_from_run
+
     def test_a_project_without_depletion_runs_model_py_as_before(self):
         status, body = self.call("POST", "/api/run", {"script": "print('model')\n", "project": project("baseline: the demo model"), "name": "plain"})
         self.assertEqual(status, 200, body)

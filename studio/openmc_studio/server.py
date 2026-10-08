@@ -785,7 +785,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(409, str(exc))
         if path == "/api/runs":
             return self._send(200, {"runs": self.studio.list_runs()})
-        m = re.match(r"^/api/runs/([^/]+)/(stream|results|project|script|record-check|report)$", path)
+        m = re.match(r"^/api/runs/([^/]+)/(stream|results|project|script|record-check|report|depletion-record)$", path)
         if not m:
             return self._error(404, "Not found")
         rid, what = m.groups()
@@ -798,6 +798,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, (run_dir / "project.json").read_bytes())
         if what == "script":
             return self._send(200, (run_dir / "model.py").read_bytes(), "text/plain; charset=utf-8")
+        if what == "depletion-record":
+            target = run_dir / "depletion.json"
+            if not target.is_file():
+                return self._error(404, "This run has no depletion.json")
+            return self._send(200, target.read_bytes(), "application/json; charset=utf-8")
         if what == "record-check":
             from . import run_checks
             try:

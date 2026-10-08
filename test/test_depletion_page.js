@@ -4,12 +4,15 @@
 const fs = require('fs'), vm = require('vm'), path = require('path'), assert = require('assert');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'studio', 'openmc_studio', 'static', 'index.html'), 'utf8');
-const el = {addEventListener() {}, insertAdjacentHTML() {}, querySelector: () => el, querySelectorAll: () => [], style: {}, dataset: {},
+const listeners = [];
+const writes = [];
+const el = {addEventListener(type, fn) { listeners.push([type, fn]); }, insertAdjacentHTML() {}, querySelector: () => el, querySelectorAll: () => [], style: {}, dataset: {},
   classList: {add() {}, remove() {}, toggle() {}}, setAttribute() {}, appendChild() {}, append() {}, add() {}, remove() {}, getContext: () => null, parentElement: {}};
 const sb = {console, URLSearchParams, btoa, atob, TextEncoder, escape, unescape, Option: class {}, window: {}, location: {protocol: 'http:', search: ''},
   document: {querySelector: () => el, querySelectorAll: () => [], getElementById: () => el, createElement: () => el, createTextNode: () => el, addEventListener() {}},
   fetch: () => Promise.resolve({ok: false}), ResizeObserver: class { observe() {} disconnect() {} },
   requestAnimationFrame() {}, setTimeout() {}, setInterval: () => 1, clearInterval() {}};
+Object.defineProperty(el, 'innerHTML', {set(v) { writes.push(String(v)); }, get() { return writes[writes.length - 1] || ''; }});
 vm.createContext(sb);
 vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], sb);
 const run = s => vm.runInContext(s, sb);
@@ -77,7 +80,7 @@ test('a project that already has its own depletion settings keeps them', () => {
 test('the Depletion fields in Settings show only when depletion is on, and the Burnable box only then too', () => {
   const sections = on => JSON.parse(run(`JSON.stringify((() => { S = JSON.parse(${JSON.stringify(JSON.stringify(pin({depletion: on})))});
     const dep = specFor('settings', S.settings).find(s => s.title === 'Depletion');
-    const shown = dep.fields.filter(f => !f.show || f.show()).map(f => f.key);
+    const shown = dep.fields.filter(f => f.key && (!f.show || f.show())).map(f => f.key);
     const box = specFor('material', S.materials[0]).flatMap(s => s.fields).filter(f => f.key === 'burnable' && (!f.show || f.show()));
     return {shown, burnableBox: box.length}; })())`));
   const off = sections(false), on = sections(true);
@@ -85,6 +88,132 @@ test('the Depletion fields in Settings show only when depletion is on, and the B
   assert.deepEqual(on.shown, ['depletion', 'depPower', 'depSteps', 'depIntegrator', 'depReduce']);
   assert.equal(off.burnableBox, 0);
   assert.equal(on.burnableBox, 1);
+});
+
+// ── the Results page for a run that burned fuel ──
+const REC = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'depletion', 'pin_record.json'), 'utf8'));
+const render = D => { sb.__D = D; return run(`renderDepletion(__D)`); };
+const dep = (rec = REC, extra = {}) => ({record: rec, note: null, wall_s: 95.5, ...extra});
+
+test('the table lists every point with its day, burnup and k', () => {
+  const h = render(dep());
+  const rows = [...h.matchAll(/<tr><td class="num">(\d)<\/td><td class="num">([\d.]+)<\/td><td class="num">([\d.]+)<\/td><td class="num">([^<]+)<\/td><\/tr>/g)].map(m => m.slice(1));
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows.map(r => r[0]), ['0', '1', '2']);
+  assert.deepEqual(rows.map(r => r[1]), ['0', '1', '5'], 'days are the running sum of the step lengths');
+  assert.deepEqual(rows.map(r => +r[2]), [0, 38, 190], 'burnup from the record, 0 at the start');
+  assert.match(rows[1][3], /^1\.3\d{4} ± 0\.00\d{3}$/);
+});
+
+test('the header names the region, heavy-metal mass, steps, integrator, chain level, power and the record id', () => {
+  const h = render(dep());
+  assert.match(h, /UO2 3\.5% · 6\.090 g heavy metal · 2 steps · Predictor · chain level 3 · 38 W\/g · 95\.5 s · record <code>02986d0aba52<\/code>/);
+});
+
+test('both charts are drawn: k with its bars, and the inventory with the main nuclides', () => {
+  const h = render(dep());
+  assert.match(h, /<svg class="dep-k"/);
+  assert.ok((h.match(/<circle/g) || []).length > 0);
+  const inv = h.slice(h.indexOf('class="dep-inv"'));
+  for (const n of ['U235', 'U236', 'Pu239', 'Xe135', 'Sm149']) assert.match(inv, new RegExp(`>${n}</text>`), n + ' is labelled');
+  assert.doesNotMatch(inv, />Pu241</, 'a nuclide the record does not hold is not drawn');
+  assert.match(inv, />1e-2</, 'a log axis');
+});
+
+test('an incomplete run is said to be incomplete, a complete one is not', () => {
+  const partial = JSON.parse(JSON.stringify(REC));
+  partial.provenance.complete = false; partial.provenance.steps_done = 2; partial.provenance.steps_planned = 5;
+  assert.match(render(dep(partial)), /incomplete<\/span> 2 of 5 steps finished before the run stopped/);
+  assert.doesNotMatch(render(dep()), /incomplete/);
+});
+
+test('a bookkeeping check outside its tolerance is shown, one inside is not', () => {
+  const bad = JSON.parse(JSON.stringify(REC));
+  bad.provenance.checks['UO2 3.5%'].inventory.ok = false;
+  bad.provenance.notes = ['region UO2 3.5%: the inventory check is 2.0, outside 1 +/- 0.05'];
+  assert.match(render(dep(bad)), /warn">check<\/span> region UO2 3\.5%: the inventory check is 2\.0/);
+  assert.doesNotMatch(render(dep()), />check</);
+});
+
+test('with no record the reason is shown, and a run that did not burn shows nothing', () => {
+  assert.match(render({record: null, note: 'No depletion record: 2 burnable materials', wall_s: null}), /id="depNote">No depletion record: 2 burnable materials</);
+  assert.equal(render(null), '');
+  assert.equal(render(undefined), '');
+});
+
+test('the record text is escaped', () => {
+  const evil = JSON.parse(JSON.stringify(REC));
+  evil.regions[0].name = '<img src=x>';
+  evil.isotopics['<img src=x>'] = evil.isotopics['UO2 3.5%']; delete evil.isotopics['UO2 3.5%'];
+  const h = render(dep(evil));
+  assert.doesNotMatch(h, /<img/);
+  assert.match(h, /&lt;img src=x&gt;/);
+});
+
+test('the Save button is there and its click saves the record', () => {
+  assert.match(render(dep()), /id="depExportBtn"/);
+  run('window.__saved = []; saveDepletionRecord = () => window.__saved.push("save"); exportParaview = () => {}; saveRunReport = () => {}; checkRunRecord = () => {};');
+  const click = id => { run('window.__saved = []'); for (const [t, fn] of listeners) if (t === 'click' && fn.toString().includes('#depExportBtn')) fn({target: {closest: sel => sel === id ? {} : null}}); return JSON.parse(JSON.stringify(run('window.__saved'))); };
+  assert.deepEqual(click('#depExportBtn'), ['save']);
+  assert.deepEqual(click('#reportBtn'), []);
+});
+
+test('results with a depletion payload put the section after the checks and before the charts of the last solve', () => {
+  const R = {summary: {run_mode: 'eigenvalue', particles: 2000, batches: 15, seed: 1, runtime_s: 5, keff: [1.3, 0.005], k_generation: [1.3, 1.31], inactive: 5, n_inactive: 5}, tallies: [], tracks: [], tracks_truncated: false,
+    findings: [{level: 'info', code: 'k-estimate', message: 'k = 1.30 +/- 0.01', detail: {}}], depletion: dep()};
+  sb.__R = R; writes.length = 0;
+  run('LOCAL.results = __R; LOCAL.resultsRun = "r1"; renderResults();');
+  const h = writes[0];
+  assert.ok(h.indexOf('Checks on this run') < h.indexOf('<h4>Depletion</h4>'));
+  assert.ok(h.indexOf('<h4>Depletion</h4>') < h.indexOf('Eigenvalue Convergence'));
+});
+
+// ── the estimate before a run ──
+const withStore = (v, fn) => { sb.localStorage = {getItem: () => v === null ? null : JSON.stringify(v), setItem: (k, x) => { sb.__stored = JSON.parse(x); }}; try { return fn(); } finally { delete sb.localStorage; } };
+const estimate = (o = {}) => { sb.__st = JSON.stringify(o); sb.__pin = JSON.stringify(pin()); return run(`(() => { S = JSON.parse(__pin); Object.assign(S.settings, JSON.parse(__st)); return depEstimateHtml(); })()`); };
+
+test('the solve count follows the integrator: steps x 1, 2 or 4, and one more at the end', () => {
+  withStore(null, () => {
+    assert.match(estimate({depIntegrator: 'PredictorIntegrator', depSteps: '1, 4'}), /^About 3 transport solves \(2 steps\)\./);
+    assert.match(estimate({depIntegrator: 'CECMIntegrator', depSteps: '1, 4, 10'}), /^About 7 transport solves \(3 steps\)\./);
+    assert.match(estimate({depIntegrator: 'CF4Integrator', depSteps: '1'}), /^About 5 transport solves \(1 step\)\./);
+    assert.match(estimate({depIntegrator: 'SICELIIntegrator'}), /not estimated/);
+  });
+});
+
+test('with no earlier run there is no time estimate, and the page says why', () => {
+  withStore(null, () => assert.match(estimate(), /unknown until a depletion run has finished on this machine, so there is no time estimate yet/));
+});
+
+test('with an earlier run the time scales with particles x batches, and is called a guess', () => {
+  withStore({s: 30, solves: 3, wall: 90, particles: 2000, batches: 15, chain: 3}, () => {
+    const t = estimate({depIntegrator: 'PredictorIntegrator', depSteps: '1, 4', particles: 4000, batches: 15});
+    assert.match(t, /Last depletion run here: 3 solves in 90 s \(30 s each at 2000 × 15\)/);
+    assert.match(t, /roughly 3\.0 min if a solve scales with particles × batches/, '3 solves x 30 s x 2 = 180 s');
+    assert.match(t, /That is a guess/);
+  });
+});
+
+test('a finished depletion run stores how long a solve took; an incomplete one does not', () => {
+  withStore(null, () => {
+    sb.__stored = null; sb.__R2 = {depletion: dep()};
+    run('noteDepletionTiming(__R2)');
+    assert.equal(sb.__stored.solves, 3);
+    assert.equal(sb.__stored.wall, 95.5);
+    assert.ok(Math.abs(sb.__stored.s - 95.5 / 3) < 1e-9);
+    assert.equal(sb.__stored.particles, 2000);
+    const partial = JSON.parse(JSON.stringify(REC)); partial.provenance.complete = false;
+    sb.__stored = null; sb.__R2 = {depletion: dep(partial)};
+    run('noteDepletionTiming(__R2)');
+    assert.equal(sb.__stored, null);
+    sb.__R2 = {depletion: null};
+    run('noteDepletionTiming(__R2)');
+    assert.equal(sb.__stored, null);
+  });
+});
+
+test('without browser storage the estimate still works', () => {
+  assert.match(estimate({depIntegrator: 'PredictorIntegrator', depSteps: '1'}), /^About 2 transport solves/);
 });
 
 (async () => {

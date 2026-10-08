@@ -320,6 +320,21 @@ test('the inventory chart divides by the record\'s own starting heavy metal when
   assert.ok(Math.max(...labels(now)) < Math.max(...labels(old)));
 });
 
+test('the Results button of a stopped or failed run is enabled (its finished steps are a record), only a running one is not', async () => {
+  const runs = [{id: 'r-done', name: 'a', status: 'done', started: 1}, {id: 'r-stopped', name: 'b', status: 'stopped', started: 2},
+    {id: 'r-failed', name: 'c', status: 'failed', started: 3}, {id: 'r-running', name: 'd', status: 'running', started: 4}];
+  sb.fetch = () => Promise.resolve({ok: true, headers: {get: () => 'application/json'}, json: () => Promise.resolve({runs})});
+  run('LOCAL.on = true; LOCAL.token = "tok"');
+  writes.length = 0;
+  await run('refreshRuns()');
+  const h = writes.join('');
+  const state = id => (h.match(new RegExp(`data-results="${id}" ([^>]*)>Results`)) || [])[1];
+  assert.equal(state('r-done'), '');
+  assert.equal(state('r-stopped'), '');
+  assert.equal(state('r-failed'), '');
+  assert.equal(state('r-running'), 'disabled');
+});
+
 (async () => {
   for (const [name, fn] of tests) {
     try { await fn(); console.log('  [PASS]', name); }

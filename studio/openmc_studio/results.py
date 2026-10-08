@@ -1,7 +1,9 @@
 """Turn a finished run folder into JSON for the page: tallies, mesh maps, tracks."""
 import glob
+import json
 import math
 import os
+from pathlib import Path
 
 import numpy as np
 
@@ -25,6 +27,30 @@ def _energy_label(lo, hi):
             return f"{e / 1e3:.3g} keV"
         return f"{e / 1e6:.3g} MeV"
     return f"{f(lo)} – {f(hi)}"
+
+
+def _depletion(run_dir):
+    """What the Results page shows for a run that burned fuel: its depletion.json (or why there is none) and the wall time. None for
+    a run that did not deplete."""
+    folder = Path(run_dir)
+    if not (folder / "deplete.py").is_file():
+        return None
+    from . import depletion_record
+    out = {"record": None, "note": None, "wall_s": None}
+    try:
+        out["record"] = depletion_record.read(folder)
+    except FileNotFoundError:
+        note = folder / "depletion-record.txt"
+        out["note"] = note.read_text(encoding="utf-8").strip() if note.is_file() else "No depletion record yet."
+    except Exception as exc:  # noqa: BLE001
+        out["note"] = f"depletion.json can't be read: {exc}"
+    try:
+        meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
+        if meta.get("ended") and meta.get("started"):
+            out["wall_s"] = round(float(meta["ended"]) - float(meta["started"]), 1)
+    except (OSError, ValueError, TypeError):
+        pass
+    return out
 
 
 def load(run_dir):
@@ -72,6 +98,10 @@ def load(run_dir):
                 else:
                     out["tallies"].append(_tally(t, cell_names, mat_names, openmc))
             out["tallies"].extend(_dose(dosed, dose, cell_names, openmc))
+
+    dep = _depletion(run_dir)
+    if dep:
+        out["depletion"] = dep
 
     tpath = os.path.join(run_dir, "tracks.h5")
     if os.path.exists(tpath):

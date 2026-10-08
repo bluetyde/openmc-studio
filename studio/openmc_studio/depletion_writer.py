@@ -15,6 +15,9 @@ One bookkeeping check goes in the record's provenance, a ratio that should be 1,
               unit that is wrong, not a 1 percent error.
 A failed check does not stop the record: the record says so, and a reader decides.
 
+A run that was stopped or failed after some steps still gets a record of the steps it finished, marked incomplete (provenance.complete,
+steps_done, steps_planned): a half-burned fuel is a state someone may want, and the record says plainly how far it got.
+
 One burnable region per record. OpenMC's results file keeps no reaction rates here (the file holds none), so the power of a run
 with two or more burnable materials cannot be split between them and no record is written for it; the run itself is unaffected.
 """
@@ -42,11 +45,16 @@ def _ratio(num, den):
     return num / den if den > 0 and math.isfinite(num) and math.isfinite(den) else None
 
 
+def common_steps(times, rates, k):
+    """How many steps all of the arrays cover: a run that was stopped leaves arrays of different lengths."""
+    return max(0, min(len(rates), len(times) - 1, len(k) - 1))
+
+
 def build(data) -> dict:
     """The record for plain numbers.
 
     data: {"times_days": [t0..tN] (N+1 points, from 0), "source_rates_w": [N], "k": [[k, sigma]] * (N+1), "provenance": {...},
-           "fission_q_mev": the fission Q of the fissile nuclides present (MeV),
+           "fission_q_mev": the fission Q of the fissile nuclides present (MeV), "steps_planned": the number of steps asked for (optional),
            "regions": [{"name", "cell_ids", "hm_mass_kg", "hm_atoms": [N+1], "isotopics": {nuclide: [N+1]}}]}"""
     times = [float(t) for t in data["times_days"]]
     rates = [float(r) for r in data["source_rates_w"]]
@@ -73,8 +81,15 @@ def build(data) -> dict:
     prov = dict(data.get("provenance") or {})
     prov["units"] = dict(UNITS)
     prov["checks"] = {reg["name"]: {"inventory": check}}
+    planned = data.get("steps_planned")
+    prov["complete"] = planned is None or n >= int(planned)
+    prov["steps_done"] = n
+    if planned is not None:
+        prov["steps_planned"] = int(planned)
     prov["region_power"] = "the whole source rate"
     prov["notes"] = [] if check["ok"] else [f"region {reg['name']}: the inventory check is {inventory!r}, outside 1 +/- {CHECK_TOLERANCE}"]
+    if not prov["complete"]:
+        prov["notes"].append(f"incomplete: {n} of {int(planned)} steps finished")
     return depletion_record.build_record(durations, regions, k=[[float(a), float(b)] for a, b in data["k"]], isotopics=isotopics,
                                          provenance=prov)
 
@@ -100,6 +115,10 @@ def read_run(folder, cells=None, names=None):
     times = [float(t) for t in results.get_times("d")]
     _, k = results.get_keff(time_units="d")
     rates = [float(x) for x in results.get_source_rates()]
+    n = common_steps(times, rates, k)
+    if n < 1:
+        raise WriterError("no step finished, so there is nothing to record")
+    times, rates, k = times[:n + 1], rates[:n], k[:n + 1]
     if cells is None or names is None:
         summary = openmc.Summary(str(folder / "summary.h5"))
         cells, names = dict(cells or {}), dict(names or {})
@@ -116,7 +135,7 @@ def read_run(folder, cells=None, names=None):
     mat_id = mats[0]
     nuclides = list(results[0].index_nuc)
     heavy = [n for n in nuclides if _heavy(n)]
-    atoms = {n: results.get_atoms(mat_id, n, nuc_units="atoms", time_units="d")[1] for n in heavy}
+    atoms = {n: results.get_atoms(mat_id, n, nuc_units="atoms", time_units="d")[1][:len(times)] for n in heavy}
     hm_atoms = np.sum([atoms[n] for n in heavy], axis=0)
     mass_g = sum(float(atoms[n][0]) * openmc.data.atomic_mass(n) for n in heavy) / openmc.data.AVOGADRO
     present = [n for n in FISSILE if n in atoms and float(atoms[n][-1]) > 0]
@@ -146,6 +165,10 @@ def from_run(folder, **overrides):
                           "power_density_w_per_g": settings.get("depPower"), "particles": settings.get("particles"),
                           "batches": settings.get("batches"), "seed": settings.get("seed"),
                           "files": prov.get("files")}
+    try:
+        data["steps_planned"] = len([t for t in str(settings.get("depSteps", "")).split(",") if t.strip()]) or None
+    except (TypeError, ValueError):
+        data["steps_planned"] = None
     record = build(data)
     depletion_record.write(folder, record)
     return record

@@ -17,7 +17,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "studio"))
-from openmc_studio import depletion_record, depletion_writer, provenance, server as srv  # noqa: E402
+from openmc_studio import depletion_record, depletion_writer, provenance, results, server as srv  # noqa: E402
 from openmc_studio.depletion_writer import WriterError, build  # noqa: E402
 
 JOULES_PER_MEV = 1.602176634e-13
@@ -137,6 +137,70 @@ class RealRun(unittest.TestCase):
         data["source_rates_w"] = [r * 1.5 for r in data["source_rates_w"]]
         rec = build(data)
         self.assertFalse(rec["provenance"]["checks"]["UO2 3.5%"]["inventory"]["ok"])
+
+
+class Partial(unittest.TestCase):
+    """A run that was stopped or failed leaves the steps it finished; the record says how far it got."""
+
+    def test_common_steps_is_the_shortest_array(self):
+        self.assertEqual(depletion_writer.common_steps([0, 1, 5], [10.0, 10.0], [[1, 0]] * 3), 2)
+        self.assertEqual(depletion_writer.common_steps([0, 1, 5], [10.0], [[1, 0]] * 3), 1, "a rate for one step only")
+        self.assertEqual(depletion_writer.common_steps([0, 1, 5], [10.0, 10.0], [[1, 0]] * 2), 1, "k for one step only")
+        self.assertEqual(depletion_writer.common_steps([0], [], []), 0)
+
+    def test_a_finished_run_is_complete(self):
+        data = synthetic()
+        data["steps_planned"] = 2
+        prov = build(data)["provenance"]
+        self.assertEqual((prov["complete"], prov["steps_done"], prov["steps_planned"]), (True, 2, 2))
+        self.assertEqual(prov["notes"], [])
+        self.assertTrue(build(synthetic())["provenance"]["complete"], "no planned count given: nothing to compare with")
+
+    def test_two_of_five_steps_is_an_incomplete_record_that_says_so(self):
+        data = synthetic()
+        data["steps_planned"] = 5
+        rec = build(data)
+        prov = rec["provenance"]
+        self.assertEqual((prov["complete"], prov["steps_done"], prov["steps_planned"]), (False, 2, 5))
+        self.assertIn("incomplete: 2 of 5 steps finished", prov["notes"])
+        self.assertEqual(len(rec["time_steps_days"]), 2)
+        depletion_record.validate(rec)
+
+
+class ForThePage(unittest.TestCase):
+    """results._depletion: what the Results page is given for a run that burned fuel."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="depletion-page-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_a_run_that_did_not_burn_has_no_depletion_payload(self):
+        self.assertIsNone(results._depletion(self.tmp))
+
+    def test_the_record_and_the_wall_time_are_given(self):
+        (self.tmp / "deplete.py").write_text("pass\n")
+        rec = build(PIN)
+        depletion_record.write(self.tmp, rec)
+        (self.tmp / "meta.json").write_text(json.dumps({"started": 1000.0, "ended": 1095.46}))
+        out = results._depletion(self.tmp)
+        self.assertEqual(out["record"]["id"], rec["id"])
+        self.assertIsNone(out["note"])
+        self.assertEqual(out["wall_s"], 95.5)
+
+    def test_without_a_record_the_reason_is_given(self):
+        (self.tmp / "deplete.py").write_text("pass\n")
+        self.assertEqual(results._depletion(self.tmp)["note"], "No depletion record yet.")
+        (self.tmp / "depletion-record.txt").write_text("No depletion record: 2 burnable materials\n")
+        self.assertEqual(results._depletion(self.tmp)["note"], "No depletion record: 2 burnable materials")
+
+    def test_a_record_that_does_not_validate_is_reported_not_raised(self):
+        (self.tmp / "deplete.py").write_text("pass\n")
+        (self.tmp / "depletion.json").write_text("{not json")
+        out = results._depletion(self.tmp)
+        self.assertIsNone(out["record"])
+        self.assertIn("can't be read", out["note"])
 
 
 class NuclideNames(unittest.TestCase):

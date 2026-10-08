@@ -1560,6 +1560,7 @@ function problems() {
     if (!steps.ok || !steps.vals.length || steps.vals.some(v => !(v > 0))) add('error', 'Depletion time steps: write one or more lengths in days above 0, like 1, 4, 10, 25, 60.', 'settings');
     if (!DEP_INTEGRATORS.some(d => d[0] === st.depIntegrator)) add('error', 'Pick a depletion integrator.', 'settings');
     if (!(Number.isInteger(st.depReduce) && st.depReduce >= 1)) add('error', 'Depletion chain level must be a whole number of 1 or more.', 'settings');
+    if (LOCAL.on && LOCAL.depletionChain === null) add('error', 'Depletion needs a depletion chain file and none was found. Put it in a chains folder beside the nuclear data, or set OPENMC_CHAIN_FILE, then restart Studio.', 'settings');
     add('info', 'Depletion is set up for OpenMC only: model.mcnp has no BURN card, so it leaves depletion out.', 'settings');
   }
   if (!(Number.isInteger(st.particles) && st.particles >= 1)) add('error', 'Particles per batch must be a whole number of 1 or more.', 'settings');
@@ -5196,7 +5197,7 @@ async function localInit() {
     log('error', `Can't reach the Studio server: ${esc(e.message)}. Start Studio from its launcher.`);
     return;
   }
-  LOCAL.on = true;
+  LOCAL.on = true; LOCAL.depletionChain = h.depletion_chain || null;
   $('#otResults').hidden = false; $('#otRuns').hidden = false;
   log(h.cross_sections_found ? 'ok' : 'warn',
     `Connected to the local runner: OpenMC ${esc(h.openmc)}, Python ${esc(h.python)}. Runs are saved in <code>${esc(h.runs_dir)}</code>.` +

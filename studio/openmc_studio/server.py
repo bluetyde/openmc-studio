@@ -22,7 +22,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from . import __version__
-from . import provenance
+from . import depletion_run, provenance
 
 STATIC = Path(__file__).parent / "static"
 MAX_BODY = 25 * 1024 * 1024
@@ -124,10 +124,18 @@ class Studio:
             (path / "project.json").write_text(json.dumps(project, indent=2), encoding="utf-8")
             run = Run(rid, path, name or slug)
             (path / "meta.json").write_text(json.dumps(run.meta(), indent=2))
-            provenance.write(path, "run", project, files=("model.py", "project.json"))
+            entry, files, extra = "model.py", ("model.py", "project.json"), None
+            if depletion_run.wants(project):  # burn the fuel: deplete.py loads model.py and runs openmc.deplete
+                chain = depletion_run.find_chain_file()
+                if chain is None:
+                    shutil.rmtree(path, ignore_errors=True)
+                    raise RuntimeError(depletion_run.NO_CHAIN)
+                (path / "deplete.py").write_text(depletion_run.script_text(project, path / "model.py", chain), encoding="utf-8")
+                entry, files, extra = "deplete.py", ("model.py", "project.json", "deplete.py"), {"depletion": {"chain": depletion_run.chain_record(chain)}}
+            provenance.write(path, "run", project, files=files, extra=extra)
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
-            run.proc = subprocess.Popen([sys.executable, "model.py"], cwd=path, env=env, stdout=subprocess.PIPE,
+            run.proc = subprocess.Popen([sys.executable, entry], cwd=path, env=env, stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT, text=True, bufsize=1, start_new_session=True)
             self.runs[rid] = run
             self.active = run
@@ -827,6 +835,8 @@ class Handler(BaseHTTPRequestHandler):
                 refused = prerun_gate(project)
                 if refused:
                     return self._send(422, refused)
+                if depletion_run.wants(project) and depletion_run.find_chain_file() is None:
+                    return self._send(422, {"error": depletion_run.NO_CHAIN, "findings": []})
             try:
                 run = self.studio.start(script, project, str(body.get("name") or "model"))
             except RuntimeError as e:
@@ -927,6 +937,7 @@ class Handler(BaseHTTPRequestHandler):
             version = f"not importable ({e})"
         return {"studio": __version__, "openmc": version, "python": sys.version.split()[0],
                 "cross_sections": xs, "cross_sections_found": bool(xs) and os.path.isfile(xs),
+                "depletion_chain": str(depletion_run.find_chain_file() or "") or None,
                 "runs_dir": str(self.studio.root)}
 
     def _stream(self, rid, start):

@@ -4,12 +4,13 @@ Provides burnup arithmetic, oxide basis conversion, record construction,
 validation against schema 'studio.depletion/0.1', and reading/writing
 the depletion.json hand-off record.
 """
+import hashlib
 import json
 import math
 from pathlib import Path
 
 SCHEMA = "studio.depletion/0.1"
-TOP_LEVEL_KEYS = {"schema", "time_steps_days", "regions", "k", "isotopics", "provenance"}
+TOP_LEVEL_KEYS = {"schema", "id", "time_steps_days", "regions", "k", "isotopics", "provenance"}
 REGION_KEYS = {"name", "cell_ids", "heavy_metal_mass_kg", "power_w", "burnup_mwd_per_tu"}
 
 
@@ -82,6 +83,13 @@ def to_oxide_basis(burnup, hm_mass_fraction_of_oxide):
     raise RecordError(f"burnup: expected number or list of numbers, got {type(burnup).__name__}")
 
 
+def record_id(record) -> str:
+    """The id of a record: the SHA-256 of its canonical JSON (sorted keys, no spaces) with the id itself left out. Two records
+    with the same numbers have the same id, and any change to a number changes it. FEED's case names a burnup by this id."""
+    body = {k: v for k, v in record.items() if k != "id"}
+    return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
 def validate(record) -> None:
     """Validate a depletion record against the studio.depletion/0.1 schema."""
     if not isinstance(record, dict):
@@ -95,6 +103,8 @@ def validate(record) -> None:
         raise RecordError("schema: missing required key")
     if record["schema"] != SCHEMA:
         raise RecordError(f"schema: expected {SCHEMA!r}, got {record['schema']!r}")
+    if "id" in record and record["id"] != record_id(record):
+        raise RecordError("id: does not match the record (it was changed after the id was made)")
 
     if "time_steps_days" not in record:
         raise RecordError("time_steps_days: missing required key")
@@ -272,7 +282,8 @@ def build_record(time_steps_days, regions, k=None, isotopics=None, provenance=No
     if isotopics is not None:
         record["isotopics"] = isotopics
     record["provenance"] = {} if provenance is None else provenance
-
+    validate(record)
+    record = dict(record, id=record_id(record))
     validate(record)
     return record
 

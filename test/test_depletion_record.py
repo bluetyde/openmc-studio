@@ -20,6 +20,7 @@ from openmc_studio.depletion_record import (  # noqa: E402
     burnup_mwd_per_tu,
     to_oxide_basis,
     build_record,
+    record_id,
     validate,
     write,
     read,
@@ -76,8 +77,8 @@ class TestDepletionRecord(unittest.TestCase):
             k=[[1.30, 0.001], [1.29, 0.001], [1.28, 0.001], [1.27, 0.001]],
             provenance={"written": "2026-10-07T12:00:00+00:00"},
         )
-        self.assertEqual(built, example_record)
-        validate(example_record)
+        self.assertEqual(built, dict(example_record, id=record_id(example_record)))
+        validate(example_record)  # a record with no id is still valid (older writers)
 
     def test_second_region_independent_loop(self):
         """Second region with different mass and power computed independently by a loop."""
@@ -487,6 +488,44 @@ class TestDepletionRecord(unittest.TestCase):
             validate(rec_empty_nuc)
         self.assertTrue(str(ctx.exception).startswith("isotopics.fuel:"))
 
+
+class TestRecordId(unittest.TestCase):
+    """The id FEED's case names a burnup by: a hash of the record's own content."""
+
+    def make(self, power=1000, k=1.3):
+        return build_record([10, 20], [{"name": "fuel", "cell_ids": [1], "heavy_metal_mass_kg": 2.0, "power_w": [power, power]}],
+                            k=[[k, 0.001], [k - 0.01, 0.001], [k - 0.02, 0.001]], provenance={"note": "x"})
+
+    def test_every_built_record_has_an_id_that_validate_accepts(self):
+        rec = self.make()
+        self.assertRegex(rec["id"], "^[0-9a-f]{64}$")
+        self.assertEqual(rec["id"], record_id(rec))
+        validate(rec)
+
+    def test_the_same_numbers_give_the_same_id_and_a_changed_number_a_different_one(self):
+        self.assertEqual(self.make()["id"], self.make()["id"])
+        self.assertNotEqual(self.make()["id"], self.make(power=1001)["id"])
+        self.assertNotEqual(self.make()["id"], self.make(k=1.31)["id"])
+
+    def test_the_id_does_not_depend_on_key_order_or_on_the_id_itself(self):
+        rec = self.make()
+        shuffled = dict(reversed(list(rec.items())))
+        self.assertEqual(record_id(shuffled), rec["id"])
+        self.assertEqual(record_id({k: v for k, v in rec.items() if k != "id"}), rec["id"])
+
+    def test_a_record_changed_after_its_id_was_made_is_refused(self):
+        rec = self.make()
+        rec["provenance"] = {"note": "edited"}
+        with self.assertRaises(RecordError) as ctx:
+            validate(rec)
+        self.assertIn("id", str(ctx.exception))
+
+    def test_the_id_survives_writing_and_reading(self):
+        import tempfile
+        rec = self.make()
+        with tempfile.TemporaryDirectory(prefix="depl-id-") as tmp:
+            write(tmp, rec)
+            self.assertEqual(read(tmp)["id"], rec["id"])
 
 
 if __name__ == "__main__":

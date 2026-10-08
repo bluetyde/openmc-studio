@@ -101,6 +101,7 @@ def environment(exporter=None):
 def _settings(project):
     st = (project or {}).get("settings") or {}
     keys = ("runMode", "particles", "batches", "inactive", "seed", "photon", "photonCutoff", "sourceRate",
+            "depletion", "depPower", "depSteps", "depIntegrator", "depReduce",
             "fissionNeutrons", "temperatureDefault")
     return {k: st.get(k) for k in keys if k in st}
 

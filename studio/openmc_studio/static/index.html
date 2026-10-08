@@ -677,7 +677,12 @@ const isUntouchedCopy = m => !!m.pristine && m.pristine === matSig(m);
 const DEFAULT_SETTINGS = {name:'Shielding demo', runMode:'fixed source', particles:10000, batches:10, inactive:0, seed:12345,
   maxTracks:50, track:'', photon:false, photonCutoff:1000, fissionNeutrons:true, temperatureDefault:293.6, temperatureMethod:'interpolation',
   entropyMesh:false, entropyNx:10, entropyNy:10, entropyNz:10,
-  worldShape:'box', worldR:100, worldBC:'vacuum', worldFill:'void', sourceRate:null};
+  worldShape:'box', worldR:100, worldBC:'vacuum', worldFill:'void', sourceRate:null,
+  depletion:false, depPower:38, depSteps:'1, 4, 10, 25, 60', depIntegrator:'CECMIntegrator', depReduce:6};
+const DEP_INTEGRATORS = [['CECMIntegrator', 'Predictor-corrector (CE/CM)'], ['PredictorIntegrator', 'Predictor (one transport solve per step)'],
+  ['CELIIntegrator', 'CE/LI'], ['LEQIIntegrator', 'LE/QI'], ['CF4Integrator', 'CF4'], ['EPCRK4Integrator', 'EPC-RK4'],
+  ['SICELIIntegrator', 'SI-CE/LI'], ['SILEQIIntegrator', 'SI-LE/QI']];
+const HEAVY_METAL = ['U', 'Pu', 'Th'];
 
 var SOURCE_PRESETS = [
   {
@@ -941,6 +946,11 @@ function normalizeProject(o) { // fill fields added in later versions
   o.settings.entropyNx = Number.isFinite(o.settings.entropyNx) ? o.settings.entropyNx : 10;
   o.settings.entropyNy = Number.isFinite(o.settings.entropyNy) ? o.settings.entropyNy : 10;
   o.settings.entropyNz = Number.isFinite(o.settings.entropyNz) ? o.settings.entropyNz : 10;
+  o.settings.depletion = o.settings.depletion === true;  // older projects have no depletion block
+  o.settings.depPower = Number.isFinite(o.settings.depPower) ? o.settings.depPower : 38;
+  o.settings.depSteps = typeof o.settings.depSteps === 'string' ? o.settings.depSteps : '1, 4, 10, 25, 60';
+  o.settings.depIntegrator = DEP_INTEGRATORS.some(d => d[0] === o.settings.depIntegrator) ? o.settings.depIntegrator : 'CECMIntegrator';
+  o.settings.depReduce = Number.isInteger(o.settings.depReduce) ? o.settings.depReduce : 6;
   (o.materials || []).forEach(m => {
     if (m.temperature !== undefined && m.temperature !== null && m.temperature !== '') {
       m.temperature = Number.isFinite(Number(m.temperature)) ? Number(m.temperature) : null;
@@ -1535,6 +1545,23 @@ function problems() {
     if (t.scores.some(s => s === 'fission' || s === 'nu-fission') && !S.materials.some(m => used.has(m.id) && isFissileMat(m))) add('info', `${t.name} scores fission, but no material in the model has U or Pu. Those scores will be 0.`, 'tally', t.id);
   });
 
+  if (st.depletion) {
+    const burn = S.materials.filter(m => m.burnable && used.has(m.id));
+    if (!eig) add('error', 'Depletion needs an eigenvalue run. Switch Run mode to Eigenvalue, or turn depletion off.', 'settings');
+    if (!burn.length) add('error', 'Depletion needs a fuel material marked Burnable (select the material) that a part uses.', 'settings');
+    burn.forEach(m => {
+      if (!parseComps(m.comps).out.some(c => HEAVY_METAL.includes(c.el))) add('error', `${m.name}: a burnable material needs uranium, plutonium or thorium, so burnup has a heavy-metal mass to divide by.`, 'material', m.id);
+      if (m.id === st.worldFill) add('error', `${m.name}: a material that fills the world can't be burnable.`, 'material', m.id);
+      if (csgComponents().some(k => k.cells.some(c => c.material === m.id))) add('error', `${m.name}: burnable material in imported CAD geometry isn't supported yet.`, 'material', m.id);
+      if ((S.groups || []).some(g => { const pl = latticePlan(g); return pl.ok && pl.parts.some(x => x.material === m.id); })) add('error', `${m.name}: burnable material in a part inside a lattice isn't supported yet. Untick "Export as RectLattice" (or HexLattice) on its array group.`, 'material', m.id);
+    });
+    const steps = parseNums(st.depSteps);
+    if (!pos(st.depPower)) add('error', 'Depletion power must be above 0 W per gram of heavy metal.', 'settings');
+    if (!steps.ok || !steps.vals.length || steps.vals.some(v => !(v > 0))) add('error', 'Depletion time steps: write one or more lengths in days above 0, like 1, 4, 10, 25, 60.', 'settings');
+    if (!DEP_INTEGRATORS.some(d => d[0] === st.depIntegrator)) add('error', 'Pick a depletion integrator.', 'settings');
+    if (!(Number.isInteger(st.depReduce) && st.depReduce >= 1)) add('error', 'Depletion chain level must be a whole number of 1 or more.', 'settings');
+    add('info', 'Depletion is set up for OpenMC only: model.mcnp has no BURN card, so it leaves depletion out.', 'settings');
+  }
   if (!(Number.isInteger(st.particles) && st.particles >= 1)) add('error', 'Particles per batch must be a whole number of 1 or more.', 'settings');
   if (!(Number.isInteger(st.batches) && st.batches >= 1)) add('error', 'Batches must be a whole number of 1 or more.', 'settings');
   if (eig) {
@@ -1753,6 +1780,7 @@ function buildScript(probs, mark, opts = {}) {
     const v = mv[m.id] = name('mat', m.name);
     if (m.ref) push(`# ${m.ref}`);
     push(`${v} = openmc.Material(name=${pyStr(m.name)})`, `${v}.set_density("g/cm3", ${F(m, 'density', num(m.density))})`);
+    if (st.depletion && m.burnable) push(`${v}.depletable = True`);
     if (m.temperature !== null && m.temperature !== undefined && m.temperature !== '') {
       push(`${v}.temperature = ${F(m, 'temperature', num(m.temperature))}`);
     }
@@ -2375,9 +2403,30 @@ function buildScript(probs, mark, opts = {}) {
     idEntries[kind].push(`${m[1]}.id: _studio_json.loads(${pyStr(JSON.stringify({kind:o.kind,id:o.id || o.kind}))})`);
   });
   SURF.forEach((s, slot) => { if (s.owner && !s.shared) idEntries.surface.push(`${s.variable}.id: _studio_json.loads(${pyStr(JSON.stringify({kind:s.owner.kind,id:s.owner.id || s.owner.kind,slot}))})`); });
+  const depLines = [];
+  if (st.depletion) {
+    const groups = mats.filter(m => m.burnable).map(m => {
+      const cells = standaloneParts.filter(p => p.material === m.id && cv[p.id]).map(p => {
+        const b = doseBox(p.id);
+        return `(${cv[p.id]}, (${b.slice(0, 3).map(num).join(', ')}), (${b.slice(3).map(num).join(', ')}))`;
+      });
+      return `(${mv[m.id]}, [${cells.join(', ')}])`;
+    });
+    depLines.push('# Depletion: the burnable materials and the cells that hold them. OpenMC needs the volume of each material; prepare_depletion measures it',
+      '# with the stochastic volume calculation. deplete.py, which Studio writes beside this file when a depletion run starts, calls it first.',
+      `depletion_materials = [${groups.join(', ')}]`, '', 'def prepare_depletion(model):',
+      '    calcs = [openmc.VolumeCalculation([c], 200000, lo, hi) for _, cells in depletion_materials for c, lo, hi in cells]',
+      '    model.settings.volume_calculations = calcs',
+      '    model.calculate_volumes(output=False)',
+      '    results = iter(calcs)',
+      '    for mat, cells in depletion_materials:',
+      '        mat.volume = sum(vc.volumes[c.id].nominal_value for (c, _, _), vc in zip(cells, results))',
+      '    model.settings.volume_calculations = []', '');
+  }
   push('', '# Stable object IDs for MCNP comment links (no effect on transport).', 'import json as _studio_json',
     'studio_ids = {', ...Object.entries(idEntries).map(([kind, entries]) => `    ${pyStr(kind)}: {${entries.join(', ')}},`), '}',
     '', 'model = openmc.Model(geometry=geometry, materials=materials, settings=settings, tallies=tallies)', '',
+    ...depLines,
     'if __name__ == "__main__":',
     '    import sys',
     '    if "--export-xml" in sys.argv:  # OpenMC Studio exports model.xml this way for MCNP translation',
@@ -4616,6 +4665,7 @@ function specFor(kind, o) {
         F('text', 'comps', 'Components', {wide:true, hint:'Element or nuclide : amount, comma separated. H:2 adds natural hydrogen; U235:0.03 adds one nuclide. Amounts are normalized.'}),
         F('sab', 'sab', 'S(α,β)', {hint:'Thermal neutron scattering table for moderators and bound atoms. Select a standard ENDF/B-VIII.0 table, choose Custom, or click Auto-suggest.'}),
         F('num', 'temperature', 'Temperature', {unit:'K', placeholder:'293.6', hint:'Material temperature in Kelvin for Doppler broadening (optional, defaults to project default).'}),
+        F('check', 'burnable', 'Burnable', {show:() => st.depletion, text:'Burns in a depletion run', hint:'Marks this material as fuel that depletion changes: its uranium, plutonium or thorium is tracked step by step. Needs a part that uses it. Turn depletion on in Settings.'}),
         note(o.ref ? `Source: <code>${esc(o.ref)}</code>${o.ref.startsWith('PNNL') ? ' — PNNL-15870 Rev. 1.' : ''}` : 'Custom material.')
       ]},
       {title:'MCNP equivalent', fields:[{type:'mcnp', text:() => mcnpMaterial(o)}]}
@@ -4856,6 +4906,13 @@ function specFor(kind, o) {
       F('num', 'photonCutoff', 'Photon cutoff', {unit:'eV', show:() => st.photon, hint:'Energy cutoff below which photons are killed (default 1000 eV = 1 keV).'}),
       F('check', 'entropyMesh', 'Shannon entropy', {show:() => st.runMode === 'eigenvalue', text:'Calculate Shannon entropy mesh', hint:'Assess fission source spatial convergence across batches.'}),
       F('vec', null, 'Entropy bins', {keys:['entropyNx', 'entropyNy', 'entropyNz'], int:true, show:() => st.runMode === 'eigenvalue' && st.entropyMesh})
+    ]},
+    {title:'Depletion', fields:[
+      F('check', 'depletion', 'Depletion', {text:'Run a depletion calculation', hint:'Run burns the fuel step by step with OpenMC (openmc.deplete): a transport solve, then the inventory changes for the time step, and again. Needs an eigenvalue run, a material marked Burnable, and a depletion chain file. Runs take minutes to hours.'}),
+      F('num', 'depPower', 'Power', {unit:'W per g of heavy metal', show:() => st.depletion, hint:'Specific power, constant for the whole run. A typical PWR value is about 38 W/g.'}),
+      F('text', 'depSteps', 'Time steps', {unit:'days', show:() => st.depletion, placeholder:'1, 4, 10, 25, 60', hint:'The length of each step in days, separated by commas. Burnup at the end is power times the sum of the steps.'}),
+      F('select', 'depIntegrator', 'Integrator', {show:() => st.depletion, options:() => DEP_INTEGRATORS, hint:'Predictor-corrector solves transport twice per step and is more accurate; the plain predictor solves once and is the quick look.'}),
+      F('int', 'depReduce', 'Chain level', {show:() => st.depletion, hint:'Keep only the nuclides within this many transmutation steps of the starting fuel. The full chain has thousands of nuclides and a run does not finish; 6 keeps about 1,400 and the main actinides.'})
     ]},
     {title:'Temperature', fields:[
       F('num', 'temperatureDefault', 'Default temperature', {unit:'K', hint:'Global default temperature for Doppler broadening when materials do not specify one.'}),

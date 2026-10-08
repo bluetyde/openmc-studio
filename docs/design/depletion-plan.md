@@ -69,6 +69,13 @@ run would start with no material volumes; (b) has no `reduce_chain_level` or oth
 
 **D2: the writer (2 days).** `depletion_writer.py` plus tests (below), wired into the run. Provenance gets the chain hash.
 
+**D2 result (2026-10-08, done).** `depletion_writer.py` and a hook in the server: when a depletion run ends well, `depletion.json` is written beside `depletion_results.h5`, the provenance record names it (`depletion_record`: status, id, whether the check passed) and hashes it with the other outputs, and the Log says "Depletion record written". A refusal or a crash writes `depletion-record.txt` and a note, and never changes the run's status.
+- **The record id** FEED's case asked for: `depletion_record.record_id` (SHA-256 of the canonical JSON without the id), added to every built record and checked by `validate`; a record with no id (older writers) still validates. Schema name unchanged (`studio.depletion/0.1`: nothing consumes it yet; to settle with FEED).
+- **Units** are in the record's provenance: days, W, MWd per tonne of initial heavy metal (every nuclide with Z of 90 or more), isotopics as atoms in the whole region, k with sigma. The basis stays heavy metal.
+- **One burnable region per record.** OpenMC's results file keeps no reaction rates in this setup (the rate arrays are empty), so the power of each of several burnable materials is not available and no record is written for such a run (the run itself is unaffected). This replaces the plan's cross-check "against OpenMC's own burnup", which does not exist, and the plan's per-region split.
+- **The check** that went in instead: the heavy-metal atoms the run lost against the fissions power x time implies (over the fission Q of the fissile nuclides present, from the chain): 1.0037 on the pin (tolerance 5 %: the Q differs by a few percent between nuclides, so it catches a wrong power or unit, not a 1 % error). A failed check does not stop the record; it is flagged in the record and the log.
+- **Verified on a real run** (UO2 pin, predictor, steps 1 and 4 days; by hand and once through the page): the heavy-metal mass 6.0901 g against 6.0880 g worked out from the dimensions, burnup 38.0 and 190.0, cell id 1 and the material name found from `summary.h5`, the chain named by hash. Numbers from that run are kept as a fixture (`test/fixtures/depletion/pin_run_data.json`) so the arithmetic is tested without a run.
+
 **D3: the view and Export (3 days).** Depletion tab, estimate before run, Stop, resume from `prev_results` if the run is interrupted.
 
 **D4: FEED reads Studio's record (1 day, with the FEED agent).** The FEED reader (`claude/agy-depletion-reader` in the other clone) reads a Studio-written file, converts with 0.8815 and refuses a non-oxide fuel.

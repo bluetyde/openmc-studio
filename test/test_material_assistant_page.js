@@ -56,7 +56,7 @@ test('the editor has the section, and which fields show follows the choice', () 
   assert.ok(sec, 'the section is there');
   assert.ok(secs.indexOf(sec) < secs.findIndex(s => s.title === 'MCNP equivalent'), 'before the MCNP equivalent');
   const shown = () => run('specFor("material", __mat)').find(s => s.title === 'From engineering inputs').fields.filter(f => !f.show || f.show()).map(f => f.label || (f.btns ? 'button' : '?'));
-  assert.deepEqual(shown(), ['Calculate', 'Enrichment', 'Density', 'Theoretical density', 'Result', 'button']);
+  assert.deepEqual(shown(), ['Calculate', 'Enrichment', 'Percent of TD', 'Theoretical density', 'Result', 'button']);
   setEng({kind: 'borated'});
   assert.deepEqual(shown(), ['Calculate', 'Boron', 'Water density', 'Hydrogen as H-2', 'B-10 in boron', 'Result', 'button']);
   setEng({kind: 'uo2'});
@@ -131,6 +131,17 @@ test('invalid inputs change nothing and say why', () => {
   const m = run('JSON.parse(JSON.stringify(__mat))');
   assert.deepEqual([m.density, m.frac, m.comps, m.pristine], [1, 'ao', 'H:2, O:1', 'x']);
   assert.ok(logs().some(([l, t]) => l === 'warn' && /enrichment_wt_pct/.test(t)));
+});
+
+test('a blank input is asked for in plain words, a wrong one is refused with its reason', () => {
+  setEng({kind: 'uo2', enrich: NaN, td: 95, tdDensity: 10.96});
+  assert.equal(run('engSummary(engResult())'), 'Fill in the enrichment.');
+  setEng({kind: 'uo2', enrich: 3.5, td: 95, tdDensity: NaN});
+  assert.equal(run('engSummary(engResult())'), 'Fill in the theoretical density.');
+  setEng({kind: 'borated', ppm: 100, rho: NaN, dFrac: 0, b10: NaN});
+  assert.equal(run('engSummary(engResult())'), 'Fill in the water density.');
+  setEng({kind: 'uo2', enrich: 150, td: 95, tdDensity: 10.96});
+  assert.match(run('engSummary(engResult())'), /enrichment_wt_pct.*must be &lt;= 100/);
 });
 
 test('the result line shows density, mass fractions and atom densities, or the refusal; text is escaped', () => {

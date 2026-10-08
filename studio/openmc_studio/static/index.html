@@ -1270,7 +1270,9 @@ const engResult = () => {
     : MA.borated_water(n(ENG.ppm), n(ENG.rho), n(ENG.dFrac), Number.isFinite(ENG.b10) ? ENG.b10 / 100 : MA.B10_NATURAL);
 };
 const engComps = r => Object.entries(r.mass_fractions).filter(([, v]) => v > 0).map(([k, v]) => `${k}:${+v.toPrecision(12)}`).join(', ');
-const engSummary = r => r.error ? esc(r.error) : `${fmtNum(+r.density_g_cm3.toPrecision(8))} g/cm³ · ` +
+const ENG_LABELS = {enrichment_wt_pct: 'the enrichment', percent_td: 'the percent of theoretical density', theoretical_density_g_cm3: 'the theoretical density', boron_ppm: 'the boron concentration',
+  solution_density_g_cm3: 'the water density', deuterium_fraction: 'the hydrogen fraction as H-2', b10_atom_fraction: 'the B-10 fraction'};
+const engSummary = r => r.error ? (/^Argument '(\w+)' must be a finite number; got NaN$/.test(r.error) ? `Fill in ${ENG_LABELS[RegExp.$1] || RegExp.$1}.` : esc(r.error)) : `${fmtNum(+r.density_g_cm3.toPrecision(8))} g/cm³ · ` +
   Object.entries(r.mass_fractions).filter(([, v]) => v > 0).map(([k, v]) => `${esc(k)} ${+v.toPrecision(6)}`).join(', ') + ' (mass fractions) · ' +
   Object.entries(r.atom_density_per_b_cm).filter(([, v]) => v > 0).map(([k, v]) => `${esc(k)} ${v.toPrecision(5)}`).join(', ') + ' atoms/(b·cm)';
 function applyEngineering(m) {
@@ -4752,7 +4754,7 @@ function engineeringFields(o) {
       ctl.appendChild(sl);
     }),
     {...row('Enrichment', 'Weight percent of U-235 in the uranium. (Studio\'s own pin examples use atom fractions; this is weight percent.)', num('enrich', 'wt %', 'e.g. 3.5')), show: uo2},
-    {...row('Density', 'Percent of the theoretical density.', num('td', '% TD', 'e.g. 95')), show: uo2},
+    {...row('Percent of TD', 'Percent of the theoretical density.', num('td', '% TD', 'e.g. 95')), show: uo2},
     {...row('Theoretical density', 'Of UO2, in g/cm³. Studio does not supply one: use the value your reference gives.', num('tdDensity', 'g/cm³')), show: uo2},
     {...row('Boron', 'Parts per million by mass of the solution (0 for pure water).', num('ppm', 'ppm')), show: () => !uo2()},
     {...row('Water density', 'g/cm³ at the temperature and pressure you mean. Studio does not supply one.', num('rho', 'g/cm³')), show: () => !uo2()},

@@ -163,7 +163,11 @@ class Http(unittest.TestCase):
         os.environ["OPENMC_CHAIN_FILE"] = str(chain)
         real_script, real_from_run = depletion_run.script_text, depletion_writer.from_run
         called = []
-        depletion_writer.from_run = lambda folder: called.append(Path(folder).name) or {"id": "f" * 64, "provenance": {"checks": {}}}
+        def fake_writer(folder):
+            called.append(Path(folder).name)
+            (Path(folder) / "depletion.json").write_text("{}")
+            return {"id": "f" * 64, "provenance": {"checks": {}}}
+        depletion_writer.from_run = fake_writer
         try:
             depletion_run.script_text = lambda project, model_path, chain_file: "print('burned')\n"  # stands in for a successful burn
             status, body = self.call("POST", "/api/run", {"script": "print('model')\n", "project": project(), "name": "dep hook"})
@@ -173,6 +177,9 @@ class Http(unittest.TestCase):
             self.assertEqual(run.status, "done")
             self.assertEqual(called, [body["id"]], "the record is written after the run ends well")
             self.assertTrue(any("Depletion record written" in line for line in run.lines))
+            prov = json.loads((self.tmp / "runs" / body["id"] / "provenance.json").read_text())
+            self.assertIn("depletion.json", prov["outputs"], "the record is hashed with the other outputs")
+            self.assertEqual(prov["depletion_record"]["status"], "written")
             depletion_run.script_text = lambda project, model_path, chain_file: "raise SystemExit(3)\n"  # a burn that fails
             called.clear()
             status, body = self.call("POST", "/api/run", {"script": "print('model')\n", "project": project(), "name": "dep fail"})

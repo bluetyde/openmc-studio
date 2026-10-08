@@ -36,6 +36,187 @@ def synthetic(power=100.0, steps=(10.0, 20.0), q=200.0, lost_factor=1.0):
                          "isotopics": {"U235": [1e22, 9e21, 8e21], "Pu239": [0.0, 1e19, 3e19]}}]}
 
 
+def two_regions(shares=(0.3, 0.7), power=100.0, steps=(10.0, 20.0), q=200.0):
+    """Two burnable regions that split one source rate by shares; each loses exactly the atoms its own power implies."""
+    times = [0.0, steps[0], steps[0] + steps[1]]
+    regions = []
+    for name, share, mass in (("slice A", shares[0], 1.0), ("slice B", shares[1], 3.0)):
+        fissions = share * power * sum(steps) * 86400.0 / (q * JOULES_PER_MEV)
+        n0 = 1.0e24
+        regions.append({"name": name, "cell_ids": [len(regions) + 1], "hm_mass_kg": mass, "power_fraction": [share, share],
+                        "hm_atoms": [n0, n0 - fissions * steps[0] / sum(steps), n0 - fissions], "isotopics": {"U235": [1e22, 9e21, 8e21]}})
+    return {"times_days": times, "source_rates_w": [power, power], "k": [[1.3, 0.001], [1.29, 0.001], [1.28, 0.001]],
+            "fission_q_mev": q, "provenance": {"run": "demo"}, "regions": regions}
+
+
+class SeveralRegions(unittest.TestCase):
+    def test_each_region_gets_its_share_of_the_power_and_its_own_burnup(self):
+        rec = build(two_regions())
+        a, b = rec["regions"]
+        self.assertEqual((a["name"], b["name"]), ("slice A", "slice B"))
+        self.assertAlmostEqual(a["power_w"][0], 30.0)
+        self.assertAlmostEqual(b["power_w"][1], 70.0)
+        # 30 W for 10 d on 1 kg: 3e-5 MW x 10 d / 0.001 t = 0.3 MWd/t; 70 W on 3 kg: 7e-5 x 10 / 0.003 = 0.2333
+        self.assertAlmostEqual(a["burnup_mwd_per_tu"][0], 0.3)
+        self.assertAlmostEqual(b["burnup_mwd_per_tu"][0], 0.7 / 3.0)
+        self.assertAlmostEqual(a["burnup_mwd_per_tu"][1], 0.9)
+        # what the regions give up in energy adds up to what the run was given
+        total = sum(p * d for r in rec["regions"] for p, d in zip(r["power_w"], rec["time_steps_days"]))
+        self.assertAlmostEqual(total, 100.0 * 30.0)
+        depletion_record.validate(rec)
+        self.assertEqual(sorted(rec["isotopics"]), ["slice A", "slice B"])
+
+    def test_the_inventory_check_is_made_for_each_region(self):
+        rec = build(two_regions())
+        for name in ("slice A", "slice B"):
+            check = rec["provenance"]["checks"][name]["inventory"]
+            self.assertAlmostEqual(check["ratio"], 1.0, places=9)
+            self.assertTrue(check["ok"])
+        # one region's atoms wrong (as if its share were not what was tallied): only that region is flagged
+        data = two_regions()
+        data["regions"][1]["hm_atoms"] = [1e24, 1e24 - 2 * (1e24 - data["regions"][1]["hm_atoms"][1]), 1e24 - 2 * (1e24 - data["regions"][1]["hm_atoms"][2])]
+        rec = build(data)
+        self.assertTrue(rec["provenance"]["checks"]["slice A"]["inventory"]["ok"])
+        self.assertFalse(rec["provenance"]["checks"]["slice B"]["inventory"]["ok"])
+        self.assertEqual(len(rec["provenance"]["notes"]), 1)
+        self.assertIn("slice B", rec["provenance"]["notes"][0])
+
+    def test_the_record_says_how_the_power_was_split(self):
+        self.assertIn("kappa-fission", build(two_regions())["provenance"]["region_power"])
+        self.assertEqual(build(synthetic())["provenance"]["region_power"], "the whole source rate")
+
+    def test_a_single_region_does_not_need_a_share(self):
+        self.assertEqual(build(synthetic())["regions"][0]["power_w"], [100.0, 100.0])
+
+
+class FakeKeff:
+    def __init__(self, v):
+        self.nominal_value = v
+
+
+class FakeFilter:
+    def __init__(self, bins):
+        self.bins = bins
+
+
+class FakeTally:
+    def __init__(self, name, ids, values):
+        self.name = name
+        self.filters = [FakeFilter(ids)]
+        self.mean = __import__("numpy").array(values).reshape(-1, 1, 1)
+
+
+class FakeStatePoint:
+    """Stands in for openmc.StatePoint, keyed by file name: {name: (k, [tallies])}."""
+    files = {}
+
+    def __init__(self, path, autolink=True):
+        k, tallies = self.files[Path(path).name]
+        self.keff = FakeKeff(k)
+        self.tallies = dict(enumerate(tallies))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class FakeResults:
+    def __init__(self, ks):
+        self.ks = ks
+
+    def get_keff(self, time_units="d"):
+        import numpy as np
+        return np.array([0.0] * len(self.ks)), np.array([[k, 0.001] for k in self.ks])
+
+
+class PowerShares(unittest.TestCase):
+    """_power_shares reads each step's kappa-fission tally from the step's own transport statepoint (openmc.StatePoint stood in for)."""
+
+    def setUp(self):
+        import unittest.mock as mock
+        self.tmp = Path(tempfile.mkdtemp(prefix="depl-shares-"))
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        import openmc
+        patcher = mock.patch.object(openmc, "StatePoint", FakeStatePoint)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        FakeStatePoint.files = {}
+
+    def put(self, i, k, ids=(1, 2), values=(3.0, 7.0), name=depletion_writer.POWER_TALLY):
+        (self.tmp / f"openmc_simulation_n{i}.h5").write_bytes(b"")
+        FakeStatePoint.files[f"openmc_simulation_n{i}.h5"] = (k, [FakeTally("other", [9], [1.0]), FakeTally(name, list(ids), list(values))])
+
+    def test_the_share_of_a_material_is_its_tally_over_the_sum_of_the_burnable_ones(self):
+        self.put(0, 1.30)
+        self.put(1, 1.29, values=(5.0, 5.0))
+        shares = depletion_writer._power_shares(self.tmp, ["1", "2"], FakeResults([1.30, 1.29, 1.28]), 2)
+        self.assertEqual(shares, {"1": [0.3, 0.5], "2": [0.7, 0.5]})
+
+    def test_a_missing_statepoint_is_refused_and_named(self):
+        self.put(0, 1.30)
+        with self.assertRaises(WriterError) as ctx:
+            depletion_writer._power_shares(self.tmp, ["1", "2"], FakeResults([1.30, 1.29, 1.28]), 2)
+        self.assertIn("openmc_simulation_n1.h5", str(ctx.exception))
+
+    def test_a_statepoint_without_the_tally_is_refused(self):
+        self.put(0, 1.30, name="something else")
+        with self.assertRaises(WriterError) as ctx:
+            depletion_writer._power_shares(self.tmp, ["1", "2"], FakeResults([1.30, 1.29]), 1)
+        self.assertIn("no power-split tally", str(ctx.exception))
+
+    def test_a_statepoint_of_another_solve_is_refused(self):
+        self.put(0, 1.31)  # the results file has k = 1.30 for the start of step 1
+        with self.assertRaises(WriterError) as ctx:
+            depletion_writer._power_shares(self.tmp, ["1", "2"], FakeResults([1.30, 1.29]), 1)
+        self.assertIn("not the solve", str(ctx.exception))
+
+    def test_no_power_in_the_burnable_materials_is_refused(self):
+        self.put(0, 1.30, values=(0.0, 0.0))
+        with self.assertRaises(WriterError):
+            depletion_writer._power_shares(self.tmp, ["1", "2"], FakeResults([1.30, 1.29]), 1)
+
+    def test_a_material_the_tally_does_not_hold_is_refused(self):
+        self.put(0, 1.30, ids=(1, 5))
+        with self.assertRaises(WriterError) as ctx:
+            depletion_writer._power_shares(self.tmp, ["1", "2"], FakeResults([1.30, 1.29]), 1)
+        self.assertIn("['2']", str(ctx.exception))
+
+
+SLICES = json.loads((ROOT / "test" / "fixtures" / "depletion" / "slices_run_data.json").read_text())
+
+
+class RealTwoSliceRun(unittest.TestCase):
+    """The numbers of one real run of the pin cut into two burnable slices (test/manual_depletion_slices.py), through build."""
+
+    def test_each_slice_has_its_power_burnup_and_a_passing_inventory_check(self):
+        rec = build(SLICES)
+        a, b = rec["regions"]
+        self.assertEqual((a["name"], b["name"]), ("UO2 3.5%", "UO2 5%"))
+        for step in range(2):
+            self.assertAlmostEqual(a["power_w"][step] + b["power_w"][step], SLICES["source_rates_w"][step], places=9)
+        self.assertGreater(b["power_w"][0] / b["heavy_metal_mass_kg"], a["power_w"][0] / a["heavy_metal_mass_kg"], "the richer slice takes more power per gram")
+        for name in (a["name"], b["name"]):
+            check = rec["provenance"]["checks"][name]["inventory"]
+            self.assertTrue(check["ok"], check)
+            self.assertAlmostEqual(check["ratio"], 1.0, delta=0.02)
+        self.assertEqual(rec["provenance"]["notes"], [])
+        depletion_record.validate(rec)
+
+    def test_a_split_that_ignored_the_tally_would_fail_the_inventory_check(self):
+        data = copy.deepcopy(SLICES)
+        for reg in data["regions"]:
+            reg["power_fraction"] = [0.5, 0.5]
+        checks = build(data)["provenance"]["checks"]
+        self.assertFalse(all(c["inventory"]["ok"] for c in checks.values()), "a 50/50 split is the wrong power for at least one slice")
+
+    def test_the_committed_record_is_what_build_gives_today(self):
+        rec = json.loads((ROOT / "test" / "fixtures" / "depletion" / "slices_record.json").read_text())
+        data = dict(copy.deepcopy(SLICES), steps_planned=2, provenance=rec["provenance"] and {k: rec["provenance"][k] for k in ("run", "integrator", "chain_level", "power_density_w_per_g", "particles", "batches", "seed")})
+        self.assertEqual(build(data)["id"], rec["id"])
+
+
 class Arithmetic(unittest.TestCase):
     def test_the_record_has_durations_power_burnup_k_and_isotopics(self):
         rec = build(synthetic())
@@ -80,13 +261,31 @@ class Arithmetic(unittest.TestCase):
 
 
 class Refusals(unittest.TestCase):
-    def test_two_burnable_regions_are_refused_and_the_message_says_why(self):
-        data = synthetic()
-        data["regions"].append(dict(data["regions"][0], name="fuel 2"))
+    def test_shares_of_the_power_that_do_not_add_up_to_the_source_rate_are_refused(self):
+        data = two_regions()
+        data["regions"][1]["power_fraction"] = [0.8, 0.8]
         with self.assertRaises(WriterError) as ctx:
             build(data)
-        self.assertIn("2 burnable materials", str(ctx.exception))
-        self.assertIn("power of each", str(ctx.exception))
+        self.assertIn("add up", str(ctx.exception))
+
+    def test_several_regions_without_their_shares_are_refused(self):
+        data = synthetic()
+        data["regions"].append(dict(data["regions"][0], name="fuel 2"))
+        with self.assertRaises(WriterError):
+            build(data)
+
+    def test_two_regions_with_one_name_are_refused(self):
+        data = two_regions()
+        data["regions"][1]["name"] = "slice A"
+        with self.assertRaises(WriterError) as ctx:
+            build(data)
+        self.assertIn("share the name", str(ctx.exception))
+
+    def test_shares_that_do_not_cover_every_step_are_refused(self):
+        data = two_regions()
+        data["regions"][0]["power_fraction"] = [0.3]
+        with self.assertRaises(WriterError):
+            build(data)
 
     def test_no_region_a_wrong_number_of_time_points_and_times_that_do_not_increase(self):
         data = synthetic()

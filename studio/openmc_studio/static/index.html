@@ -2416,6 +2416,13 @@ function buildScript(probs, mark, opts = {}) {
     depLines.push('# Depletion: the burnable materials and the cells that hold them. OpenMC needs the volume of each material; prepare_depletion measures it',
       '# with the stochastic volume calculation. deplete.py, which Studio writes beside this file when a depletion run starts, calls it first.',
       `depletion_materials = [${groups.join(', ')}]`, '', 'def prepare_depletion(model):',
+      ...(groups.length > 1 ? ['    # OpenMC\'s depletion results keep no reaction rates, so the power of each burnable material is tallied here (kappa-fission per material, added before the volume calculation:',
+        '    # that calculation leaves a model.xml the transport run reads, so a tally added after it would be missing; Studio\'s depletion_writer reads',
+        '    # it from the transport statepoints and splits the run\'s source rate by it.',
+        '    t = openmc.Tally(name="Depletion power split (kappa-fission per burnable material)")',
+        '    t.filters = [openmc.MaterialFilter([m for m, _ in depletion_materials])]',
+        '    t.scores = ["kappa-fission"]',
+        '    model.tallies.append(t)'] : []),
       '    calcs = [openmc.VolumeCalculation([c], 200000, lo, hi) for _, cells in depletion_materials for c, lo, hi in cells]',
       '    model.settings.volume_calculations = calcs',
       '    model.calculate_volumes(output=False)',
@@ -5564,9 +5571,16 @@ function recordCheckLog(rid, r) {
 const DEP_TRACK = [['U235', '#e8a87c'], ['U236', '#a99bd8'], ['Pu239', '#85dcba'], ['Pu241', '#d98c8c'], ['Xe135', '#7fb7e6'], ['Sm149', '#e6d17f']];
 const DEP_HEAVY = /^(Th|Pa|U|Np|Pu|Am|Cm)\d/;
 const depHeavyStart = iso => Object.keys(iso).filter(n => DEP_HEAVY.test(n)).reduce((a, n) => a + iso[n][0], 0);
-const depBurnups = rec => [0, ...rec.regions[0].burnup_mwd_per_tu];
+const depRegionBurnups = reg => [0, ...reg.burnup_mwd_per_tu];
+// One region: its own burnup. Several: the average over their heavy-metal mass (total energy over total heavy metal).
+const depBurnups = rec => {
+  if (rec.regions.length === 1) return depRegionBurnups(rec.regions[0]);
+  const mass = rec.regions.reduce((a, r) => a + r.heavy_metal_mass_kg, 0);
+  return depRegionBurnups(rec.regions[0]).map((_, i) => rec.regions.reduce((a, r) => a + r.heavy_metal_mass_kg * depRegionBurnups(r)[i], 0) / mass);
+};
 const depDays = rec => rec.time_steps_days.reduce((a, d) => (a.push(a[a.length - 1] + d), a), [0]);
 function depKChart(rec) {
+  const many = rec.regions.length > 1;
   const bu = depBurnups(rec), k = rec.k;
   if (!k || k.length !== bu.length) return '';
   const w = 540, h = 170, padL = 50, padR = 20, padT = 14, padB = 30, pw = w - padL - padR, ph = h - padT - padB;
@@ -5578,17 +5592,18 @@ function depKChart(rec) {
   const dots = k.map((p, i) => `<circle cx="${x(bu[i]).toFixed(1)}" cy="${y(p[0]).toFixed(1)}" r="2.6" fill="#e8a87c"/>`).join('');
   const yt = [lo, (lo + hi) / 2, hi].map(v => `<text x="${padL - 6}" y="${(y(v) + 3).toFixed(1)}" fill="#8a9099" font-size="10" text-anchor="end" font-family="sans-serif">${v.toFixed(3)}</text>`).join('');
   const xt = [0, bmax / 2, bmax].map(b => `<text x="${x(b).toFixed(1)}" y="${h - 10}" fill="#8a9099" font-size="10" text-anchor="middle" font-family="sans-serif">${+b.toPrecision(3)}</text>`).join('');
-  return `<h5 style="margin:12px 0 4px;font-size:12px;color:#85dcba">k-eff against burnup (MWd/tU), 1 sigma bars</h5>` +
+  return `<h5 style="margin:12px 0 4px;font-size:12px;color:#85dcba">k-eff against ${many ? 'average ' : ''}burnup (MWd/tU), 1 sigma bars</h5>` +
     `<svg class="dep-k" width="100%" height="${h}" viewBox="0 0 ${w} ${h}" style="background:rgba(0,0,0,0.25);border-radius:4px;display:block">` +
     `<line x1="${padL}" y1="${padT + ph}" x2="${padL + pw}" y2="${padT + ph}" stroke="#555"/><line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + ph}" stroke="#555"/>` +
     yt + xt + bars + `<polyline points="${pts}" fill="none" stroke="#e8a87c" stroke-width="1.6"/>` + dots + '</svg>';
 }
-function depInventoryChart(rec) {
-  const iso = (rec.isotopics || {})[rec.regions[0].name];
+function depInventoryCharts(rec) { return rec.regions.map(reg => depInventoryChart(rec, reg)).join(''); }
+function depInventoryChart(rec, reg) {
+  const iso = (rec.isotopics || {})[reg.name];
   if (!iso) return '';
   const start = depHeavyStart(iso);
   if (!(start > 0)) return '';
-  const bu = depBurnups(rec), series = DEP_TRACK.filter(([n]) => iso[n]).map(([n, c]) => ({n, c, v: iso[n].map(a => a / start)}));
+  const bu = depRegionBurnups(reg), series = DEP_TRACK.filter(([n]) => iso[n]).map(([n, c]) => ({n, c, v: iso[n].map(a => a / start)}));
   const pos = series.flatMap(s => s.v.filter(v => v > 0));
   if (!pos.length || bu.length < 2) return '';
   const w = 540, h = 190, padL = 50, padR = 70, padT = 14, padB = 30, pw = w - padL - padR, ph = h - padT - padB;
@@ -5604,7 +5619,7 @@ function depInventoryChart(rec) {
   const yt = [];
   for (let e = lo; e <= hi; e++) yt.push(`<text x="${padL - 6}" y="${(y(10 ** e) + 3).toFixed(1)}" fill="#8a9099" font-size="10" text-anchor="end" font-family="sans-serif">1e${e}</text>`);
   const xt = [0, bmax / 2, bmax].map(b => `<text x="${x(b).toFixed(1)}" y="${h - 10}" fill="#8a9099" font-size="10" text-anchor="middle" font-family="sans-serif">${+b.toPrecision(3)}</text>`).join('');
-  return `<h5 style="margin:12px 0 4px;font-size:12px;color:#c38d9e">Inventory against burnup: atoms per starting heavy-metal atom (log scale)</h5>` +
+  return `<h5 style="margin:12px 0 4px;font-size:12px;color:#c38d9e">Inventory against burnup${rec.regions.length > 1 ? ' in ' + esc(reg.name) : ''}: atoms per starting heavy-metal atom (log scale)</h5>` +
     `<svg class="dep-inv" width="100%" height="${h}" viewBox="0 0 ${w} ${h}" style="background:rgba(0,0,0,0.25);border-radius:4px;display:block">` +
     `<line x1="${padL}" y1="${padT + ph}" x2="${padL + pw}" y2="${padT + ph}" stroke="#555"/><line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + ph}" stroke="#555"/>` +
     yt.join('') + xt + lines + '</svg>';
@@ -5612,19 +5627,22 @@ function depInventoryChart(rec) {
 function renderDepletion(D) {
   if (!D) return '';
   if (!D.record) return `<h4>Depletion</h4><p class="envline" id="depNote">${esc(D.note || 'No depletion record.')}</p>`;
-  const rec = D.record, reg = rec.regions[0], prov = rec.provenance || {}, bu = depBurnups(rec), days = depDays(rec);
+  const rec = D.record, reg = rec.regions[0], many = rec.regions.length > 1, prov = rec.provenance || {}, bu = depBurnups(rec), days = depDays(rec);
   const ok = Object.values(prov.checks || {}).flatMap(r => Object.values(r)).every(c => c.ok);
   const fix = v => v < 10 ? v.toFixed(3) : v < 1000 ? v.toFixed(1) : v.toFixed(0);
-  const rows = bu.map((b, i) => `<tr><td class="num">${i}</td><td class="num">${+days[i].toPrecision(6)}</td><td class="num">${fix(b)}</td>` +
+  const rows = bu.map((b, i) => `<tr><td class="num">${i}</td><td class="num">${+days[i].toPrecision(6)}</td>` +
+    (many ? rec.regions.map(r => `<td class="num">${fix(depRegionBurnups(r)[i])}</td>`).join('') : '') + `<td class="num">${fix(b)}</td>` +
     `<td class="num">${rec.k ? `${rec.k[i][0].toFixed(5)} ± ${rec.k[i][1].toFixed(5)}` : '—'}</td></tr>`).join('');
-  return `<h4>Depletion</h4><p class="envline">${esc(reg.name)} · ${(reg.heavy_metal_mass_kg * 1000).toFixed(3)} g heavy metal · ` +
+  const head = many ? `${rec.regions.length} burnable regions (${rec.regions.map(r => esc(r.name)).join(', ')}) · ${(rec.regions.reduce((a, r) => a + r.heavy_metal_mass_kg, 0) * 1000).toFixed(3)} g heavy metal`
+    : `${esc(reg.name)} · ${(reg.heavy_metal_mass_kg * 1000).toFixed(3)} g heavy metal`;
+  return `<h4>Depletion</h4><p class="envline">${head} · ` +
     `${rec.time_steps_days.length} step${rec.time_steps_days.length === 1 ? '' : 's'}${prov.integrator ? ' · ' + esc(prov.integrator.replace('Integrator', '')) : ''}` +
     `${prov.chain_level ? ' · chain level ' + esc(prov.chain_level) : ''}${prov.power_density_w_per_g ? ' · ' + esc(prov.power_density_w_per_g) + ' W/g' : ''}` +
     `${D.wall_s ? ' · ' + (D.wall_s < 120 ? D.wall_s + ' s' : (D.wall_s / 60).toFixed(1) + ' min') : ''} · record <code>${esc(String(rec.id || '').slice(0, 12))}</code></p>` +
     (prov.complete === false ? `<p class="envline"><span class="sev warn">incomplete</span> ${esc(prov.steps_done)} of ${esc(prov.steps_planned)} steps finished before the run stopped. The record holds those steps.</p>` : '') +
     (ok ? '' : `<p class="envline"><span class="sev warn">check</span> ${esc((prov.notes || []).join('; ') || 'a bookkeeping check is outside its tolerance')}</p>`) +
-    `<div style="overflow-x:auto"><table class="rtable" id="depTable"><thead><tr><th class="num">Step</th><th class="num">Day</th><th class="num">Burnup, MWd/tU</th><th class="num">k-eff (1 sigma)</th></tr></thead><tbody>${rows}</tbody></table></div>` +
-    depKChart(rec) + depInventoryChart(rec) +
+    `<div style="overflow-x:auto"><table class="rtable" id="depTable"><thead><tr><th class="num">Step</th><th class="num">Day</th>${many ? rec.regions.map(r => `<th class="num">${esc(r.name)}, MWd/tU</th>`).join('') + '<th class="num">Average, MWd/tU</th>' : '<th class="num">Burnup, MWd/tU</th>'}<th class="num">k-eff (1 sigma)</th></tr></thead><tbody>${rows}</tbody></table></div>` +
+    depKChart(rec) + depInventoryCharts(rec) +
     `<p class="envline"><button class="tbtn" type="button" id="depExportBtn" title="The hand-off record FEED and RAFT read: burnup per step, power history, k and isotopics, heavy-metal basis">Save depletion.json…</button> Burnup is per tonne of initial heavy metal; a fuel-performance tool converts to its own basis.</p>`;
 }
 // Transport solves one depletion run needs, from the integrator's documentation: one per step (predictor), two (the corrector family),

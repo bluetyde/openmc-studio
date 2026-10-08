@@ -169,6 +169,31 @@ test('results with a depletion payload put the section after the checks and befo
   assert.ok(h.indexOf('<h4>Depletion</h4>') < h.indexOf('Eigenvalue Convergence'));
 });
 
+test('the inventory is drawn per starting heavy-metal atom: thorium to curium count, fission products do not', () => {
+  assert.equal(run(`depHeavyStart({Th232: [5], Pa233: [1], U235: [1], U238: [2], Np237: [4], Pu239: [8], Am241: [16], Cm244: [32], Xe135: [100], Sm149: [100]})`), 69);
+});
+
+test('every point of the inventory chart is inside the plot, and a record with no heavy metal draws no inventory', () => {
+  const inv = render(dep()).split('class="dep-inv"')[1].split('</svg>')[0];
+  const cy = [...inv.matchAll(/<circle cx="[\d.]+" cy="([\d.]+)"/g)].map(m => +m[1]);
+  assert.ok(cy.length > 5);
+  assert.ok(cy.every(v => v >= 14 && v <= 160), 'inside the axes: ' + cy.join(' '));
+  const none = JSON.parse(JSON.stringify(REC));
+  none.isotopics = {'UO2 3.5%': {Xe135: [0, 1e15, 2e15]}};
+  const h = render(dep(none));
+  assert.doesNotMatch(h, /dep-inv/);
+  assert.doesNotMatch(h, /NaN/);
+});
+
+test('the Depletion settings carry the estimate as a note, only when depletion is on', () => {
+  const notes = on => JSON.parse(run(`JSON.stringify((() => { S = JSON.parse(${JSON.stringify(JSON.stringify(pin({depletion: on})))});
+    return specFor('settings', S.settings).find(s => s.title === 'Depletion').fields.filter(f => f.type === 'note').map(f => f.html); })())`));
+  assert.equal(notes(false).length, 0);
+  const on = notes(true);
+  assert.equal(on.length, 1);
+  assert.match(on[0], /^About 3 transport solves/);
+});
+
 // ── the estimate before a run ──
 const withStore = (v, fn) => { sb.localStorage = {getItem: () => v === null ? null : JSON.stringify(v), setItem: (k, x) => { sb.__stored = JSON.parse(x); }}; try { return fn(); } finally { delete sb.localStorage; } };
 const estimate = (o = {}) => { sb.__st = JSON.stringify(o); sb.__pin = JSON.stringify(pin()); return run(`(() => { S = JSON.parse(__pin); Object.assign(S.settings, JSON.parse(__st)); return depEstimateHtml(); })()`); };

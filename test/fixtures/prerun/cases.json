@@ -22178,7 +22178,7 @@
   ]
  },
  {
-  "name": "burnable thorium and uranium fuel",
+  "name": "burnable thorium fuel beside a uranium part",
   "project": {
    "materials": [
     {
@@ -22239,9 +22239,18 @@
      "color": "#aaa",
      "density": 10.4,
      "frac": "ao",
-     "comps": "Th:0.9, U235:0.1, O:2",
+     "comps": "Th:1, O:2",
      "sab": "",
      "burnable": true
+    },
+    {
+     "id": "m8",
+     "name": "U metal",
+     "color": "#aaa",
+     "density": 18.9,
+     "frac": "ao",
+     "comps": "U235:1",
+     "sab": ""
     }
    ],
    "parts": [
@@ -22376,6 +22385,28 @@
      "ry": 0,
      "rz": 0,
      "material": "m9"
+    },
+    {
+     "id": "p8",
+     "name": "U part",
+     "shape": "sphere",
+     "x": 10,
+     "y": 0,
+     "z": 0,
+     "r": 2,
+     "r2": 5,
+     "h": 20,
+     "a": 15,
+     "b": 10,
+     "c": 8,
+     "axis": "z",
+     "sx": 20,
+     "sy": 20,
+     "sz": 20,
+     "rx": 0,
+     "ry": 0,
+     "rz": 0,
+     "material": "m8"
     }
    ],
    "groups": [],

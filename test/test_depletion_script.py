@@ -372,5 +372,72 @@ class TestAddedByTheDispatcher(unittest.TestCase):
         self.assertIn("power=1000000.0,", text)
 
 
+class TestOptionsAddedForStudio(unittest.TestCase):
+    """The options Studio's depletion run needs: power per gram of heavy metal, a reduced chain, and the model's prepare hook."""
+
+    SETTINGS = {
+        "model_path": "/path/to/model.py",
+        "chain_file": "/path/to/chain.xml",
+        "integrator": "CECMIntegrator",
+        "time_steps_days": [1, 4],
+        "power_density": 38,
+        "reduce_chain_level": 6,
+        "prepare": True,
+    }
+
+    def test_stub_run_calls_prepare_first_and_passes_the_options(self):
+        import builtins
+        events = []
+        builtins._depl_events = events
+        try:
+            stub_openmc = types.ModuleType("openmc")
+            stub_deplete = types.ModuleType("openmc.deplete")
+            stub_openmc.deplete = stub_deplete
+            operator_inst = MagicMock(name="operator_instance")
+            operator_cls = MagicMock(name="CoupledOperator", side_effect=lambda *a, **k: events.append("operator") or operator_inst)
+            integrator_cls = MagicMock(name="CECMIntegrator")
+            stub_deplete.CoupledOperator = operator_cls
+            for name in INTEGRATORS:
+                setattr(stub_deplete, name, integrator_cls if name == "CECMIntegrator" else MagicMock(name=name))
+            with tempfile.TemporaryDirectory(prefix="studio-depl-") as tmp:
+                model_file = Path(tmp) / "model.py"
+                model_file.write_text("import builtins\nmodel = 'MODEL'\n"
+                                      "def prepare_depletion(m):\n    builtins._depl_events.append('prepare:' + m)\n", encoding="utf-8")
+                script_file = Path(tmp) / "run.py"
+                script_file.write_text(build_script(dict(self.SETTINGS, model_path=str(model_file))), encoding="utf-8")
+                with patch.dict(sys.modules, {"openmc": stub_openmc, "openmc.deplete": stub_deplete}):
+                    runpy.run_path(str(script_file))
+        finally:
+            del builtins._depl_events
+        self.assertEqual(events, ["prepare:MODEL", "operator"], "the volumes are set before the operator reads the model")
+        operator_cls.assert_called_once_with("MODEL", chain_file="/path/to/chain.xml", reduce_chain_level=6)
+        integrator_cls.assert_called_once_with(operator_inst, [1.0, 4.0], power_density=38.0, timestep_units="d")
+
+    def test_without_the_options_the_script_has_no_prepare_and_no_reduction(self):
+        text = build_script(dict(VALID_SETTINGS))
+        self.assertNotIn("prepare_depletion", text)
+        self.assertNotIn("reduce_chain_level", text)
+        self.assertIn("power=1000.0", text)
+        self.assertNotIn("power_density", text)
+
+    def test_both_powers_is_an_error_and_neither_names_both(self):
+        with self.assertRaises(ScriptError) as ctx:
+            build_script(dict(self.SETTINGS, power_w=10.0))
+        self.assertIn("not both", str(ctx.exception))
+        settings = dict(self.SETTINGS)
+        del settings["power_density"]
+        with self.assertRaises(ScriptError) as ctx:
+            build_script(settings)
+        self.assertIn("power_density", str(ctx.exception))
+
+    def test_bad_option_values_are_refused(self):
+        for key, bad in (("power_density", 0), ("power_density", -1.0), ("power_density", True), ("power_density", float("nan")),
+                         ("reduce_chain_level", 0), ("reduce_chain_level", True), ("reduce_chain_level", 2.5), ("reduce_chain_level", "6"),
+                         ("prepare", "yes"), ("prepare", 1)):
+            with self.subTest(key=key, bad=bad):
+                with self.assertRaises(ScriptError):
+                    build_script(dict(self.SETTINGS, **{key: bad}))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

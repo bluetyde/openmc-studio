@@ -17,8 +17,10 @@ the package, and nothing else.
 ## Open items carried over
 
 - **Next up (2026-10-07), in order:**
-  1. **Prove the MCNP export in real MCNP**: run the user's MCNP bundle (lattices, lattice tallies, surface
-     currents, dose) and compare with OpenMC; waiting on the user's runs. Nothing so far has been checked against an actual MCNP run.
+  1. ~~Prove the MCNP export in real MCNP~~ **Shelved permanently (2026-10-08).** MCNP is export-controlled software and its output files can't be shared with this
+     project, so no deck will be compared against a real MCNP run here. Exported decks are checked by the exporter's validator (MontePy parse, cards read back against
+     the OpenMC model, sampled geometry comparison) and by comparison with OpenMC, never against MCNP output. Every "prove it in real MCNP" line below stays unproven by design;
+     the people who run MCNP themselves can check an export on their own machine.
   2. **Small wins from the 2026-10-07 investigation** (private notes kept outside the repo, in the user's plans folder),
      each a day or less: a **figure-of-merit column** on tally tables (1/(R^2 T)); **result-page checks** (section 0 below); a **re-run command**
      over `provenance.json`; a **model-stages guide**; a **Godiva regression case** from `mit-crpg/benchmarks`.

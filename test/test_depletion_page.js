@@ -18,12 +18,15 @@ vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], sb);
 const run = s => vm.runInContext(s, sb);
 
 // the pin cell of test/generate_depletion_pin.cjs, with depletion on or off and the fuel flagged or not
-const pin = ({depletion = true, burnable = true, steps = '1, 4'} = {}) => JSON.parse(run(`JSON.stringify((() => {
+const pin = ({depletion = true, burnable = true, steps = '1, 4', slices = false} = {}) => JSON.parse(run(`JSON.stringify((() => {
   const p = sampleModel();
   const mat = (id, name, density, comps, sab, extra) => Object.assign({id, name, color:'#999999', density, frac:'ao', comps, sab:sab || ''}, extra || {});
   p.materials = [mat('m1', 'UO2 3.5%', 10.4, 'U235:0.035, U238:0.965, O16:2', '', ${burnable ? '{burnable:true}' : '{}'}), mat('m2', 'Zircaloy', 6.55, 'Zr:1'), mat('m3', 'Water', 0.74, 'H:2, O:1', 'c_H_in_H2O')];
   const cyl = (id, name, r, material) => Object.assign(newPart(id, name, 'cylinder'), {x:0, y:0, z:0, r, h:1.26, axis:'z', material});
   p.parts = [cyl('p1', 'Fuel', 0.4096, 'm1'), cyl('p2', 'Cladding', 0.475, 'm2')];
+  ${slices ? `p.materials.push(mat('m4', 'UO2 5%', 10.4, 'U235:0.05, U238:0.95, O16:2', '', {burnable:true}));
+  p.parts[0].h = 0.63; p.parts[0].z = -0.315;
+  p.parts.push(Object.assign(cyl('p3', 'Fuel upper', 0.4096, 'm4'), {h: 0.63, z: 0.315}));` : ''}
   p.groups = []; p.tallies = [];
   p.sources = [Object.assign({}, p.sources[0], {id:'s1', space:'box', x0:-0.4, x1:0.4, y0:-0.4, y1:0.4, z0:-0.6, z1:0.6, energy:'watt'})];
   Object.assign(p.settings, {runMode:'eigenvalue', particles:2000, batches:15, inactive:5, maxTracks:0, worldShape:'box', worldR:0.63, worldBC:'reflective', worldFill:'m3',
@@ -44,6 +47,19 @@ test('a burnable fuel is marked depletable and its cell and box are listed for t
   assert.match(r.text, /^depletion_materials = \[\(mat_uo2_3_5, \[\(cell_fuel, \(-0\.4096\d*, -0\.4096\d*, -0\.63\), \(0\.4096\d*, 0\.4096\d*, 0\.63\)\)\]\)\]$/m);
   assert.match(r.text, /^def prepare_depletion\(model\):$/m);
   assert.match(r.text, /mat\.volume = sum\(vc\.volumes\[c\.id\]\.nominal_value for \(c, _, _\), vc in zip\(cells, results\)\)/, 'cells first, so the iterator is not over-read');
+});
+
+test('two burnable materials get a kappa-fission tally of their own, one does not', () => {
+  const two = scriptFor(pin({slices: true}));
+  assert.deepEqual(two.errors, []);
+  assert.equal((two.text.match(/\.depletable = True/g) || []).length, 2);
+  assert.match(two.text, /^depletion_materials = \[\(mat_uo2_3_5, \[.*\]\), \(mat_uo2_5, \[.*\]\)\]$/m);
+  assert.match(two.text, /t = openmc\.Tally\(name="Depletion power split \(kappa-fission per burnable material\)"\)/);
+  assert.match(two.text, /t\.filters = \[openmc\.MaterialFilter\(\[m for m, _ in depletion_materials\]\)\]/);
+  assert.match(two.text, /t\.scores = \["kappa-fission"\]/);
+  assert.match(two.text, /model\.tallies\.append\(t\)/);
+  assert.ok(two.text.indexOf('model.tallies.append(t)') < two.text.indexOf('model.calculate_volumes'), 'before the volume calculation, whose model.xml the transport run reads');
+  assert.doesNotMatch(scriptFor(pin()).text, /kappa-fission/, 'one burnable material: the whole source rate is its power');
 });
 
 test('with depletion off nothing about it is written, even if a material is flagged', () => {
@@ -119,6 +135,50 @@ test('both charts are drawn: k with its bars, and the inventory with the main nu
   for (const n of ['U235', 'U236', 'Pu239', 'Xe135', 'Sm149']) assert.match(inv, new RegExp(`>${n}</text>`), n + ' is labelled');
   assert.doesNotMatch(inv, />Pu241</, 'a nuclide the record does not hold is not drawn');
   assert.match(inv, />1e-2</, 'a log axis');
+});
+
+const SLICES = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'depletion', 'slices_record.json'), 'utf8'));
+test('the record of a real two-slice run is drawn: both regions, both inventories, the average', () => {
+  const h = render(dep(SLICES));
+  assert.match(h, /2 burnable regions \(UO2 3\.5%, UO2 5%\) · 6\.0\d+ g heavy metal/);
+  assert.match(h, /UO2 3\.5%, MWd\/tU<\/th><th class="num">UO2 5%, MWd\/tU<\/th><th class="num">Average, MWd\/tU/);
+  assert.equal((h.match(/class="dep-inv"/g) || []).length, 2);
+  const last = [...h.matchAll(/<tr><td class="num">2<\/td><td class="num">5<\/td><td class="num">([\d.]+)<\/td><td class="num">([\d.]+)<\/td><td class="num">([\d.]+)<\/td>/g)][0];
+  assert.ok(last, 'the last row');
+  const [lo, hi, avg] = last.slice(1).map(Number);
+  assert.ok(lo < avg && avg < hi, `the average ${avg} lies between ${lo} and ${hi}`);
+});
+
+// a record of two burnable regions: slice A at 30 % of the power, slice B at 70 %
+const TWO = (() => {
+  const r = JSON.parse(JSON.stringify(REC));
+  const a = r.regions[0], b = JSON.parse(JSON.stringify(a));
+  a.name = 'slice A'; b.name = 'slice B'; b.heavy_metal_mass_kg = a.heavy_metal_mass_kg * 3; b.burnup_mwd_per_tu = a.burnup_mwd_per_tu.map(x => x / 3);
+  r.regions = [a, b];
+  const iso = r.isotopics[REC.regions[0].name];
+  r.isotopics = {'slice A': iso, 'slice B': JSON.parse(JSON.stringify(iso))};
+  return r;
+})();
+
+test('several regions: a burnup column for each, the mass-weighted average, and the k chart against the average', () => {
+  const h = render(dep(TWO));
+  assert.match(h, /<th class="num">slice A, MWd\/tU<\/th><th class="num">slice B, MWd\/tU<\/th><th class="num">Average, MWd\/tU<\/th>/);
+  const rows = [...h.matchAll(/<tr><td class="num">(\d)<\/td><td class="num">[\d.]+<\/td><td class="num">([\d.]+)<\/td><td class="num">([\d.]+)<\/td><td class="num">([\d.]+)<\/td>/g)].map(m => m.slice(1).map(Number));
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows[2].slice(1).map(x => +x.toFixed(1)), [190, 63.3, 95], 'A at 190, B at a third of that, the average weighted 1 : 3');
+  assert.match(h, /k-eff against average burnup/);
+  assert.match(h, /2 burnable regions \(slice A, slice B\) · /);
+});
+
+test('several regions: one inventory chart for each, named; one region keeps the plain wording', () => {
+  const h = render(dep(TWO));
+  assert.equal((h.match(/class="dep-inv"/g) || []).length, 2);
+  assert.match(h, /Inventory against burnup in slice A:/);
+  assert.match(h, /Inventory against burnup in slice B:/);
+  const one = render(dep());
+  assert.doesNotMatch(one, /Average, MWd/);
+  assert.doesNotMatch(one, /Inventory against burnup in/);
+  assert.match(one, /k-eff against burnup \(MWd\/tU\)/);
 });
 
 test('an incomplete run is said to be incomplete, a complete one is not', () => {

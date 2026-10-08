@@ -37,6 +37,31 @@ requires.
 - **Checks before and after a run:** the same refusals run in the page and on the server before a run starts; Results lists checks on the run (particles per
   batch, lost particles, the figure of merit of each tally), can check a run's record against today's environment, and saves a one-page run report.
 
+## What it looks like
+
+These are screenshots of the running app, made by [test/make_screenshots.cjs](test/make_screenshots.cjs): each model is run in OpenMC and the page photographed
+when the run has finished.
+
+![The editor: the shielding demo model with its parts, sources and tallies in the Explorer, a slice through it in the viewport, and the run settings](docs/images/editor.png)
+
+*The editor with the demo model: parts and materials on the left, a slice in the middle, properties on the right.*
+
+![The results of a fixed-source run: a flux map over the slice and neutron tracks on the viewport, with the run's results below](docs/images/results-flux.png)
+
+*A finished fixed-source run: a flux map and neutron tracks on the viewport, the run and its checks under Results.*
+
+![A depletion run of a UO2 pin cell: the table of burnup and k-eff, the k-eff chart and the inventory chart](docs/images/depletion.png)
+
+*Depletion of a single UO2 pin cell (two steps): burnup in MWd/tU, k-eff against burnup and the inventory of the main nuclides.*
+
+![A pin power map of a 9 by 9 pin array: relative power per pin, the highest pin and the top five](docs/images/pin-power.png)
+
+*Pin power of a 9 × 9 array of UO2 pins in water with vacuum all round: the pins next to the water run hottest. The numbers carry their statistical error; the panel says how much noise alone could add to the peak.*
+
+![The material editor with the From engineering inputs section filled in for UO2](docs/images/material-helper.png)
+
+*Material from engineering inputs: UO2 at 3.5 wt % enrichment and 95 % of an entered theoretical density.*
+
 **Setting up for the first time? See [INSTRUCTIONS.md](INSTRUCTIONS.md)**: conda environment, nuclear data
 download, and how to start the app.
 

@@ -785,7 +785,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(409, str(exc))
         if path == "/api/runs":
             return self._send(200, {"runs": self.studio.list_runs()})
-        m = re.match(r"^/api/runs/([^/]+)/(stream|results|project|script|record-check|report|depletion-record)$", path)
+        m = re.match(r"^/api/runs/([^/]+)/(stream|results|project|script|record-check|report|depletion-record|pin-power)$", path)
         if not m:
             return self._error(404, "Not found")
         rid, what = m.groups()
@@ -803,6 +803,25 @@ class Handler(BaseHTTPRequestHandler):
             if not target.is_file():
                 return self._error(404, "This run has no depletion.json")
             return self._send(200, target.read_bytes(), "application/json; charset=utf-8")
+        if what == "pin-power":
+            from . import pin_power_view, results
+            try:
+                data = results.load(run_dir)
+                name, score = (q.get("tally") or [None])[0], (q.get("score") or [None])[0]
+                try:
+                    layer = int((q.get("layer") or ["0"])[0])
+                except ValueError:
+                    return self._error(400, "layer must be a whole number")
+                tally = next((t for t in data.get("tallies") or [] if t.get("kind") == "mesh" and (name is None or t.get("name") == name)), None)
+                if tally is None:
+                    return self._error(404, "This run has no such mesh tally")
+                out = pin_power_view.analyse(tally, score, layer)
+                out["csv"] = pin_power_view.csv_text(out)
+                return self._send(200, out)
+            except pin_power_view.PinPowerError as e:
+                return self._error(422, str(e))
+            except Exception as e:
+                return self._error(500, f"Couldn't make the pin map: {e}")
         if what == "record-check":
             from . import run_checks
             try:

@@ -58,7 +58,7 @@ class Run:
             self.cond.notify_all()
         (self.path / "meta.json").write_text(json.dumps(self.meta(), indent=2))
         try:  # the outcome, and hashes of what the run wrote, beside what produced it
-            outputs = sorted(f.name for f in self.path.iterdir() if f.suffix == ".h5" or f.name in ("dose.json", "tallies.out"))
+            outputs = sorted(f.name for f in self.path.iterdir() if f.suffix == ".h5" or f.name in ("dose.json", "tallies.out", "depletion.json"))
             provenance.update(self.path, outcome={"status": self.status, "returncode": code,
                                                   "seconds": round(self.ended - self.started, 1)},
                               outputs={f: provenance.sha256(self.path / f) for f in outputs})
@@ -149,7 +149,25 @@ class Studio:
                 log.write(line + "\n")
                 log.flush()
                 run.add(line)
-        run.finish(run.proc.wait())
+        code = run.proc.wait()
+        if code == 0 and (run.path / "deplete.py").is_file():
+            self._depletion_record(run)
+        run.finish(code)
+
+    def _depletion_record(self, run):
+        """A depletion run finished: write depletion.json beside its results, or say why not. The run's status is not changed by this."""
+        from . import depletion_writer
+        try:
+            rec = depletion_writer.from_run(run.path)
+        except Exception as exc:  # noqa: BLE001
+            msg = f"No depletion record: {exc}"
+            (run.path / "depletion-record.txt").write_text(msg + chr(10), encoding="utf-8")
+            provenance.update(run.path, depletion_record={"status": "not written", "reason": str(exc)})
+            run.add(msg)
+            return
+        checks = [c["ok"] for reg in rec["provenance"].get("checks", {}).values() for c in reg.values()]
+        provenance.update(run.path, depletion_record={"status": "written", "file": "depletion.json", "id": rec["id"], "checks_ok": all(checks)})
+        run.add(f"Depletion record written: depletion.json, id {rec['id'][:12]}" + ("" if all(checks) else " (a check is outside its tolerance: see provenance.json)"))
 
     def export_mcnp(self, script, project, name):
         """Export button: validated deck into a new ~/OpenMC-runs/mcnp-exports/<time>-<name>/ folder."""

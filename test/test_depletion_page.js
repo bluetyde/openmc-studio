@@ -107,7 +107,8 @@ test('the table lists every point with its day, burnup and k', () => {
 
 test('the header names the region, heavy-metal mass, steps, integrator, chain level, power and the record id', () => {
   const h = render(dep());
-  assert.match(h, /UO2 3\.5% · 6\.090 g heavy metal · 2 steps · Predictor · chain level 3 · 38 W\/g · 95\.5 s · record <code>02986d0aba52<\/code>/);
+  assert.match(h, /UO2 3\.5% · 6\.09\d g heavy metal · 2 steps · Predictor · chain level 3 · 38 W\/g · 95\.5 s · record <code>/);
+  assert.ok(h.includes(`<code>${REC.id.slice(0, 12)}</code>`), 'the id the record carries');
 });
 
 test('both charts are drawn: k with its bars, and the inventory with the main nuclides', () => {

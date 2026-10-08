@@ -203,6 +203,20 @@ class ForThePage(unittest.TestCase):
         self.assertIn("can't be read", out["note"])
 
 
+class Fixtures(unittest.TestCase):
+    def test_the_record_fixture_the_page_tests_use_is_what_build_gives_for_the_run_fixture(self):
+        data = dict(copy.deepcopy(PIN), steps_planned=2, provenance={"run": "20261008-000000-depletion-pin", "integrator": "PredictorIntegrator", "chain_level": 3,
+                    "power_density_w_per_g": 38, "particles": 2000, "batches": 15, "seed": 12345})
+        self.assertEqual(build(data), json.loads((ROOT / "test" / "fixtures" / "depletion" / "pin_record.json").read_text()),
+                         "regenerate both with test/regen_depletion_fixtures.py")
+
+    def test_the_fission_products_the_page_charts_are_in_the_record(self):
+        iso = json.loads((ROOT / "test" / "fixtures" / "depletion" / "pin_record.json").read_text())["isotopics"]["UO2 3.5%"]
+        for nuc in ("U235", "Pu239", "Xe135", "Sm149"):
+            self.assertIn(nuc, iso)
+        self.assertGreater(iso["Xe135"][-1], 0)
+
+
 class NuclideNames(unittest.TestCase):
     def test_heavy_means_thorium_and_up(self):
         try:

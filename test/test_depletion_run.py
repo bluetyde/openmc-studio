@@ -195,6 +195,24 @@ class Http(unittest.TestCase):
         finally:
             depletion_run.script_text, depletion_writer.from_run = real_script, real_from_run
 
+    def test_the_record_is_served_byte_for_byte_and_a_run_without_one_is_404(self):
+        rid = "20261008-120000-record"
+        run_dir = self.tmp / "runs" / rid
+        run_dir.mkdir(parents=True)
+        fixture = (ROOT / "test" / "fixtures" / "depletion" / "pin_record.json").read_bytes()
+        (run_dir / "depletion.json").write_bytes(fixture)
+        conn = HTTPConnection("127.0.0.1", self.port, timeout=30)
+        conn.request("GET", f"/api/runs/{rid}/depletion-record", headers={"Host": f"127.0.0.1:{self.port}", "X-Studio-Token": TOKEN})
+        r = conn.getresponse()
+        self.assertEqual((r.status, r.read()), (200, fixture))
+        (run_dir / "depletion.json").unlink()
+        conn = HTTPConnection("127.0.0.1", self.port, timeout=30)
+        conn.request("GET", f"/api/runs/{rid}/depletion-record", headers={"Host": f"127.0.0.1:{self.port}", "X-Studio-Token": TOKEN})
+        self.assertEqual(conn.getresponse().status, 404)
+        conn = HTTPConnection("127.0.0.1", self.port, timeout=30)
+        conn.request("GET", f"/api/runs/{rid}/depletion-record", headers={"Host": f"127.0.0.1:{self.port}"})
+        self.assertEqual(conn.getresponse().status, 401, "the token is needed")
+
     def test_a_project_without_depletion_runs_model_py_as_before(self):
         status, body = self.call("POST", "/api/run", {"script": "print('model')\n", "project": project("baseline: the demo model"), "name": "plain"})
         self.assertEqual(status, 200, body)

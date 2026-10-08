@@ -17,10 +17,8 @@ the package, and nothing else.
 ## Open items carried over
 
 - **Next up (2026-10-07), in order:**
-  1. ~~Prove the MCNP export in real MCNP~~ **Shelved permanently (2026-10-08).** MCNP is export-controlled software and its output files can't be shared with this
-     project, so no deck will be compared against a real MCNP run here. Exported decks are checked by the exporter's validator (MontePy parse, cards read back against
-     the OpenMC model, sampled geometry comparison) and by comparison with OpenMC, never against MCNP output. Every "prove it in real MCNP" line below stays unproven by design;
-     the people who run MCNP themselves can check an export on their own machine.
+  1. **MCNP: not tracked here.** This project makes no statement about whether any exported deck has been run in MCNP. MCNP is export-controlled and its output is not shared here. Decks are checked by the exporter's validator (MontePy parse, cards read back against the OpenMC model, sampled geometry comparison) and compared with OpenMC. Check a deck yourself before relying on it.
+     A line below that says what could be checked in MCNP describes a check anyone with MCNP can make themselves; it is not planned work in this project.
   2. **Small wins from the 2026-10-07 investigation** (private notes kept outside the repo, in the user's plans folder),
      each a day or less: a **figure-of-merit column** on tally tables (1/(R^2 T)); **result-page checks** (section 0 below); a **re-run command**
      over `provenance.json`; a **model-stages guide**; a **Godiva regression case** from `mit-crpg/benchmarks`.
@@ -68,17 +66,17 @@ the package, and nothing else.
   - Rectangular lattices export as `LAT=1`/`FILL` and hexagonal ones as `LAT=2`/`FILL`, and both pass the
     geometry check. Tested: the lattice test deck, a deleted site, 3D and 2D arrays, an outer universe, hex arrays in both
     orientations and with two axial levels.
-  - Still open: prove it once in real MCNP. Plot the lattice test deck and a hex deck with lattice index labels
+  - A check anyone with MCNP can make (not planned here): plot the lattice test deck and a hex deck with lattice index labels
     (manual p. 290), or compare short runs against the cell-by-cell decks.
   - **RPP macrobody element**: done. The `LAT=1` element is one `RPP` card instead of six planes, and
     `geometry_check.py` reads it (its facet order gives the same index directions, manual p. 278, 760).
   - Cell tallies on parts inside a lattice: done in model.py (CellInstanceFilter) and in model.mcnp as
     `(unit < latcell[i j k] < filled cell)` bins (manual p. 452-455). The validator follows each bin through
-    the lattice cards and compares it with the OpenMC instance point by point. Still to prove in real MCNP
-    like the lattices themselves: compare a short run of `rect_tally_mcnp` against OpenMC.
+    the lattice cards and compares it with the OpenMC instance point by point. A comparison of a short run of `rect_tally_mcnp`
+    against OpenMC is left to anyone who runs MCNP (not planned here).
 - **Surface current tallies in MCNP**: done as one F1 + `C 0 1` + `FS` tally per (surface, part) bin; the
   validator checks each FS face and direction against OpenMC at points on the surface. Still open:
-  - prove it in real MCNP: run `current_box_mcnp` and compare the FC-tagged bins with OpenMC's t_block;
+  - for anyone with MCNP (not planned here): run `current_box_mcnp` and compare the FC-tagged bins with OpenMC's t_block;
   - fold the bin and sign into one number with `CM` cosine multipliers (p. 472) once that's confirmed;
   - Problems could warn when a surface tally ticks a part carved out of another ticked part (the export
     refuses it, since OpenMC then counts crossings of the whole surface inside the outer part).
@@ -238,7 +236,7 @@ Today: one five-layer particle example (`examples/triso-particle`), no packing. 
 - **MCNP export of a packing is not ready, and the template must refuse it with a named message until it is**: MCNPy takes about 2.6 s per particle (20 particles
   about 85 s, 100 particles 302 s; 1,000 would be about 45 min, 10,000 about 7 h if linear); it fails on numpy 2 unless `np.set_printoptions(legacy="1.25")`
   is set (the text `np.float64(...)` reaches Java); and the exporter refuses translated cells inside lattice universes (`lattice_cards.py:351`). Reading the raw deck in MCNP: not run.
-- Needs before an MCNP export: exporter support for translated cells in lattice universes, a per-cell speed-up of the same kind as the earlier speed work, and a real MCNP read.
+- Needs before an MCNP export: exporter support for translated cells in lattice universes, a per-cell speed-up of the same kind as the earlier speed work, and a read of the exported deck by MCNP (not checked here).
   Weeks, not days. Report the numpy-2 failure upstream only when the user says (with the other MCNPy items).
 - Cost of the OpenMC-only template: 3 to 4 days. Build it when TRISO users exist (none confirmed).
 
@@ -275,8 +273,7 @@ Today: one five-layer particle example (`examples/triso-particle`), no packing. 
   can't parse the keyword), `SD` with the cell volume from the same OpenMC volume calculation the run does
   (`mcnp_worker.dose_description`; identical numbers, tested on a plug-cut detector MCNP couldn't volume itself),
   and the source rate as `FM` / `FACTOR`. `export_mcnp.py --dose dose.json` exports a run folder. Tests:
-  `test/test_dose_mcnp.py`, companion `tests/test_dose_export.py`. **Still open:** run a dose deck in real MCNP and
-  compare with Studio; H*(10) (needs a sourced table).
+  `test/test_dose_mcnp.py`, companion `tests/test_dose_export.py`. **Still open:** H*(10) (needs a sourced table).
   **Dose on lattice members: done** (2026-09-26). A part inside a RectLattice/HexLattice is a (unit cell, instance)
   bin; its volume is measured in the box around that one part and keyed "cell/instance" in dose.json (with the
   part's name as its label). The MCNP deck tallies it as a chain bin with that volume on SD. Tests:
@@ -479,8 +476,7 @@ Today: one five-layer particle example (`examples/triso-particle`), no packing. 
   - Drag-and-drop parser for existing `model.py` scripts and XML suites (`geometry.xml`, `materials.xml`, `settings.xml`, `tallies.xml`) into OpenMC Studio's scene graph.
 
 ### 6. MCNP 6.3 Performance & Geometry Optimizations (Research Analysis)
-**No MCNP runs here.** Nothing in this section has been measured: this machine has no MCNP executable, so
-every speed claim below is from the manual or from reasoning, never from a timing. Measure before optimising.
+**Nothing in this section has been measured.** Every speed claim below is from the manual or from reasoning, never from a timing. Measure before optimising.
 
 - **Direct analytic source sampling (`SP -2`, `SP -3`, `SP -4`)**: **done**. Maxwell, Watt and the Gaussian
   (Muir) fusion spectrum export as closed-form cards from `src/mcnp_cards.py`, instead of histogram tables.
@@ -500,7 +496,7 @@ every speed claim below is from the manual or from reasoning, never from a timin
   - The lattice test model has no cell that qualifies anyway: the aperture spans the full depth of its element and
     touches its faces, and the graphite around it is unbounded.
   - What would change our mind: an opt-in switch, restricted to cells whose bounding box sits strictly inside
-    the element with a margin, plus one real MCNP run compared against the same deck without it.
+    the element with a margin, plus a timing comparison against the same deck without it (not planned here).
 - **Pruning the complement operator (`#`)**: partly done, low priority.
   - `src/macrobody_cards.py` folds de Morgan unions back into a single macrobody sense.
   - Cell complements (`#c`) are untouched. Our decks use `#` only in the graveyard cell, which has `IMP:N=0`,

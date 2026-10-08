@@ -7,8 +7,7 @@ round trips (edited model.py / model.mcnp back into Studio) take it back, and th
 **Words used:** *yes* = implemented and covered by the named test; *refused* = Studio or the exporter stops with
 a message rather than writing something wrong; *untested* = written, but no test checks it; *no* = not there.
 MCNP decks are checked by the exporter's validator (MontePy parse, cards read back against the OpenMC model,
-sampled geometry comparison). **No deck has been compared with a real MCNP run, and none will be here**: MCNP is export-controlled and its output can't be shared with this project, so an export is
-checked only against the OpenMC model. Run an exported deck yourself before relying on it. Plans for what's missing are in [TODO.md](../TODO.md).
+sampled geometry comparison). This project makes no statement about whether any exported deck has been run in MCNP. MCNP is export-controlled and its output is not shared here. Decks are checked by the exporter's validator (MontePy parse, cards read back against the OpenMC model, sampled geometry comparison) and compared with OpenMC. Check a deck yourself before relying on it. Plans for what's missing are in [TODO.md](../TODO.md).
 
 Test names: `test/…` is this repository; `exporter tests/…` is
 [openmc-mcnp-project](https://github.com/bluetyde/openmc-mcnp-project). `node test/run_all.cjs full` runs them all.

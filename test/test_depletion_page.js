@@ -419,6 +419,62 @@ test('prepare_depletion can skip the volumes for a resume: the tally is still ad
   assert.match(two.text, /^def prepare_depletion\(model, measure_volumes=True\):$/m);
 });
 
+// ── resume ──
+const partialRec = () => { const r = JSON.parse(JSON.stringify(REC)); r.provenance.complete = false; r.provenance.steps_done = 1; r.provenance.steps_planned = 2; return r; };
+test('an incomplete burn offers Resume; a complete one does not', () => {
+  assert.match(render(dep(partialRec())), /<button class="tbtn" type="button" id="depResumeBtn"[^>]*>Resume this burn<\/button>/);
+  assert.doesNotMatch(render(dep()), /depResumeBtn/);
+});
+
+test('a resumed burn says which run its first steps came from, and any warning', () => {
+  const r = JSON.parse(JSON.stringify(REC));
+  r.provenance.resumed_from = {run: '20261010-100000-stopped', steps_done: 1, steps_planned: 2, warnings: ['OpenMC is 0.16.0 now and was 0.15.3']};
+  const h = render(dep(r));
+  assert.match(h, /id="depResumedFrom">Resumed: the first 1 step come from run <code>20261010-100000-stopped<\/code>\./);
+  assert.match(h, /note<\/span> OpenMC is 0\.16\.0 now/);
+  r.provenance.resumed_from.steps_done = 3;
+  assert.match(render(dep(r)), /the first 3 steps come/);
+  assert.doesNotMatch(render(dep()), /depResumedFrom/);
+});
+
+test('Resume asks the server, follows the new run, and shows the reason when the server refuses', async () => {
+  const calls = [];
+  run('window.__streamed = []; streamRun = id => window.__streamed.push(id); refreshRuns = () => {}; setRunning = () => {}; setOutTab = () => {}; LOCAL.on = true; LOCAL.token = "tok"; LOCAL.run = null; LOCAL.resultsRun = "r-old"; LOCAL.resumeNote = null');
+  sb.fetch = (url, opts) => { calls.push([url, opts && opts.method]); return Promise.resolve({ok: true, headers: {get: () => 'application/json'}, json: () => Promise.resolve({id: 'r-new', status: 'running'})}); };
+  await run('resumeBurn()');
+  assert.deepEqual(calls, [['/api/runs/r-old/resume', 'POST']]);
+  assert.deepEqual(JSON.parse(JSON.stringify(run('window.__streamed'))), ['r-new']);
+  assert.equal(run('LOCAL.run'), 'r-new');
+  // a refusal: the reason is kept and drawn in the section, nothing is followed
+  run('window.__streamed = []; LOCAL.run = null');
+  sb.fetch = () => Promise.resolve({ok: false, status: 422, headers: {get: () => 'application/json'}, json: () => Promise.resolve({error: 'its results hold no reaction rates (it was started before Studio kept them).'})});
+  run('LOCAL.results = {summary: null, tallies: [], tracks: [], tracks_truncated: false, findings: []}');
+  sb.__rec = partialRec(); writes.length = 0;
+  run('LOCAL.results.depletion = {record: __rec, note: null, wall_s: 5}');
+  await run('resumeBurn()');
+  assert.equal(run('LOCAL.resumeNote'), 'its results hold no reaction rates (it was started before Studio kept them).');
+  assert.deepEqual(JSON.parse(JSON.stringify(run('window.__streamed'))), []);
+  assert.equal(run('LOCAL.run'), null);
+  assert.match(writes.join(''), /id="depResumeNote"><span class="sev warn">not resumed<\/span> its results hold no reaction rates/);
+});
+
+test('Resume does nothing while a run is going, and a newly opened run clears an old refusal', async () => {
+  const calls = [];
+  sb.fetch = url => { calls.push(url); return Promise.resolve({ok: true, headers: {get: () => 'application/json'}, json: () => Promise.resolve({runs: [], id: 'x'})}); };
+  run('LOCAL.on = true; LOCAL.run = "going"; LOCAL.resultsRun = "r-old"');
+  await run('resumeBurn()');
+  assert.deepEqual(calls, [], 'no request while a run is going');
+  // loadResults is stubbed by the tests above, so what is checked is its source: it forgets an old refusal when a run's results are opened
+  assert.match(html, /async function loadResults\(id, switchTab\) \{\n  try \{[^\n]*LOCAL\.resumeNote = null/);
+});
+
+test('the click on the button resumes', () => {
+  assert.match(render(dep(partialRec())), /id="depResumeBtn"/);
+  run('window.__r = 0; resumeBurn = () => { window.__r++; }; exportParaview = () => {}; saveRunReport = () => {}; checkRunRecord = () => {}; saveDepletionRecord = () => {};');
+  for (const [t, fn] of listeners) if (t === 'click' && fn.toString().includes('#depResumeBtn')) fn({target: {closest: sel => sel === '#depResumeBtn' ? {} : null}});
+  assert.equal(run('window.__r'), 1);
+});
+
 (async () => {
   for (const [name, fn] of tests) {
     try { await fn(); console.log('  [PASS]', name); }

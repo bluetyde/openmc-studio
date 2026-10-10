@@ -501,5 +501,39 @@ class ServerHook(unittest.TestCase):
         self.assertIn("results file is unreadable", run.lines[0])
 
 
+class ResumedBurn(unittest.TestCase):
+    """The record of a burn that was resumed says so: which run its first steps came from, how many, and any environment warning."""
+
+    def test_the_record_carries_resumed_from_and_a_note_saying_where_the_steps_came_from(self):
+        resumed = {"run": "20261010-100000-stopped", "results_sha256": "ab" * 32, "steps_done": 1, "steps_planned": 2, "warnings": ["OpenMC is 0.16.0 now and was 0.15.3"]}
+        rec = build(dict(copy.deepcopy(PIN), steps_planned=2, provenance={"run": "r2", "resumed_from": resumed}))
+        self.assertEqual(rec["provenance"]["resumed_from"], resumed)
+        note = [n for n in rec["provenance"]["notes"] if n.startswith("resumed")]
+        self.assertEqual(len(note), 1)
+        self.assertIn("first 1 step(s) are from run 20261010-100000-stopped", note[0])
+        self.assertIn("OpenMC is 0.16.0 now", note[0])
+        depletion_record.validate(rec)
+
+    def test_a_record_that_was_not_resumed_has_no_such_note_or_key(self):
+        rec = build(dict(copy.deepcopy(PIN), steps_planned=2))
+        self.assertNotIn("resumed_from", rec["provenance"])
+        self.assertFalse([n for n in rec["provenance"]["notes"] if n.startswith("resumed")])
+
+    def test_from_run_takes_resumed_from_from_the_run_folders_provenance(self):
+        tmp = Path(tempfile.mkdtemp(prefix="depletion-resumed-"))
+        self.addCleanup(shutil.rmtree, tmp, True)
+        resumed = {"run": "20261010-100000-stopped", "results_sha256": "cd" * 32, "steps_done": 1, "steps_planned": 2, "warnings": []}
+        provenance.write(tmp, "run", {"settings": {"depletion": True, "depSteps": "1, 4", "depIntegrator": "PredictorIntegrator", "depReduce": 3}}, files=(),
+                         extra={"depletion": {"chain": {"sha256": "ef" * 32}, "resumed_from": resumed}})
+        real = depletion_writer.read_run
+        depletion_writer.read_run = lambda folder, **kw: copy.deepcopy(PIN)
+        try:
+            rec = depletion_writer.from_run(tmp)
+        finally:
+            depletion_writer.read_run = real
+        self.assertEqual(rec["provenance"]["resumed_from"], resumed)
+        self.assertEqual(depletion_record.read(tmp)["id"], rec["id"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -134,7 +134,8 @@ def build_script(settings: dict) -> str:
         f"namespace = runpy.run_path({model_path_repr})\n"
         "model = namespace[\"model\"]\n"
         + (("namespace[\"prepare_depletion\"](model, measure_volumes=False)\n" if resume else "namespace[\"prepare_depletion\"](model)\n") if prepare else "")
-        + ("previous = openmc.deplete.Results(\"depletion_results.h5\")\n" if resume else "")
+        + ("previous = openmc.deplete.Results(\"depletion_results.h5\")\n"
+           "previous[-1].transfer_volumes(model)  # OpenMC checks the volumes before it loads the earlier results: give them to the model first\n" if resume else "")
         + f"operator = openmc.deplete.CoupledOperator(model, chain_file={chain_file_repr}{operator_extra})\n"
         f"integrator = openmc.deplete.{integrator}(operator, {timesteps_repr}, {'power_density' if has_density else 'power'}={power_repr}, timestep_units=\"d\""
         + (", continue_timesteps=True" if resume else "") + ")\n"

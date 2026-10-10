@@ -455,6 +455,9 @@ class TestResumeAndRates(unittest.TestCase):
         text = build_script(dict(self.BASE, write_rates=True, resume=True))
         self.assertIn('namespace["prepare_depletion"](model, measure_volumes=False)\n', text)
         self.assertIn('previous = openmc.deplete.Results("depletion_results.h5")\n', text)
+        self.assertIn("previous[-1].transfer_volumes(model)", text)
+        self.assertLess(text.index("previous = "), text.index("previous[-1].transfer_volumes(model)"))
+        self.assertLess(text.index("previous[-1].transfer_volumes(model)"), text.index("CoupledOperator("), "the volumes are on the model before the operator checks them")
         self.assertIn("prev_results=previous", text)
         self.assertIn("continue_timesteps=True", text)
         self.assertIn("integrator.integrate(write_rates=True)\n", text)
@@ -481,7 +484,9 @@ class TestResumeAndRates(unittest.TestCase):
             stub_openmc = types.ModuleType("openmc")
             stub_deplete = types.ModuleType("openmc.deplete")
             stub_openmc.deplete = stub_deplete
-            stub_deplete.Results = MagicMock(name="Results", side_effect=lambda path: events.append("results:" + path) or "PREV")
+            prev = MagicMock(name="PREV")
+            prev.__getitem__.return_value.transfer_volumes.side_effect = lambda m: events.append("volumes:" + m)
+            stub_deplete.Results = MagicMock(name="Results", side_effect=lambda path: events.append("results:" + path) or prev)
             operator_cls = MagicMock(name="CoupledOperator", side_effect=lambda *a, **k: events.append("operator") or "OPERATOR")
             integrator_cls = MagicMock(name="PredictorIntegrator")
             stub_deplete.CoupledOperator = operator_cls
@@ -497,8 +502,8 @@ class TestResumeAndRates(unittest.TestCase):
                     runpy.run_path(str(script_file))
         finally:
             del builtins._depl_events
-        self.assertEqual(events, ["prepare:MODEL:False", "results:depletion_results.h5", "operator"])
-        operator_cls.assert_called_once_with("MODEL", chain_file="/path/to/chain.xml", prev_results="PREV", reduce_chain_level=3)
+        self.assertEqual(events, ["prepare:MODEL:False", "results:depletion_results.h5", "volumes:MODEL", "operator"])
+        operator_cls.assert_called_once_with("MODEL", chain_file="/path/to/chain.xml", prev_results=prev, reduce_chain_level=3)
         integrator_cls.assert_called_once_with("OPERATOR", [1.0, 4.0, 10.0], power_density=38.0, timestep_units="d", continue_timesteps=True)
         integrator_cls.return_value.integrate.assert_called_once_with(write_rates=True)
 

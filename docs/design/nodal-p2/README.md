@@ -9,3 +9,6 @@ Run in WSL with a venv holding `openndm 0.3.0` on top of the OpenMC 0.15.3 envir
 - `e1_output_K20.txt`, `e2_output_K20.txt`: the K = 20 outputs.
 - `e3_output_K80.txt`: E3's table; its last row (extrapolated) is the oracle number quoted in the plan. `e1_core_tallied.py` itself still uses a fixed slab (its K = 10/20/40 numbers are the fixed-slab rows).
 - `e2_output_K80_extrap.txt`: E2 with the extrapolated face flux (the E2 number quoted in the plan); `e2_output_K20.txt` is the fixed-slab run.
+- `e4_checkerboard.py`: three ways to assemble the two-step input (one-fuel strips; checkerboard strips; checkerboard strips and a color set).
+- `e5_swap_pieces.py`: core-run pieces and strip pieces swapped one at a time, with the core's factors put in one class of faces at a time.
+- `e4_output_K80.txt`, `e5_output_K80.txt`: their outputs.

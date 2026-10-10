@@ -1,6 +1,6 @@
 # Resume of a stopped depletion run: plan
 
-Status: plan only (2026-10-08). Nothing is built. Read with [depletion-plan.md](depletion-plan.md) (D1 to D4 are done; D3 left "resume from `prev_results`" open).
+Status: built (2026-10-10, R0 to R6). The result is at the end; the sections above are the plan as it was, with the R0 findings added. Read with [depletion-plan.md](depletion-plan.md) (D1 to D4 are done; D3 left "resume from `prev_results`" open).
 
 ## What the person gets
 
@@ -73,3 +73,20 @@ Resume of an **eigenvalue** (non-depletion) run to add batches. OpenMC can conti
 ## Effort
 
 About 2 days: R0 2 hours, R1 and R2 half a day, R3 and R4 half a day, R5 and R6 half a day, with the real runs taking a few minutes each. R0 can change this: if the identical-run check fails, the plan changes before any code does.
+
+## Result (2026-10-10, built and run for real)
+
+**What is there.** A stopped or failed burn's Results section has **Resume this burn**. It calls `POST /api/runs/<id>/resume`; `Studio.resume` checks the run with `depletion_run.resume_plan`, makes a new run folder, copies the model, the project, the results and the per-step statepoints into it (`copy_for_resume`), writes a `deplete.py` in resume mode, and starts it like any run. The new run's provenance has `depletion.resumed_from` (the run, the SHA-256 of the results it started from, steps done, warnings), its record carries the same and a note, and the Results section says "Resumed: the first N steps come from run X". The stopped run's folder is never changed (hashed before and after in the real test). Every depletion run now keeps its reaction rates (`write_rates=True`), which resume needs.
+
+**Decisions as taken.** A new run folder, always. New runs always store rates; an earlier run (no rates, or a `model.py` whose `prepare_depletion` has no `measure_volumes`) is refused with the reason. Refused, each one tested: not a depletion run; the burn already finished; the results file cannot be opened (a truncated file was tried for real); no stored reaction rates (read from the last entry, never a flag: OpenMC would not refuse it); another chain file than the one the burn used; time steps that differ from the project's list. Warned, not refused: another OpenMC version or other nuclear data.
+
+**What the real runs found** (`test/manual_resume_r0.py`, `test/manual_depletion_resume.py`, pin cell, predictor, 1, 4 and 10 days):
+- OpenMC burns wrongly and says nothing when resumed from results without rates (atoms off by up to 99 percent): this is why the rates check reads the file.
+- **A bug the stand-in tests could not see:** OpenMC checks that every burnable material has a volume *before* it loads the earlier results, so a resume that skips the volume measurement failed with "Volume not specified". The resume script now gives the earlier results' volumes to the model first (`previous[-1].transfer_volumes(model)`), before the operator is built. The first R0 experiments had set the volume by hand and hidden this.
+- **The oracle had to change again.** Two *uninterrupted* burns of the same model are not identical past their first transport solve: the Bateman step differs in the ninth digit between runs, a Monte Carlo solve from a composition that differs that much is a different sample, and k at point 2 differed by 0.006 and U-234 at point 3 by 7 percent between two identical runs. So the test asks for what two identical runs also satisfy: (a) the points the stopped run had made are exactly its own; (b) the whole resumed burn passes the record's inventory check (ratio 1.0067); (c) against an uninterrupted burn U-235 agrees to 5e-6, U-238 to 3e-7, Pu-239 to 6e-4, Xe-135 to 3e-4, Sm-149 to 2e-3, and k is within 3 sigma at every point. The heavy-metal mass and the burnup are identical.
+- It works whichever step the stop falls in (a run stopped with 2 of 3 steps and one with 1 of 3 both resumed).
+- A kill in the middle of a results write was not provoked; a truncated file is refused. Stop sends SIGTERM to the run's process group, which can fall in a write; the file is then unreadable and resume says so. Not fixed (the write is OpenMC's).
+
+**Tests.** `test_depletion_script.py` (24), `test_depletion_resume.py` (17: every refusal, the copy, the route over HTTP), `test_depletion_run.py`, `test_depletion_writer.py` (46), `test_depletion_page.js`; a mutation run over the new code (19 mutants, 18 killed on the first run, the survivor given a test and killed; one pattern did not match and is covered by a text assertion).
+
+**Not done.** Resume of a run made before this feature; a changed step list on resume; resume in the headless/SEED path (D5); resume of a burn with several burnable regions was not run for real (the statepoint copy for the power split is unit-tested, and `from_run` reads statepoints `n0..n(steps-1)`, all copied).

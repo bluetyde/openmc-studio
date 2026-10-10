@@ -82,7 +82,8 @@ Test names: `test/…` is this repository; `exporter tests/…` is
 | Import edited model.py / model.mcnp (numbers Studio marked) | yes; anything else is listed, not applied | `test_patch_import.js`, `test_mcnp_patch_import.js`, `test_review_deep.js` |
 | Import an MCNP deck Studio didn't write: geometry (universes, `LAT=1`, `TRCL`/`*FILL`, macrobodies, `LIKE n BUT`) and materials | yes, as read-only imported geometry, checked against OpenMC point by point | `test_mcnp_import_gate.cjs`, `test_mcnp_import.py` |
 | ...its sources, tallies and run settings (`SDEF` + `SI`/`SP`, `NPS`, `KCODE`/`KSRC`, `MODE`, `F4` + `E`/`FM`/`FC`/`SD`, `FMESH`) | yes; any other card, a tally on a repeated lattice cell, or a value it can't read is listed in the Log with the reason | `test_mcnp_cards_in.py`, `test_mcnp_import_physics.js`, `test_mcnp_import_gate.cjs` |
-| ...hexagonal lattices (`LAT=2`), tori | **refused** with the reason | `test_mcnp_import.py` |
+| ...hexagonal lattices (`LAT=2`) | yes, read by Studio's own step (the converter can't) in the manual's index order; an irregular hexagon, one turned to neither axis, faces in another order, or a single-universe fill is refused with the reason | `test_mcnp_hex.py`, `test_mcnp_import_gate.cjs` |
+| ...tori | **refused** with the reason | `test_mcnp_import.py` |
 | Import a model.py Studio didn't write | **no** (refused with a message) | `test_patch_import.js` |
 | OpenMC XML import | no | |
 | Results: k-eff, tables, maps, tracks | yes | `test_results_overlay_browser.cjs`, `test_output_tabs_browser.cjs` |

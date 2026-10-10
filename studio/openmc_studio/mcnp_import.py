@@ -9,7 +9,7 @@ grouped into one component per top-level cell and material, each with a preview 
 Nothing is guessed. The flattened geometry is checked against OpenMC's own geometry routines on the adapter's
 model (``openmc.lib.find_material`` at thousands of points, in a separate process), and the import is refused
 if they disagree. What the deck has that this doesn't import (sources, tallies, run settings, and anything the
-adapter refuses, such as hexagonal lattices) is listed in the report.
+adapter refuses) is listed in the report. Hexagonal lattices (LAT=2), which the adapter can't read, are read by mcnp_hex.py.
 
 Run as a script by the server:  python -m openmc_studio.mcnp_import <deck> <out.json>
 """

@@ -21,7 +21,7 @@ requires.
   - *Depletion* burns one or more fuel materials with OpenMC's own depletion module. A burnable material cannot sit in a lattice or in imported CAD geometry yet.
     The depletion chain is the PWR (thermal-spectrum) chain, reduced for speed; for graphite-moderated or fast systems the fission yields differ. With several
     burnable materials the power of each is taken from a tally at the start of each step (exact for the predictor integrator, an approximation for the others).
-    Burnup is per tonne of initial heavy metal. Nothing here has been compared with a published depletion benchmark.
+    Burnup is per tonne of initial heavy metal. Nothing here has been compared with a published depletion benchmark. A burn can be resumed only if it was started after resume existed (it needs the reaction rates in its results) and with the same chain file.
   - *Pin power* reads a mesh tally as one cell per pin. Studio does not check that the mesh lies on the lattice; the panel says so.
   - *Material from engineering inputs* takes oxygen as pure O-16 and never supplies a density: you enter the theoretical density of UO2 or the water density.
   - *Result checks* use a threshold only where a source for it is named; where none is, the check says it did not compare.
@@ -30,7 +30,7 @@ requires.
 
 - **Depletion** (Settings > Depletion, and a Burnable flag on a fuel material): runs `openmc.deplete`, writes `depletion.json` (burnup, power, k and
   isotopics per region and step, with a content id) and shows it under Results, with an estimate of the number of transport solves before the run. A burn that
-  stopped part way leaves a record of the steps it finished, marked incomplete.
+  stopped part way leaves a record of the steps it finished, marked incomplete, and **Resume this burn** continues it in a new run to one complete record.
 - **Pin power** (Results, on a regular mesh tally with a power score): a map of relative power per pin, the highest pin, the noise that alone could lift the
   largest pin, a symmetry check, and a CSV.
 - **Material from engineering inputs** (Properties of a material): UO2 from enrichment and percent of theoretical density, borated water from ppm boron.

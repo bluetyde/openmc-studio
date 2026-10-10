@@ -73,6 +73,17 @@ class Unit(unittest.TestCase):
         self.assertIn('namespace["prepare_depletion"](model)', text)
         self.assertIn(repr(str(self.tmp / "model.py")), text)
 
+    def test_every_burn_keeps_its_rates_and_only_a_resume_continues(self):
+        model, chain = self.tmp / "model.py", self.tmp / "chain.xml"
+        fresh = depletion_run.script_text(project(), model, chain)
+        again = depletion_run.script_text(project(), model, chain, resume=True)
+        self.assertIn("integrator.integrate(write_rates=True)", fresh, "a burn that stops can only be resumed if its results hold the rates")
+        self.assertNotIn("continue_timesteps", fresh)
+        self.assertNotIn("prev_results", fresh)
+        self.assertIn('namespace["prepare_depletion"](model)\n', fresh)
+        for want in ("continue_timesteps=True", "prev_results=previous", "measure_volumes=False", "previous[-1].transfer_volumes(model)", "integrate(write_rates=True)"):
+            self.assertIn(want, again)
+
     def test_the_chain_record_names_the_file_by_its_hash(self):
         chain = self.tmp / "chain.xml"
         chain.write_bytes(b"<depletion_chain>" + b"x" * 3000 + b"</depletion_chain>")

@@ -51,6 +51,22 @@ with `openndm 0.3.0` on top of the OpenMC 0.15.3 env; 4 threads). Test model: 5 
   inactive lattice positions, the outer faces take `boundaries` (a first run with the wrong reading gave a nonsense k of 0.157, which would have looked like a solver bug).
 - **Not done:** reflector-aware factors, two-step (single-assembly) group constants, 3D, rods, boron.
 
+**P2 first results (2026-10-10, scripts in [`nodal-p2/`](nodal-p2/); same 8 x 8 core as P0, OpenMC k = 0.94469 +/- 58 pcm; every number is nodal k minus OpenMC k).**
+Not a pass: these are the first numbers the pass line is to be set from.
+
+| Case | Constants from | Factors from | pcm (finite differences, SANM) |
+|---|---|---|---|
+| P0 | core run | none | +4,100 to +5,300 (one node per assembly) |
+| E1, the oracle | the core run itself, each position its own tally domain | the core run itself, per node and face, slab 1/10, 1/20, 1/40 of the pitch | -760/-740, -1,610/-1,890, -2,070/-2,520 |
+| E2, two-step | infinite A and B; reflector = mean of two fuel-plus-reflector strips | infinite lattices (fuel/fuel faces); strips (fuel/reflector faces, reflector/vacuum face) | none: +6,460/+7,390; with, slab 1/10, 1/20, 1/40: +3,860/+3,910, +3,260/+3,050, +2,910/+2,540 |
+
+What this says:
+- **The solver and the constants pipeline are not the main error.** With constants and factors from the core run itself the error is under 2.6k pcm for every slab width tried; without factors it is +5k. The discontinuity factors at the fuel/reflector face are what matter (fast 0.76 against 1.76 across the face, thermal 1.5 against 0.96).
+- **A two-step recipe gets about half of the way:** +2.5k to +3.9k, depending only on the width of the face slab used to read the flux. It does not yet reach the oracle's band, so the strip is missing something the core run has (the reflector spectrum behind a fuel checkerboard, the corner reflector nodes, which here reuse the edge constants).
+- **The face slab is a source of uncertainty of its own:** the factors, and so k, move by about 1.5k pcm between slabs of 1/10 and 1/40 of the pitch, and the sign of the move is the same in E1 and E2. The next step is a face-flux estimate that does not depend on the slab (extrapolate the mesh flux to the face), before any pass line is read from these.
+- **Wrapper rules found (these go into P1):** (1) openndm's lattice row 0 is its lowest-y side while OpenMC's is the top, so a node's openndm `-y` face is the physical `+y` face, and factors must be handed over with the y faces swapped (not swapping gave +21,000 pcm); (2) factors belong to a composition, not to a position, so a node whose faces meet different neighbours needs its own composition: one wrapper universe per position (a cell filled with the assembly's universe) works and tallies fine; (3) factors on the faces next to the vacuum matter (removing them moves k by about 6k pcm); (4) with subdivision (more than one node per assembly) the factors are applied to every sub-node face and k is wrong by 9 to 24k pcm, so factors are used with one node per assembly only; (5) the `openmc` executable and the `openndm` venv both have to be on PATH, venv first.
+- **Not done:** the pass line (the user's), a face-flux estimate that does not depend on the slab, reflector constants that see the checkerboard, corner reflector constants, 3D, rods, boron, a second core.
+
 **P1: wrap the solver (2 days).** A small module that takes the library, the lattice map and pitch, runs openndm, and returns k, a power map and (optional) critical boron.
 Set `OMP_NUM_THREADS` explicitly (the deep dive saw it stall at 16 threads, fine at 1 to 8). Pin one openndm version. Test against openndm's own published numbers
 (IAEA-2D SANM +21.5 pcm from 1.02959, BIBLIS-2D) before anything of ours: if the wrapper cannot reproduce them, stop.

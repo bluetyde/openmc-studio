@@ -115,7 +115,20 @@ class Studio:
             self.cad_jobs = DisabledCadJobs(f"CAD jobs are off: {exc}")
 
     # ── runs ──
-    def start(self, script, project, name):
+    def resume(self, rid):
+        """Continue the stopped depletion run `rid` in a new run folder. Raises KeyError (no such run), depletion_run.ResumeRefused (with the
+        reason) or RuntimeError (a run is going)."""
+        src = self.run_path(rid)
+        if src is None:
+            raise KeyError(rid)
+        from . import provenance as prov
+        plan = depletion_run.resume_plan(src, depletion_run.find_chain_file(), prov.environment())
+        project = json.loads((src / "project.json").read_text(encoding="utf-8"))
+        script = (src / "model.py").read_text(encoding="utf-8")
+        name = f"{(project.get('settings') or {}).get('name') or 'model'} resumed"
+        return self.start(script, project, name, resume={"from": rid, "src": src, "plan": plan})
+
+    def start(self, script, project, name, resume=None):
         with self.lock:
             if self.active and self.active.status == "running":
                 raise RuntimeError("A run is already going. Stop it or wait for it to finish.")
@@ -133,8 +146,13 @@ class Studio:
                 if chain is None:
                     shutil.rmtree(path, ignore_errors=True)
                     raise RuntimeError(depletion_run.NO_CHAIN)
-                (path / "deplete.py").write_text(depletion_run.script_text(project, path / "model.py", chain), encoding="utf-8")
+                (path / "deplete.py").write_text(depletion_run.script_text(project, path / "model.py", chain, resume=bool(resume)), encoding="utf-8")
                 entry, files, extra = "deplete.py", ("model.py", "project.json", "deplete.py"), {"depletion": {"chain": depletion_run.chain_record(chain)}}
+                if resume:
+                    depletion_run.copy_for_resume(resume["src"], path, resume["plan"])
+                    extra["depletion"]["resumed_from"] = {"run": resume["from"], "results_sha256": resume["plan"]["results_sha256"],
+                                                          "steps_done": resume["plan"]["steps_done"], "steps_planned": resume["plan"]["steps_planned"],
+                                                          "warnings": resume["plan"]["warnings"]}
             provenance.write(path, "run", project, files=files, extra=extra)
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
@@ -142,6 +160,10 @@ class Studio:
                                         stderr=subprocess.STDOUT, text=True, bufsize=1, start_new_session=True)
             self.runs[rid] = run
             self.active = run
+            if resume:
+                run.add(f"Resuming {resume['from']} after step {resume['plan']['steps_done']} of {resume['plan']['steps_planned']}.")
+                for w in resume["plan"]["warnings"]:
+                    run.add("Warning: " + w)
         threading.Thread(target=self._pump, args=(run,), daemon=True).start()
         return run
 
@@ -953,6 +975,16 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/runs/([^/]+)/stop$", url.path)
         if m:
             return self._send(200, {"stopped": self.studio.stop(m.group(1))})
+        m = re.match(r"^/api/runs/([^/]+)/resume$", url.path)
+        if m:
+            try:
+                return self._send(200, self.studio.resume(m.group(1)).meta())
+            except KeyError:
+                return self._error(404, "No such run")
+            except depletion_run.ResumeRefused as exc:
+                return self._error(422, str(exc))
+            except RuntimeError as exc:
+                return self._error(409, str(exc))
         m = re.match(r"^/api/runs/([^/]+)/export-vtk$", url.path)
         if m:
             stl = body.get("stl") or {}

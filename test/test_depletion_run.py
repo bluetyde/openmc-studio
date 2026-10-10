@@ -169,7 +169,7 @@ class Http(unittest.TestCase):
             return {"id": "f" * 64, "provenance": {"checks": {}}}
         depletion_writer.from_run = fake_writer
         try:
-            depletion_run.script_text = lambda project, model_path, chain_file: "print('burned')\n"  # stands in for a successful burn
+            depletion_run.script_text = lambda project, model_path, chain_file, resume=False: "print('burned')\n"  # stands in for a successful burn
             status, body = self.call("POST", "/api/run", {"script": "print('model')\n", "project": project(), "name": "dep hook"})
             self.assertEqual(status, 200, body)
             self.wait()
@@ -180,13 +180,13 @@ class Http(unittest.TestCase):
             prov = json.loads((self.tmp / "runs" / body["id"] / "provenance.json").read_text())
             self.assertIn("depletion.json", prov["outputs"], "the record is hashed with the other outputs")
             self.assertEqual(prov["depletion_record"]["status"], "written")
-            depletion_run.script_text = lambda project, model_path, chain_file: "raise SystemExit(3)\n"  # a burn that fails
+            depletion_run.script_text = lambda project, model_path, chain_file, resume=False: "raise SystemExit(3)\n"  # a burn that fails
             called.clear()
             status, body = self.call("POST", "/api/run", {"script": "print('model')\n", "project": project(), "name": "dep fail"})
             self.wait()
             self.assertEqual(self.studio.runs[body["id"]].status, "failed")
             self.assertEqual(called, [], "no record for a failed run")
-            depletion_run.script_text = lambda project, model_path, chain_file: "open('depletion_results.h5', 'w').close()\nraise SystemExit(3)\n"  # a burn stopped after some steps
+            depletion_run.script_text = lambda project, model_path, chain_file, resume=False: "open('depletion_results.h5', 'w').close()\nraise SystemExit(3)\n"  # a burn stopped after some steps
             called.clear()
             status, body = self.call("POST", "/api/run", {"script": "print('model')\n", "project": project(), "name": "dep partial"})
             self.wait()

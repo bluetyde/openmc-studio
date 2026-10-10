@@ -67,8 +67,8 @@ SOFTWARE.
 
 ## openmc_mcnp_adapter
 
-Source: https://github.com/openmc-dev/openmc_mcnp_adapter (commit 80fda5a, version 0.1.0). Used, not
-bundled, by `studio/openmc_studio/mcnp_import.py` to read MCNP decks for Convert > Import MCNP deck.
+Source: https://github.com/openmc-dev/openmc_mcnp_adapter (commit 80fda5a, version 0.1.0).
+Used by `studio/openmc_studio/mcnp_import.py`; included in the optional offline Windows runtime.
 
 Copyright (c) 2022-2025 UChicago Argonne, LLC and contributors
 
@@ -89,15 +89,34 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-## Separate companion and optional CAD tools
+## Companion and CAD tools
 
 https://github.com/bluetyde/openmc-mcnp-project supplies remediation and validation
-for Studio's MCNP workflow. It is a separate repository, not covered by Studio's
-LICENSE. No root license file was found in the reviewed companion checkout at
-960c2f7; its licensing must be addressed separately before treating it as MIT.
+for Studio's MCNP workflow. The packaged revision bfa0d88 carries its own MIT
+LICENSE, copyright 2026 John William Noyes and openmc-mcnp-project contributors.
+Its full notice is preserved in the runtime and package's licenses directory.
 
-FreeCAD is an external optional STEP-export dependency. GEOUNED integration is
-planned, not currently implemented. Their respective licenses and the licenses
-of their bundled components apply independently; Studio's MIT license does not
-make those tools MIT-licensed. Review the exact distributions' notices before
-bundling them.
+FreeCAD and GEOUNED support CAD conversion. The optional Windows runtime includes
+the pinned conda-forge FreeCAD distribution (LGPL-2.1-or-later) and GEOUNED 1.6.2
+(EUPL-1.2), along with their dependencies. Studio's MIT license does not replace
+these licenses. Preserve the component notices and corresponding source references.
+
+## Offline Windows package
+
+Studio bundles IBM Plex Sans and JetBrains Mono under the SIL Open Font License
+1.1. Copyright and license texts, source URLs and SHA256 hashes are beside the
+font files in `studio/openmc_studio/static/fonts/`. Fonts are served locally;
+the interface does not need Google Fonts access.
+
+The assembled package's `licenses/` directory contains dependency inventories,
+the available conda license files and build recipes with source URLs, Ubuntu
+copyright records, and the companion's notices. Ubuntu Base, Miniforge, OpenJDK,
+Qt, OCCT, and other dependencies retain their respective licenses. The runtime
+contains unmodified third-party binaries reinstalled from pinned package archives.
+No licensed MCNP transport executable is included.
+
+Build recipes and upstream links are provenance records, not a blanket grant to
+redistribute every dependency. Preserve source and source-offer notices supplied
+by the original distributors, including OpenJDK's notices. For public binary
+releases, confirm that the release supplies any corresponding source required
+by the included copyleft components. Nuclear data retains its publisher's terms.

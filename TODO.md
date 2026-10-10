@@ -225,7 +225,9 @@ Plan: [docs/design/nodal-package-plan.md](docs/design/nodal-package-plan.md). A 
 - **P0 done (2026-10-07)**: the group-constant path works (infinite assembly within Monte Carlo noise: -76 and +9 pcm). An 8 x 8 core with a water
   reflector is +5,470 pcm (vacuum outside) and +2,350 pcm (reflective); a fuel-only reflective case is -8 pcm. ADFs from infinite lattices change it by under 20 pcm.
   Scripts in `docs/design/nodal-p0/`.
-- **Next, P2**: reflector-aware factors or reflector constants from a fuel-and-reflector calculation; then the comparison against OpenMC kept as tests.
+- **P2 started (2026-10-10, branch claude/nodal-p2)**: first numbers in the plan (`docs/design/nodal-package-plan.md`, scripts in `docs/design/nodal-p2/`):
+  with constants and factors from the core run itself the error is under 2.6k pcm (+5k without factors); a two-step recipe (infinite lattices plus a fuel-and-reflector strip) is
+  +2.5k to +3.9k. Not a pass. **Next:** a face-flux estimate that does not depend on the slab width, reflector constants that see the checkerboard, then the comparison kept as tests.
   The pass line is the user's to set after seeing the numbers. **No nodal k is shown as an estimate of a core until P2 passes.**
 - Then P1 (the solver wrapper; `legendre_order = 0` with P0 correction, `openmc` on PATH, never a physical region as the lattice's `outer`), P3 (the tab),
   P4 (the SEED manifest: add-on `nodal-core`, capabilities `group-constants` and `nodal-solve`, MIT notice), P5 (the RAFT result file).

@@ -439,5 +439,69 @@ class TestOptionsAddedForStudio(unittest.TestCase):
                     build_script(dict(self.SETTINGS, **{key: bad}))
 
 
+class TestResumeAndRates(unittest.TestCase):
+    BASE = {"model_path": "/path/to/model.py", "chain_file": "/path/to/chain.xml", "integrator": "PredictorIntegrator", "time_steps_days": [1, 4, 10],
+            "power_density": 38, "reduce_chain_level": 3, "prepare": True}
+
+    def test_write_rates_only_changes_the_integrate_call(self):
+        plain, rates = build_script(dict(self.BASE)), build_script(dict(self.BASE, write_rates=True))
+        self.assertIn("integrator.integrate()\n", plain)
+        self.assertEqual(rates, plain.replace("integrator.integrate()\n", "integrator.integrate(write_rates=True)\n"))
+
+    def test_the_options_off_give_the_script_byte_for_byte_as_before(self):
+        self.assertEqual(build_script(dict(self.BASE, write_rates=False, resume=False)), build_script(dict(self.BASE)))
+
+    def test_resume_reads_the_earlier_results_continues_the_step_list_and_does_not_measure_volumes(self):
+        text = build_script(dict(self.BASE, write_rates=True, resume=True))
+        self.assertIn('namespace["prepare_depletion"](model, measure_volumes=False)\n', text)
+        self.assertIn('previous = openmc.deplete.Results("depletion_results.h5")\n', text)
+        self.assertIn("prev_results=previous", text)
+        self.assertIn("continue_timesteps=True", text)
+        self.assertIn("integrator.integrate(write_rates=True)\n", text)
+        self.assertLess(text.index("measure_volumes=False"), text.index("previous = "), "the model is prepared, then the results are read, then the operator is built")
+        self.assertLess(text.index("previous = "), text.index("CoupledOperator("))
+        self.assertIn("[1.0, 4.0, 10.0]", text, "the whole original step list: OpenMC skips the steps already done")
+
+    def test_resume_without_write_rates_is_refused_with_the_reason(self):
+        with self.assertRaises(ScriptError) as ctx:
+            build_script(dict(self.BASE, resume=True))
+        self.assertIn("burn wrongly", str(ctx.exception))
+
+    def test_bad_values_are_refused(self):
+        for key, bad in (("write_rates", "yes"), ("write_rates", 1), ("resume", "yes"), ("resume", 1), ("resume", None)):
+            with self.subTest(key=key, bad=bad):
+                with self.assertRaises(ScriptError):
+                    build_script({**self.BASE, "write_rates": True, key: bad})
+
+    def test_stub_run_of_a_resume_gives_openmc_what_it_needs_in_the_right_order(self):
+        import builtins
+        events = []
+        builtins._depl_events = events
+        try:
+            stub_openmc = types.ModuleType("openmc")
+            stub_deplete = types.ModuleType("openmc.deplete")
+            stub_openmc.deplete = stub_deplete
+            stub_deplete.Results = MagicMock(name="Results", side_effect=lambda path: events.append("results:" + path) or "PREV")
+            operator_cls = MagicMock(name="CoupledOperator", side_effect=lambda *a, **k: events.append("operator") or "OPERATOR")
+            integrator_cls = MagicMock(name="PredictorIntegrator")
+            stub_deplete.CoupledOperator = operator_cls
+            for name in INTEGRATORS:
+                setattr(stub_deplete, name, integrator_cls if name == "PredictorIntegrator" else MagicMock(name=name))
+            with tempfile.TemporaryDirectory(prefix="studio-depl-") as tmp:
+                model_file = Path(tmp) / "model.py"
+                model_file.write_text("import builtins\nmodel = 'MODEL'\n"
+                                      "def prepare_depletion(m, measure_volumes=True):\n    builtins._depl_events.append(f'prepare:{m}:{measure_volumes}')\n", encoding="utf-8")
+                script_file = Path(tmp) / "run.py"
+                script_file.write_text(build_script(dict(self.BASE, model_path=str(model_file), write_rates=True, resume=True)), encoding="utf-8")
+                with patch.dict(sys.modules, {"openmc": stub_openmc, "openmc.deplete": stub_deplete}):
+                    runpy.run_path(str(script_file))
+        finally:
+            del builtins._depl_events
+        self.assertEqual(events, ["prepare:MODEL:False", "results:depletion_results.h5", "operator"])
+        operator_cls.assert_called_once_with("MODEL", chain_file="/path/to/chain.xml", prev_results="PREV", reduce_chain_level=3)
+        integrator_cls.assert_called_once_with("OPERATOR", [1.0, 4.0, 10.0], power_density=38.0, timestep_units="d", continue_timesteps=True)
+        integrator_cls.return_value.integrate.assert_called_once_with(write_rates=True)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

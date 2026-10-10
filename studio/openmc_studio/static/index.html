@@ -2489,7 +2489,13 @@ function buildScript(probs, mark, opts = {}) {
     });
     depLines.push('# Depletion: the burnable materials and the cells that hold them. OpenMC needs the volume of each material; prepare_depletion measures it',
       '# with the stochastic volume calculation. deplete.py, which Studio writes beside this file when a depletion run starts, calls it first.',
-      `depletion_materials = [${groups.join(', ')}]`, '', 'def prepare_depletion(model):',
+      `depletion_materials = [${groups.join(', ')}]`,
+      '# Burnable materials that parts inside a lattice use: depletion does not burn those yet (the page refuses such a model; this is the same refusal for any other client).',
+      `depletion_in_lattices = {${mats.filter(m => m.burnable).map(m => [m, S.parts.filter(p => latMemberPartIds.has(p.id) && p.material === m.id).map(p => p.name)]).filter(([, names]) => names.length)
+        .map(([m, names]) => `${pyStr(m.name)}: [${names.map(pyStr).join(', ')}]`).join(', ')}}`, '', 'def prepare_depletion(model):',
+      '    if depletion_in_lattices:',
+      '        name, parts = next(iter(depletion_in_lattices.items()))',
+      '        raise RuntimeError(f"{name} is marked Burnable, but {len(parts)} part(s) that use it sit inside a lattice ({parts[0]}): depletion does not burn parts inside a lattice yet. Untick Export as RectLattice or HexLattice on their array group, or clear Burnable.")',
       ...(groups.length > 1 ? ['    # OpenMC\'s depletion results keep no reaction rates, so the power of each burnable material is tallied here (kappa-fission per material, added before the volume calculation:',
         '    # that calculation leaves a model.xml the transport run reads, so a tally added after it would be missing; Studio\'s depletion_writer reads',
         '    # it from the transport statepoints and splits the run\'s source rate by it.',

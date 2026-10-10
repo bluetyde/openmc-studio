@@ -384,6 +384,34 @@ test('the labels at the ends of the inventory lines do not print over each other
   assert.ok(sorted[sorted.length - 1] <= 190, 'inside the plot');
 });
 
+// the same pin as above, its fuel repeated as a 2 x 1 lattice (two parts of one group that is marked as a lattice)
+const latticed = () => {
+  const p = pin();
+  p.parts = p.parts.filter(x => x.name !== 'Cladding');   // the lattice's box must lie in one host: here the world
+  p.settings.worldR = 5;
+  const fuel = p.parts.find(x => x.name === 'Fuel'), second = Object.assign({}, fuel, {id: 'p9', name: 'Fuel B', x: 0.63});
+  fuel.x = -0.63;
+  fuel.group = second.group = 'g1';
+  p.parts.push(second);
+  p.groups = [{id: 'g1', name: 'Pins', parent: null, x: 0, y: 0, z: 0, lattice: {nx: 2, ny: 1, nz: 1, dx: 1.26, dy: 1.26, dz: 1.26, fill: 'm3', asLattice: true}}];
+  return p;
+};
+test('a burnable material used by parts inside a lattice is refused by the page and, for any other client, by model.py before any transport', () => {
+  const r = scriptFor(latticed());
+  assert.match(r.errors.join(' | '), /burnable material in a part inside a lattice/, 'the page refuses it');
+  assert.match(r.text, /^depletion_in_lattices = \{"UO2 3\.5%": \["Fuel", "Fuel B"\]\}$/m);
+  assert.match(r.text, /^def prepare_depletion\(model\):\n    if depletion_in_lattices:\n        name, parts = next\(iter\(depletion_in_lattices\.items\(\)\)\)\n        raise RuntimeError\(/m);
+  assert.ok(r.text.indexOf('raise RuntimeError(f"{name} is marked Burnable') < r.text.indexOf('model.calculate_volumes'), 'before the volumes are measured');
+});
+
+test('without a lattice the guard is an empty table and nothing is raised', () => {
+  assert.match(scriptFor(pin()).text, /^depletion_in_lattices = \{\}$/m);
+  const lat = latticed(); lat.groups[0].lattice.asLattice = false;   // an array written cell by cell is not a lattice
+  const r = scriptFor(lat);
+  assert.match(r.text, /^depletion_in_lattices = \{\}$/m);
+  assert.doesNotMatch(r.errors.join(' | '), /inside a lattice/);
+});
+
 (async () => {
   for (const [name, fn] of tests) {
     try { await fn(); console.log('  [PASS]', name); }

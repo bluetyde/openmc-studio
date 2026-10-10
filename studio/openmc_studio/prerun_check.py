@@ -8,8 +8,8 @@ on the same projects: a project the page refuses must be refused here with the s
 
 Not here yet, and so refused only by the page (and by the geometry check): the rules about imported CAD components (a material
 missing, a part reaching into one, a component past the world), the tally of surfaces of a part that sits in a lattice and a burnable
-material used by a part inside a lattice. A
-project that breaks only those still runs from a script. Findings: {level, code, path, message}; `path` is a JSON pointer into
+material used by a part inside a lattice (that last one is stopped by the generated model.py itself, before any transport). A
+project that breaks the others still runs from a script. Findings: {level, code, path, message}; `path` is a JSON pointer into
 the project (`/settings`, `/materials/m1`, `/sources/s1`, `/tallies/t2`, `/parts/p3`, `/world`).
 """
 import math

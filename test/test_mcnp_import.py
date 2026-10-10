@@ -7,7 +7,7 @@ For each deck in test/fixtures/mcnp:
   2. the page commits the report (commitMcnpImport, test/mcnp_import_page.cjs) and writes model.py;
   3. that model.py is loaded by OpenMC, and the material (by atom density) at thousands of points must equal what
      OpenMC finds in the deck as the adapter reads it: what a user runs is what the deck describes.
-Refusals are checked too: a hexagonal lattice, a torus, an all-void deck, cells with no top level.
+Refusals are checked too: a torus, an all-void deck, cells with no top level.
 
 Needs OpenMC with nuclear data (OPENMC_CROSS_SECTIONS), openmc_mcnp_adapter, and Node on PATH.
 Run: python test/test_mcnp_import.py
@@ -97,7 +97,7 @@ def import_and_run(deck):
     import contextlib, io, warnings  # noqa: E401
     with warnings.catch_warnings(), contextlib.redirect_stdout(io.StringIO()):
         warnings.simplefilter("ignore")
-        ref = mcnp_to_model(str(deck))
+        ref, _ = mcnp_import.mcnp_hex.read_deck(deck, mcnp_to_model)
         ref.export_to_model_xml(str(work / "deck_model.xml"))
     b = rep["bounds_cm"]
     lo, hi = np.array(b[:3]), np.array(b[3:])
@@ -137,11 +137,6 @@ class Refusals(unittest.TestCase):
         with self.assertRaises(mcnp_import.Refused) as cm:
             mcnp_import.import_deck(d / "deck.mcnp")
         return str(cm.exception)
-
-    def test_hex_lattice(self):
-        with self.assertRaises(mcnp_import.Refused) as cm:
-            mcnp_import.import_deck(FIX / "hex_array.mcnp")
-        self.assertIn("Hexagonal", str(cm.exception))
 
     def test_torus(self):
         msg = self.refused("torus\n1 1 -1.0 -1 imp:n=1\n2 0 1 -2 imp:n=1\n3 0 2 imp:n=0\n\n1 TZ 0 0 0 10 2 2\n2 SO 50\n\n"

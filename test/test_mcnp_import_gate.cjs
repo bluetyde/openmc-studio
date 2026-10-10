@@ -101,10 +101,10 @@ check('a deck saved by Studio (it carries its project) opens as that project ins
   assert.equal(opened, 'saved.mcnp');
 });
 
-check('a hexagonal lattice is refused, with the reason', () => {
-  const {report} = importDeck('hex_array.mcnp');
-  assert.equal(report.ok, false);
-  assert.match(report.error, /Hexagonal/);
+check('a hexagonal lattice (LAT=2) is laid out element by element and the generated model.py agrees with the deck', () => {
+  const r = commitAndCompare('hex_array.mcnp');
+  assert.ok(r.cells > 40, r.cells);
+  assert.ok(r.notes.some(n => /Hexagonal lattice \(LAT=2\)/.test(n)), JSON.stringify(r.notes));
 });
 
 if (failed) { console.log(`test_mcnp_import_gate: ${failed} FAILED`); process.exit(1); }

@@ -29,6 +29,11 @@ from pathlib import Path
 
 import numpy as np
 
+try:
+    from . import mcnp_hex
+except ImportError:  # run as a script: python mcnp_import.py
+    import mcnp_hex
+
 MAX_CELLS = 20000          # flattened cells; a lattice of lattices can explode
 COMPONENT_CELLS = 1000     # the project format's limit per component; bigger groups are split
 PREVIEW_STEPS = (64, 48, 32, 24, 16)  # voxels per axis for the 3D preview, coarser until it fits the budget
@@ -204,7 +209,7 @@ class Placer:
             elif isinstance(fill, openmc.RectLattice):
                 self.lattice(fill, chain + self.cell_chain(cell), here, top if top is not None else cell, depth)
             elif isinstance(fill, openmc.HexLattice):
-                raise Refused(f"cell {cell.id} is filled with a hexagonal lattice, which isn't imported yet.")
+                self.hex_lattice(fill, chain + self.cell_chain(cell), here, top if top is not None else cell, depth)
             else:
                 raise Refused(f"cell {cell.id} has a fill of type {type(fill).__name__} (distributed materials?), "
                               f"which isn't imported yet.")
@@ -249,6 +254,58 @@ class Placer:
             centre = tuple((a + b) / 2 if math.isfinite(a) else 0.0 for a, b in zip(e_lo, e_hi))
             box = self.to_global(_box_region(e_lo, e_hi), chain)
             self.place(u, chain + [("tr", centre)], above + [box], top, depth + 1)
+
+    def hex_lattice(self, lat, chain, above, top, depth):
+        """Each element of a HexLattice that meets the region above it. An element's centre is found from the
+        lattice's pitch and orientation and its universe is asked from OpenMC (find_element), so OpenMC's own ring
+        and index order decides which universe sits where."""
+        import openmc
+        glob = _and(above)
+        bb = glob.bounding_box if glob is not None else None
+        if bb is None or not all(math.isfinite(v) for v in list(bb[0]) + list(bb[1])):
+            raise Refused(f"lattice {lat.id} fills an unbounded region, so its elements can't be listed.")
+        p = float(lat.pitch[0])
+        three = len(lat.pitch) == 2
+        pz = float(lat.pitch[1]) if three else None
+        s3 = math.sqrt(3.0) / 2
+        t1, t2 = ((s3 * p, p / 2), (0.0, p)) if lat.orientation == "y" else ((p, 0.0), (p / 2, s3 * p))
+        cx, cy = float(lat.center[0]), float(lat.center[1])
+        corners = np.array([[x, y, z] for x in (bb[0][0], bb[1][0]) for y in (bb[0][1], bb[1][1]) for z in (bb[0][2], bb[1][2])])
+        local = self.to_local(corners, chain)
+        lo, hi = local.min(axis=0), local.max(axis=0)
+        reach = max(math.hypot(x - cx, y - cy) for x in (lo[0], hi[0]) for y in (lo[1], hi[1]))
+        m = int(math.ceil(reach / (s3 * p))) + 1
+        nz = (lat.num_axial or len(lat.universes)) if three else 1
+        z0 = float(lat.center[2]) - (nz - 1) / 2 * pz if three else 0.0
+        klo = khi = 0
+        if three:
+            if not (math.isfinite(lo[2]) and math.isfinite(hi[2])):
+                raise Refused(f"lattice {lat.id} fills a region unbounded in z, so its levels can't be listed.")
+            klo = min(0, int(math.floor((lo[2] - (z0 - pz / 2)) / pz + 1e-9)))
+            khi = max(nz - 1, int(math.ceil((hi[2] - (z0 - pz / 2)) / pz - 1e-9)) - 1)
+        if (2 * m + 1) ** 2 * (khi - klo + 1) > 40 * MAX_CELLS:
+            raise Refused(f"lattice {lat.id} would be searched over too many elements.")
+        normals = [(math.cos(a), math.sin(a)) for a in (math.radians(30 + 60 * k) for k in range(6))] if lat.orientation == "y"             else [(math.cos(a), math.sin(a)) for a in (math.radians(60 * k) for k in range(6))]
+        for k in range(klo, khi + 1):
+            for j in range(-m, m + 1):
+                for i in range(-m, m + 1):
+                    ex, ey = cx + i * t1[0] + j * t2[0], cy + i * t1[1] + j * t2[1]
+                    dx, dy = max(lo[0] - ex, 0.0, ex - hi[0]), max(lo[1] - ey, 0.0, ey - hi[1])
+                    if math.hypot(dx, dy) > p / math.sqrt(3.0) + 1e-9:
+                        continue
+                    ez = z0 + k * pz if three else 0.0
+                    if three and (ez + pz / 2 <= lo[2] or ez - pz / 2 >= hi[2]):
+                        continue
+                    idx, _ = lat.find_element((ex, ey, ez))
+                    u = lat.get_universe(idx) if lat.is_valid_index(idx) else lat.outer
+                    if u is None or getattr(u, "_studio_filler", False):
+                        continue
+                    faces = [openmc.Plane(a=nx, b=ny, c=0.0, d=nx * ex + ny * ey + p / 2) for nx, ny in normals]
+                    parts = [-f for f in faces]
+                    if three:
+                        parts += [+openmc.ZPlane(ez - pz / 2), -openmc.ZPlane(ez + pz / 2)]
+                    box = self.to_global(_and(parts), chain)
+                    self.place(u, chain + [("tr", (ex, ey, ez))], above + [box], top, depth + 1)
 
     @staticmethod
     def to_local(pts, chain):
@@ -431,8 +488,13 @@ def import_deck(path):
     try:
         with warnings.catch_warnings(record=True) as w, contextlib.redirect_stdout(io.StringIO()):
             warnings.simplefilter("always")
-            model = mcnp_to_model(str(path))
+            model, hex_cells = mcnp_hex.read_deck(path, mcnp_to_model)
         notes += sorted({str(x.message)[:200] for x in w})
+        if hex_cells:
+            notes.append("Hexagonal lattice (LAT=2) in cell " + ", ".join(str(c) for c in hex_cells)
+                         + ": read by Studio itself (the converter can't), in the manual's index order.")
+    except mcnp_hex.Unsupported as e:
+        raise Refused(f"a hexagonal lattice can't be imported: {e}.")
     except NotImplementedError as e:
         raise Refused(f"the converter doesn't support this yet: {e}.")
     except Exception as e:  # noqa: BLE001

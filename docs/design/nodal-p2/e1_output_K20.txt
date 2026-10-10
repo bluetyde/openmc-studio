@@ -1,15 +1,15 @@
-OpenMC k = 0.94469 +/- 58 pcm  (run + tallies 64 s)
-sample ADFs (-x,+x,-y,+y; fast, thermal): {'fuel A (3,3)': [[0.959, 0.967], [1.023, 0.999], [1.023, 1.015], [0.954, 0.94]], 'reflector side (3,0)': [[0.398, 0.255], [1.786, 0.992], [1.024, 1.006], [0.965, 0.968]], 'fuel next to reflector (3,1)': [[0.686, 1.35], [1.236, 0.989], [1.021, 1.003], [0.95, 0.951]]}
+OpenMC k = 0.94469 +/- 58 pcm  (run + tallies 1 s)
+sample ADFs (-x,+x,-y,+y; fast, thermal): {'fuel A (3,3)': [[0.959, 0.967], [1.023, 0.999], [0.954, 0.94], [1.023, 1.015]], 'reflector side (3,0)': [[0.398, 0.255], [1.786, 0.992], [0.965, 0.968], [1.024, 1.006]], 'fuel next to reflector (3,1)': [[0.686, 1.35], [1.236, 0.989], [0.95, 0.951], [1.021, 1.003]]}
 no ADF fdm  x1: k = 0.98578    +4109 pcm
 no ADF fdm  x2: k = 0.99052    +4583 pcm
 no ADF fdm  x4: k = 0.99538    +5069 pcm
 no ADF sanm x1: k = 0.99809    +5340 pcm
 no ADF sanm x2: k = 0.99785    +5316 pcm
 no ADF sanm x4: k = 0.99784    +5315 pcm
-ADF fdm  x1: k = 1.15839   +21370 pcm
-ADF fdm  x2: k = 1.27057   +32588 pcm
-ADF fdm  x4: k = 1.32443   +37974 pcm
-ADF sanm x1: k = 1.16274   +21805 pcm
-ADF sanm x2: k = 1.27529   +33060 pcm
-ADF sanm x4: k = 1.32499   +38030 pcm
-total 68 s
+ADF fdm  x1: k = 0.92856    -1613 pcm
+ADF fdm  x2: k = 0.85380    -9089 pcm
+ADF fdm  x4: k = 0.71048   -23421 pcm
+ADF sanm x1: k = 0.92580    -1889 pcm
+ADF sanm x2: k = 0.85276    -9193 pcm
+ADF sanm x4: k = 0.70937   -23532 pcm
+total 4 s

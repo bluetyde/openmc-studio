@@ -1,0 +1,10 @@
+OpenMC k = 0.94469 +/- 58 pcm  (run + tallies 141 s)
+K = 80 columns per assembly side; slab m/K is m columns = 1.25 % of the pitch each
+estimator       fuel/fuel rms %  fuel/refl rms %   (fast, thermal)   k - k_OpenMC, pcm (fdm, sanm)
+slab 16/K            4.9,   5.9      29.6,  42.6      +455    +857
+slab 8/K             2.4,   3.8      17.4,  29.0      -760    -737
+slab 4/K             1.2,   2.3       8.7,  15.7     -1613   -1889
+slab 2/K             0.6,   1.4       4.2,   8.0     -2073   -2522
+slab 1/K             0.4,   0.9       2.2,   3.8     -2335   -2876
+extrapolated         0.4,   1.0       0.5,   0.9     -2586   -3224
+total 143 s

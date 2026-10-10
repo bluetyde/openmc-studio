@@ -111,6 +111,9 @@ def build(data) -> dict:
     prov["notes"] = notes
     if not prov["complete"]:
         prov["notes"].append(f"incomplete: {n} of {int(planned)} steps finished")
+    if prov.get("resumed_from"):
+        r = prov["resumed_from"]
+        prov["notes"].append(f"resumed: the first {r.get('steps_done')} step(s) are from run {r.get('run')}, the rest from this run" + ("; " + "; ".join(r["warnings"]) if r.get("warnings") else ""))
     return depletion_record.build_record(durations, regions, k=[[float(a), float(b)] for a, b in data["k"]], isotopics=isotopics,
                                          provenance=prov)
 
@@ -228,11 +231,14 @@ def from_run(folder, **overrides):
     data = read_run(folder, **overrides)
     prov = json.loads((folder / "provenance.json").read_text(encoding="utf-8"))
     settings = prov.get("settings") or {}
+    resumed = (prov.get("depletion") or {}).get("resumed_from")
     data["provenance"] = {"run": folder.name, "environment": prov.get("environment"), "chain": (prov.get("depletion") or {}).get("chain"),
                           "integrator": settings.get("depIntegrator"), "chain_level": settings.get("depReduce"),
                           "power_density_w_per_g": settings.get("depPower"), "particles": settings.get("particles"),
                           "batches": settings.get("batches"), "seed": settings.get("seed"),
                           "files": prov.get("files")}
+    if resumed:
+        data["provenance"]["resumed_from"] = resumed
     try:
         data["steps_planned"] = len([t for t in str(settings.get("depSteps", "")).split(",") if t.strip()]) or None
     except (TypeError, ValueError):

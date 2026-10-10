@@ -23,9 +23,12 @@ the package, and nothing else.
      each a day or less: a **figure-of-merit column** on tally tables (1/(R^2 T)); **result-page checks** (section 0 below); a **re-run command**
      over `provenance.json`; a **model-stages guide**; a **Godiva regression case** from `mit-crpg/benchmarks`.
   3. **H\*(10)**: transcribe and check the conversion table (sources found: PNNL-19273; IAEA/Griffith, OSTI XA0053408). The code
-     is small (the effective-dose path exists); the work is the sourced, checked table. **Hexagonal lattices in imported decks**
-     (`LAT=2`, refused at `mcnp_import.py:207`; the adapter can't read them): Studio's own step, needs MCNP's hex index order, pitch and
-     orientation turned into an `openmc.HexLattice`, a fixture and a byte-for-byte check against OpenMC; about 1 to 2 days.
+     is small (the effective-dose path exists); the work is the sourced, checked table. **Hexagonal lattices in imported decks: done**
+     (2026-10-10, branch claude/hex-import): `mcnp_hex.py` reads each `LAT=2` cell (pitch, centre, index steps and orientation from the
+     deck's own faces, in the manual's order), hands the converter a rectangular placeholder, and puts an `openmc.HexLattice` in afterwards.
+     **Not read:** a single-universe fill, hexagons turned to neither axis, faces not in the manual's order, faces that aren't planes,
+     a lattice inside a region with a complement or union, a range that leaves elements unfilled inside the filled cell (MCNP loses
+     particles there; Studio leaves them void).
   4. **Nodal core package, P2** (reflector-aware factors; [plan](docs/design/nodal-package-plan.md)); the BEAVRS lesson in RAFT is its first user.
   5. **Shared pre-run check: done (2026-10-07)**: `prerun_check.py` holds the page's errors in Python; `/api/run` refuses a project with errors (422, before any run folder exists) and the headless runner adds them after its own capability checks. Held equal to the page by 73 golden cases (`test/fixtures/prerun/cases.json`, `test_prerun_check_page.js`, `test_prerun_check.py`). **Not covered yet** (page and geometry check only): the rules for imported CAD components and the surface tally of a part inside a lattice; a script that posts no project is not checked.
   6. **Graphs**: lethargy spectrum and 1D line cuts with +/-1 sigma bands (see the backlog below).
@@ -371,8 +374,7 @@ Today: one five-layer particle example (`examples/triso-particle`), no packing. 
   OpenMC), `test/test_mcnp_import.py`. The data block is read by `mcnp_cards_in.py` (standard library only): `SDEF` with
   `SI`/`SP` distributions, `NPS`, `KCODE`/`KSRC`, `MODE`, `F4` with `E`/`FM`/`FC`/`SD`, and `FMESH` (rectangular
   and cylindrical); every other card, and any card with a value it can't read, is listed in the Log with the
-  reason (tests: `test/test_mcnp_cards_in.py`, `test/test_mcnp_import_physics.js`). **Next:** hexagonal lattices
-  (upstream in the adapter, or Studio's own step); `F1`/`F2`/`F5` tallies; tallies on cells repeated in a lattice.
+  reason (tests: `test/test_mcnp_cards_in.py`, `test/test_mcnp_import_physics.js`). **Next:** `F1`/`F2`/`F5` tallies; tallies on cells repeated in a lattice.
   **Known issue (partly fixed 2026-10-06):** the live model.mcnp tab was unusable on big imports (the lattice test deck, 266
   cells, took 23.5 min). Measured: validate 973 s (OpenMC's Python `Geometry.find` once per sample point; fixed in
   the exporter, now 16-36 s) and MCNPy translate 407 s (about 0.6 s a cell up to 100 cells, steeper beyond). The

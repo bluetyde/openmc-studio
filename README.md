@@ -242,8 +242,9 @@ It needs the local server and `openmc_mcnp_adapter` (INSTRUCTIONS.md).
 - The importance-0 outside cell becomes Studio's world boundary, and void cells are left to the world (it is
   void wherever nothing else is).
 - **Not imported yet:** sources, tallies and run settings. The Log lists every card that was left out; the
-  project keeps its current source and starts with no tallies. Hexagonal lattices (`LAT=2`) and tori are
-  refused with the reason.
+  project keeps its current source and starts with no tallies. Hexagonal lattices (`LAT=2`) are read by
+  Studio itself, in the manual's index order (a deck whose hexagon is irregular, turned to neither axis, or listed in
+  another face order is refused with the reason); tori are refused.
 - A deck Studio saved itself carries its project, and opens as that project instead.
 
 ## Other options

@@ -178,6 +178,10 @@ class IndexOrder(unittest.TestCase):
         text, spec = deck_text(a1=30.0, dz=4.0, zc=0.5, ks=(-1, 1), rng_ij=(-1, 1, -1, 1), shift=(0.0, 0.0, 1.0), rad=2.5)
         self.check(text, spec)
 
+    def test_three_dimensional_levels_that_are_not_centred_on_zero(self):
+        text, spec = deck_text(a1=0.0, dz=4.0, ks=(0, 2), rng_ij=(-1, 1, -1, 1), rad=2.5, zc=0.0)
+        self.check(text, spec)
+
     def test_three_dimensional_with_the_levels_listed_downward(self):
         text, spec = deck_text(a1=0.0, dz=4.0, zup=False, ks=(-1, 1), rng_ij=(-1, 1, -1, 1), rad=2.5)
         self.check(text, spec)

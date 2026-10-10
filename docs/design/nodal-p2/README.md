@@ -7,3 +7,5 @@ Run in WSL with a venv holding `openndm 0.3.0` on top of the OpenMC 0.15.3 envir
 - `e2_two_step.py [particles batches inactive K]`: infinite lattices and fuel-plus-reflector strips, assembled by neighbour; face flux extrapolated to zero slab width (`ADF=slab` for the fixed slab 1/20).
 - `e3_face_flux.py [particles batches inactive K]`: the face-flux estimators compared by interface continuity and by k (K = 80).
 - `e1_output_K20.txt`, `e2_output_K20.txt`: the K = 20 outputs.
+- `e3_output_K80.txt`: E3's table; its last row (extrapolated) is the oracle number quoted in the plan. `e1_core_tallied.py` itself still uses a fixed slab (its K = 10/20/40 numbers are the fixed-slab rows).
+- `e2_output_K80_extrap.txt`: E2 with the extrapolated face flux (the E2 number quoted in the plan); `e2_output_K20.txt` is the fixed-slab run.

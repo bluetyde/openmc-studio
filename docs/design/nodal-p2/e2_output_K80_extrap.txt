@@ -1,0 +1,13 @@
+[infinite A] OpenMC k = 1.30560 +/- 63 pcm (76 s)
+[infinite B] OpenMC k = 1.36276 +/- 56 pcm (64 s)
+[strip A R] OpenMC k = 0.71804 +/- 58 pcm (57 s)
+[strip B R] OpenMC k = 0.75799 +/- 66 pcm (74 s)
+fuel infinite ADF (fast, thermal): A [0.991 1.034]  B [0.991 1.044]
+fuel -> reflector: A [0.722 1.619]  B [0.726 1.73 ]
+reflector -> fuel [1.827 0.891]   reflector -> vacuum [0.361 0.174]
+core (OpenMC reference k = 0.94469):
+  no ADF fdm : k = 1.00928    +6459 pcm
+  no ADF sanm: k = 1.01856    +7387 pcm
+  ADF fdm : k = 0.96983    +2514 pcm
+  ADF sanm: k = 0.96449    +1980 pcm
+total 271 s

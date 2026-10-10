@@ -226,8 +226,8 @@ Plan: [docs/design/nodal-package-plan.md](docs/design/nodal-package-plan.md). A 
   reflector is +5,470 pcm (vacuum outside) and +2,350 pcm (reflective); a fuel-only reflective case is -8 pcm. ADFs from infinite lattices change it by under 20 pcm.
   Scripts in `docs/design/nodal-p0/`.
 - **P2 started (2026-10-10, branch claude/nodal-p2)**: first numbers in the plan (`docs/design/nodal-package-plan.md`, scripts in `docs/design/nodal-p2/`):
-  with constants and factors from the core run itself the error is under 2.6k pcm (+5k without factors); a two-step recipe (infinite lattices plus a fuel-and-reflector strip) is
-  +2.5k to +3.9k. Not a pass. **Next:** a face-flux estimate that does not depend on the slab width, reflector constants that see the checkerboard, then the comparison kept as tests.
+  with constants and factors from the core run itself the error is -2.6k to -3.2k pcm (+4k to +5k without factors); a two-step recipe (infinite lattices plus a fuel-and-reflector strip) is
+  +2.0k to +2.5k with the face flux extrapolated to zero slab width (E3: the flux read from the two sides of an interface agrees to under 1 %); the oracle's floor is then -2.6k to -3.2k, so the two errors partly cancel. Not a pass. **Next:** reflector constants that see the checkerboard and corner reflector constants, a second core, then the comparison kept as tests.
   The pass line is the user's to set after seeing the numbers. **No nodal k is shown as an estimate of a core until P2 passes.**
 - Then P1 (the solver wrapper; `legendre_order = 0` with P0 correction, `openmc` on PATH, never a physical region as the lattice's `outer`), P3 (the tab),
   P4 (the SEED manifest: add-on `nodal-core`, capabilities `group-constants` and `nodal-solve`, MIT notice), P5 (the RAFT result file).

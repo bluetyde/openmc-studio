@@ -31,6 +31,7 @@ batches = int(sys.argv[2]) if len(sys.argv) > 2 else 150
 inactive = int(sys.argv[3]) if len(sys.argv) > 3 else 30
 K = int(sys.argv[4]) if len(sys.argv) > 4 else 20
 REF_K = 0.94469
+EXTRAP = os.environ.get("ADF", "extrap") == "extrap"   # ADF=slab: the slab 1/20 of the pitch, as in the first run
 t_all = time.time()
 openmc.reset_auto_ids()
 
@@ -123,10 +124,21 @@ def run_mc(label, lattice, nx, bcs):
         lib.load_from_statepoint(sp)
         f = sp.get_tally(name="fine flux").mean.reshape(K, nx * K, 2)   # [iy, ix, group], thermal first
     adfs = []
+    ms = np.array([1, 2, 4, 8])
     for n in range(nx):
         b = f[:, n * K:(n + 1) * K, :]
         node = b.reshape(-1, 2).mean(axis=0)
-        face = [b[:, 0, :].mean(axis=0), b[:, -1, :].mean(axis=0), b[0, :, :].mean(axis=0), b[-1, :, :].mean(axis=0)]
+        # per face, the flux in the columns from the face inward (mean over the face's length), then the face value:
+        # slab averages over 1, 2, 4, 8 columns, quadratic in the slab width, taken to zero width (E3: the value that
+        # makes the flux continuous across an interface; a fixed slab is biased toward the node average)
+        cols = [b.mean(axis=0), b.mean(axis=0)[::-1], b.mean(axis=1), b.mean(axis=1)[::-1]]
+        face = []
+        for p_ in cols:
+            if EXTRAP:
+                slabs = np.array([p_[:m].mean(axis=0) for m in ms])
+                face.append(np.polynomial.polynomial.polyfit(ms.astype(float), slabs, 2)[0])
+            else:
+                face.append(p_[:max(1, K // 20)].mean(axis=0))
         adfs.append(np.array([(x / node)[::-1] for x in face]))   # -x, +x, -y, +y (physical); fast, thermal
     print(f"[{label}] OpenMC k = {k.nominal_value:.5f} +/- {k.std_dev * 1e5:.0f} pcm ({time.time() - t0:.0f} s)")
     return k, lib, adfs

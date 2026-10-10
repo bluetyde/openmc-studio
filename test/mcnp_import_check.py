@@ -16,6 +16,9 @@ from pathlib import Path
 
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "studio"))
+from openmc_studio import mcnp_hex  # noqa: E402
+
 PROBE = r'''
 import json, os, sys, tempfile, xml.etree.ElementTree as ET
 import numpy as np
@@ -69,7 +72,7 @@ def main():
     openmc.reset_auto_ids()
     with warnings.catch_warnings(), contextlib.redirect_stdout(io.StringIO()):
         warnings.simplefilter("ignore")
-        ref = mcnp_to_model(deck)
+        ref, _ = mcnp_hex.read_deck(deck, mcnp_to_model)
         ref.export_to_model_xml(str(folder / "deck_model.xml"))
     b = rep["bounds_cm"]
     rng = np.random.default_rng(99)

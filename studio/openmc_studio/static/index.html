@@ -2492,7 +2492,8 @@ function buildScript(probs, mark, opts = {}) {
       `depletion_materials = [${groups.join(', ')}]`,
       '# Burnable materials that parts inside a lattice use: depletion does not burn those yet (the page refuses such a model; this is the same refusal for any other client).',
       `depletion_in_lattices = {${mats.filter(m => m.burnable).map(m => [m, S.parts.filter(p => latMemberPartIds.has(p.id) && p.material === m.id).map(p => p.name)]).filter(([, names]) => names.length)
-        .map(([m, names]) => `${pyStr(m.name)}: [${names.map(pyStr).join(', ')}]`).join(', ')}}`, '', 'def prepare_depletion(model):',
+        .map(([m, names]) => `${pyStr(m.name)}: [${names.map(pyStr).join(', ')}]`).join(', ')}}`, '', '# measure_volumes=False is a resume: the volumes come from the results being continued, so only the guard and the power-split tally are set up.',
+      'def prepare_depletion(model, measure_volumes=True):',
       '    if depletion_in_lattices:',
       '        name, parts = next(iter(depletion_in_lattices.items()))',
       '        raise RuntimeError(f"{name} is marked Burnable, but {len(parts)} part(s) that use it sit inside a lattice ({parts[0]}): depletion does not burn parts inside a lattice yet. Untick Export as RectLattice or HexLattice on their array group, or clear Burnable.")',
@@ -2503,6 +2504,8 @@ function buildScript(probs, mark, opts = {}) {
         '    t.filters = [openmc.MaterialFilter([m for m, _ in depletion_materials])]',
         '    t.scores = ["kappa-fission"]',
         '    model.tallies.append(t)'] : []),
+      '    if not measure_volumes:',
+      '        return',
       '    calcs = [openmc.VolumeCalculation([c], 200000, lo, hi) for _, cells in depletion_materials for c, lo, hi in cells]',
       '    model.settings.volume_calculations = calcs',
       '    model.calculate_volumes(output=False)',

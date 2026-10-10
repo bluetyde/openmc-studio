@@ -45,7 +45,7 @@ test('a burnable fuel is marked depletable and its cell and box are listed for t
   assert.match(r.text, /^mat_uo2_3_5\.depletable = True$/m);
   assert.equal((r.text.match(/\.depletable = True/g) || []).length, 1, 'only the burnable material');
   assert.match(r.text, /^depletion_materials = \[\(mat_uo2_3_5, \[\(cell_fuel, \(-0\.4096\d*, -0\.4096\d*, -0\.63\), \(0\.4096\d*, 0\.4096\d*, 0\.63\)\)\]\)\]$/m);
-  assert.match(r.text, /^def prepare_depletion\(model\):$/m);
+  assert.match(r.text, /^def prepare_depletion\(model, measure_volumes=True\):$/m);
   assert.match(r.text, /mat\.volume = sum\(vc\.volumes\[c\.id\]\.nominal_value for \(c, _, _\), vc in zip\(cells, results\)\)/, 'cells first, so the iterator is not over-read');
 });
 
@@ -400,7 +400,7 @@ test('a burnable material used by parts inside a lattice is refused by the page 
   const r = scriptFor(latticed());
   assert.match(r.errors.join(' | '), /burnable material in a part inside a lattice/, 'the page refuses it');
   assert.match(r.text, /^depletion_in_lattices = \{"UO2 3\.5%": \["Fuel", "Fuel B"\]\}$/m);
-  assert.match(r.text, /^def prepare_depletion\(model\):\n    if depletion_in_lattices:\n        name, parts = next\(iter\(depletion_in_lattices\.items\(\)\)\)\n        raise RuntimeError\(/m);
+  assert.match(r.text, /^def prepare_depletion\(model, measure_volumes=True\):\n    if depletion_in_lattices:\n        name, parts = next\(iter\(depletion_in_lattices\.items\(\)\)\)\n        raise RuntimeError\(/m);
   assert.ok(r.text.indexOf('raise RuntimeError(f"{name} is marked Burnable') < r.text.indexOf('model.calculate_volumes'), 'before the volumes are measured');
 });
 
@@ -410,6 +410,13 @@ test('without a lattice the guard is an empty table and nothing is raised', () =
   const r = scriptFor(lat);
   assert.match(r.text, /^depletion_in_lattices = \{\}$/m);
   assert.doesNotMatch(r.errors.join(' | '), /inside a lattice/);
+});
+
+test('prepare_depletion can skip the volumes for a resume: the tally is still added, the early return comes before the volume calculation', () => {
+  const two = scriptFor(pin({slices: true}));
+  const i = {tally: two.text.indexOf('model.tallies.append(t)'), early: two.text.indexOf('    if not measure_volumes:\n        return'), calc: two.text.indexOf('model.calculate_volumes')};
+  assert.ok(i.tally > 0 && i.early > i.tally && i.calc > i.early, JSON.stringify(i));
+  assert.match(two.text, /^def prepare_depletion\(model, measure_volumes=True\):$/m);
 });
 
 (async () => {

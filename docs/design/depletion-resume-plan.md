@@ -27,7 +27,7 @@ Why it matters: depletion on a real model is hours of transport per step (the pi
 **R0. Find out what a restart really does (about 2 hours, real OpenMC, pin cell).** Three questions, answered by running, before any design is fixed:
 - Does a stopped run started with `write_rates=True` hold usable rates in its last entry, and how much bigger is the file?
 - Does a restart from the same file **without** rates fail loudly or deplete wrongly? (Decides how hard the refusal must be.)
-- Is a resumed burn **identical** to an uninterrupted one? The seed is the same for every solve and the first resumed step reuses the stored rates, so for the predictor the atoms and k should agree to the last digit, and for CE/CM to a very small tolerance. If they agree, that is the best oracle this feature can have (see below). If they do not, find out why before building anything.
+- Is a resumed burn **identical** to an uninterrupted one? The seed is the same for every solve and the first resumed step reuses the stored rates, so the atoms should agree closely (measured: 2e-8). k cannot be bit-identical for the last point (see the R0 result).
 
 **R1. `depletion_script.py`: two options.** `write_rates` (default off, so every existing generated script and test stays byte for byte) and `resume` (give `prev_results` to the operator, pass `continue_timesteps=True`, and do **not** call `prepare_depletion` to measure volumes). Unit tests on the generated text, like the existing 18.
 
@@ -43,11 +43,20 @@ Why it matters: depletion on a real model is hours of transport per step (the pi
 
 ## How to prove it right
 
-1. **Identical to an uninterrupted run (the main oracle):** the same pin, steps `1, 4, 10`, predictor. Run uninterrupted. Run again, kill it after the second transport solve, resume. Compare atoms of every listed nuclide and k at every point: expect equality, or a stated tiny tolerance if CE/CM differs. Do it once for the predictor, once for CE/CM, once for the two-slice case (to check the copied statepoints and the split).
+1. **Identical to an uninterrupted run (the main oracle):** the same pin, steps `1, 4, 10`, predictor. Run uninterrupted. Run again, kill it after the second transport solve, resume. Compare atoms of every listed nuclide (relative 1e-6) and k (identical where the point was not redone, within 3 sigma for the one that was). Do it once for the predictor, once for CE/CM, once for the two-slice case (to check the copied statepoints and the split).
 2. **Break tests (commit first):** resume without `continue_timesteps`; with the volumes measured again; from a file with no rates (must be refused); with a different chain file (refused); with the run's project replaced by the page's; with a time step list that differs from the original; dropping the copied statepoints (multi-region must refuse, not guess). Each must fail a test.
 3. **Corrupt file:** truncate a copy of a results file and ask for a resume: refused with the reason, original untouched.
 4. **The original is never changed:** hash every file of the stopped run before and after a resume.
 5. **A chain of two:** stop, resume, stop again, resume again: one record, correct step count, both runs named.
+
+## R0 result (2026-10-10, real OpenMC 0.15.3, the UO2 pin, predictor, steps 1, 4, 10 days; `test/manual_resume_r0.py`)
+
+- **Rates are kept with `write_rates=True`, and nothing else changes.** The same run with and without them differs by 4e-14 in the atoms and 2e-8 in k (thread noise). The results file grew from 1,216,776 to 1,332,856 bytes (about 10 percent on this tiny model; to be measured on a bigger one).
+- **A killed run holds the entries it finished, rates included.** Killed after the second transport solve: 3 entries (times 0, 1, 5 days), each with its stored rates. The file was readable (SIGKILL fell during transport, as it usually will; a kill during the small end-of-step write was not provoked, so the corruption risk below stays).
+- **A resume continues to the end and is the same burn.** Given the full step list and `continue_timesteps=True`, it ran the last step and the final solve (62 s against 141 s for the whole burn) and ended with the same four times. Against the uninterrupted run: **atoms agree to 2.2e-8 relative at every point; k agrees at the points the first run had already made, and the last point (a new transport solve from a composition that differs in the eighth digit) differs by 1.7e-3, inside its statistical error (sigma about 0.005)**. A fixed seed does not make a Monte Carlo solve repeatable once its input differs even slightly, so k cannot be bit-identical there. The oracle is therefore: atoms to 1e-6, k identical for the points that were not redone and within 3 sigma for the one that was. (The plan said "identical"; this is the measured version.)
+- **A resume from a file written without rates does not fail. It burns wrongly.** It exited 0, ran in 73 s, and ended with atoms off by up to 99 percent and k off by 0.046: the first resumed step used rates of zero (decay only, no transmutation). This is the silent failure the plan feared, so refusing a run with no stored rates is not optional, and the check must read the rates, not trust a flag.
+
+The plan stands as written, with the oracle above.
 
 ## Risks
 

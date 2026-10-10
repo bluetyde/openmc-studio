@@ -173,6 +173,13 @@ def run_mc_core(lattice):
     flux.filters = [openmc.MeshFilter(mesh), openmc.EnergyFilter(GROUPS.group_edges)]
     flux.scores = ["flux"]
     tallies.append(flux)
+    pmesh = openmc.RegularMesh()
+    pmesh.dimension = [NC, NC, 1]
+    pmesh.lower_left, pmesh.upper_right = [-NC * ASM / 2, -NC * ASM / 2, -HZ / 2], [NC * ASM / 2, NC * ASM / 2, HZ / 2]
+    pw = openmc.Tally(name="assembly power")
+    pw.filters = [openmc.MeshFilter(pmesh)]
+    pw.scores = ["kappa-fission"]
+    tallies.append(pw)
     wd = os.path.join(os.getcwd(), "core_run")
     os.makedirs(wd, exist_ok=True)
     sp_path = openmc.Model(geometry, materials, settings, tallies).run(output=False, cwd=wd)
@@ -180,6 +187,11 @@ def run_mc_core(lattice):
         k = sp.keff
         lib.load_from_statepoint(sp)
         f = sp.get_tally(name="fine flux").mean.reshape(NC * K, NC * K, 2)
+        tp = sp.get_tally(name="assembly power")
+        global POWER
+        POWER = (tp.mean.reshape(NC, NC)[::-1], tp.std_dev.reshape(NC, NC)[::-1])   # [row (0 = top), column]
+        global FLUXN
+        FLUXN = np.array([[f[(NC - 1 - r) * K:(NC - r) * K, c * K:(c + 1) * K, :].reshape(-1, 2).mean(axis=0)[::-1] for c in range(NC)] for r in range(NC)])   # [row, col, group fast first]
     ms = np.array([1, 2, 4, 8])
     adfs = {}
     for row in range(NC):
@@ -273,14 +285,36 @@ CASES = [("constants core, factors core (the oracle)", "core", "core", None),
          ("constants strips; core factors on fuel/reflector faces only", "strips", "core", "fuel-reflector"),
          ("constants strips; core factors on vacuum faces only", "strips", "core", "vacuum"),
          ("constants strips; core factors on fuel/fuel faces only", "strips", "core", "fuel-fuel")]
+print(f"OpenMC assembly power: {int(np.array([[kinds[r][c] != 'R' for c in range(NC)] for r in range(NC)]).sum())} fuel nodes; statistical error rms "
+      f"{100 * np.sqrt(((POWER[1] / POWER[0])[np.array([[kinds[r][c] != 'R' for c in range(NC)] for r in range(NC)])] ** 2).mean()):.2f} %")
 print(f"core run: OpenMC k = {kCore.nominal_value:.5f} +/- {kCore.std_dev * 1e5:.0f} pcm; nodal k minus OpenMC k, pcm (fdm, sanm), one node per assembly:")
 for name, cs, fs, only in CASES:
     xs = make_library(cs, fs, only)
-    ks = []
+    ks, pw_stats = [], []
+    fuel = np.array([[kinds[r][c] != "R" for c in range(NC)] for r in range(NC)])
+    ref_p = POWER[0] / POWER[0][fuel].mean()
+    ref_sd = POWER[1] / POWER[0][fuel].mean()
     for kernel in ("fdm", "sanm"):
         g = openndm.Geometry.from_openmc(core_wrap, domains=doms_w, dz=[HZ], boundaries=bc, outside="vacuum", subdivide=1)
-        ks.append((openndm.Model(g, xs, openndm.Settings(kernel=kernel, verbosity=0)).solve().k_eff - kCore.nominal_value) * 1e5)
-    print(f"  {name:62s} {ks[0]:+7.0f} {ks[1]:+7.0f}")
+        res = openndm.Model(g, xs, openndm.Settings(kernel=kernel, verbosity=0)).solve()
+        ks.append((res.k_eff - kCore.nominal_value) * 1e5)
+        nodal = res.radial_power()
+        nodal = nodal / nodal[fuel].mean()
+        err = 100 * (nodal[fuel] / ref_p[fuel] - 1)
+        pw_stats.append((np.sqrt((err ** 2).mean()), np.abs(err).max()))
+        if os.environ.get("MAPS") and kernel == "sanm" and name.startswith("constants core, factors core"):
+            np.set_printoptions(linewidth=200, precision=2, suppress=True)
+            print("OpenMC power (rows top to bottom):")
+            print(np.where(fuel, ref_p, 0))
+            fl = np.asarray(res.flux)
+            print("nodal flux array shape", fl.shape)
+            fl = fl.reshape(NC, NC, -1) if fl.size == NC * NC * 2 else fl
+            for gname, gi in (("fast", 0), ("thermal", 1)):
+                ratio = fl[4, :, gi] / FLUXN[4, :, gi]
+                print(f"nodal / OpenMC node-average flux, middle row, {gname}, relative to the centre node:", (ratio / ratio[4]).round(3))
+            print("nodal power:")
+            print(np.where(fuel, nodal, 0))
+    print(f"  {name:62s} {ks[0]:+7.0f} {ks[1]:+7.0f}   assembly power error % rms/max: fdm {pw_stats[0][0]:.1f}/{pw_stats[0][1]:.1f}, sanm {pw_stats[1][0]:.1f}/{pw_stats[1][1]:.1f}")
 # the constants themselves: how far are the strips' from the core run's, per kind (percent difference of D, absorption, nu-fission)
 for kd, positions in (("A", [(1, 4), (1, 1)]), ("B", [(4, 4), (2, 2)]), ("R", [(4, 0), (0, 0)])):
     for (r, c) in positions:

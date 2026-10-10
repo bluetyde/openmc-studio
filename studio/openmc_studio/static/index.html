@@ -5302,7 +5302,7 @@ function applyPropFilter() {
 
 
 /* ───────── Local runner (active only when a Studio server serves this page) ───────── */
-const LOCAL = {on:false, token:'', run:null, es:null, results:null, resultsRun:null, mesh:0, selTrack:null};
+const LOCAL = {on:false, token:'', run:null, es:null, results:null, resultsRun:null, mesh:0, selTrack:null, resumeNote:null};
 (function initToken() {
   if (IN_ARTIFACT || !/^https?:$/.test(location.protocol)) return;
   const q = new URLSearchParams(location.search);
@@ -5523,6 +5523,7 @@ $('#results').addEventListener('click', e => {
   else if (e.target.closest('#reportBtn')) saveRunReport();
   else if (e.target.closest('#recordBtn')) checkRunRecord();
   else if (e.target.closest('#depExportBtn')) saveDepletionRecord();
+  else if (e.target.closest('#depResumeBtn')) resumeBurn();
   else if (e.target.closest('.pinBtn')) loadPinPower(e.target.closest('.pinBtn').dataset.tally);
   else if (e.target.closest('.pinCsv')) savePinCsv();
   else if (e.target.closest('.pinClose')) { LOCAL.pins = null; renderResults(); }
@@ -5540,7 +5541,7 @@ function clearResults() {
   schedule();
 }
 async function loadResults(id, switchTab) {
-  try { LOCAL.results = await api(`/api/runs/${encodeURIComponent(id)}/results`); LOCAL.resultsRun = id; noteDepletionTiming(LOCAL.results); }
+  try { LOCAL.results = await api(`/api/runs/${encodeURIComponent(id)}/results`); LOCAL.resultsRun = id; LOCAL.resumeNote = null; noteDepletionTiming(LOCAL.results); }
   catch (e) { log('error', `Couldn't load results for ${esc(id)}: ${esc(e.message)}`); return; }
   LOCAL.selTrack = null; LOCAL.mesh = 0;
   renderResults();
@@ -5833,7 +5834,11 @@ function renderDepletion(D) {
     `${rec.time_steps_days.length} step${rec.time_steps_days.length === 1 ? '' : 's'}${prov.integrator ? ' · ' + esc(prov.integrator.replace('Integrator', '')) : ''}` +
     `${prov.chain_level ? ' · chain level ' + esc(prov.chain_level) : ''}${prov.power_density_w_per_g ? ' · ' + esc(prov.power_density_w_per_g) + ' W/g' : ''}` +
     `${D.wall_s ? ' · ' + (D.wall_s < 120 ? D.wall_s + ' s' : (D.wall_s / 60).toFixed(1) + ' min') : ''} · record <code>${esc(String(rec.id || '').slice(0, 12))}</code></p>` +
-    (prov.complete === false ? `<p class="envline"><span class="sev warn">incomplete</span> ${esc(prov.steps_done)} of ${esc(prov.steps_planned)} steps finished before the run stopped. The record holds those steps.</p>` : '') +
+    (prov.complete === false ? `<p class="envline"><span class="sev warn">incomplete</span> ${esc(prov.steps_done)} of ${esc(prov.steps_planned)} steps finished before the run stopped. The record holds those steps. ` +
+      `<button class="tbtn" type="button" id="depResumeBtn" title="Start a new run that continues this burn from its last saved step, and ends with one record for the whole burn. This run is left as it is.">Resume this burn</button></p>` +
+      (LOCAL.resumeNote ? `<p class="envline" id="depResumeNote"><span class="sev warn">not resumed</span> ${esc(LOCAL.resumeNote)}</p>` : '') : '') +
+    (prov.resumed_from ? `<p class="envline" id="depResumedFrom">Resumed: the first ${esc(prov.resumed_from.steps_done)} step${prov.resumed_from.steps_done === 1 ? '' : 's'} come from run <code>${esc(prov.resumed_from.run)}</code>.` +
+      `${(prov.resumed_from.warnings || []).length ? ' <span class="sev warn">note</span> ' + esc(prov.resumed_from.warnings.join('; ')) : ''}</p>` : '') +
     (ok ? '' : `<p class="envline"><span class="sev warn">check</span> ${esc((prov.notes || []).join('; ') || 'a bookkeeping check is outside its tolerance')}</p>`) +
     `<div style="overflow-x:auto"><table class="rtable" id="depTable"><thead><tr><th class="num">Step</th><th class="num">Day</th>${many ? rec.regions.map(r => `<th class="num">${esc(r.name)}, MWd/tU</th>`).join('') + '<th class="num">Average, MWd/tU</th>' : '<th class="num">Burnup, MWd/tU</th>'}<th class="num">k-eff (1 sigma)</th></tr></thead><tbody>${rows}</tbody></table></div>` +
     depKChart(rec) + depInventoryCharts(rec) +
@@ -5866,6 +5871,21 @@ function depEstimateHtml() {
   const scale = (st.particles * st.batches) / (last.particles * last.batches);
   return html + ` Last depletion run here: ${last.solves} solves in ${fmt(last.wall)} (${last.s.toFixed(0)} s each at ${last.particles} × ${last.batches}). ` +
     `This one: roughly ${fmt(n * last.s * scale)} if a solve scales with particles × batches. That is a guess: the first solve also reads the cross sections, and a bigger model or a longer chain takes longer.`;
+}
+// Continue a burn that stopped: the server makes a new run folder from it, refuses with a reason when it cannot (corrupt results, no stored rates, another chain), and the
+// new run is followed like any run. The stopped run is not changed.
+async function resumeBurn() {
+  const rid = LOCAL.resultsRun;
+  if (!LOCAL.on || !rid) { log('warn', 'Open the burn that stopped first (Runs > Results).'); return; }
+  if (LOCAL.run) { log('warn', 'A run is going. Stop it or wait for it to finish, then resume.'); return; }
+  LOCAL.resumeNote = null;
+  let meta;
+  try { meta = await api(`/api/runs/${encodeURIComponent(rid)}/resume`, {method:'POST', body:'{}'}); }
+  catch (e) { LOCAL.resumeNote = e.message; log('error', `Not resumed: ${esc(e.message)}`); renderResults(); return; }
+  LOCAL.run = meta.id; setRunning(true); setOutTab('log');
+  log('info', `Resuming <code>${esc(rid)}</code> as run <code>${esc(meta.id)}</code>.`);
+  streamRun(meta.id);
+  refreshRuns();
 }
 async function saveDepletionRecord() {
   const rid = LOCAL.resultsRun, D = LOCAL.results && LOCAL.results.depletion;

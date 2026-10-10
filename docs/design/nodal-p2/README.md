@@ -12,3 +12,4 @@ Run in WSL with a venv holding `openndm 0.3.0` on top of the OpenMC 0.15.3 envir
 - `e4_checkerboard.py`: three ways to assemble the two-step input (one-fuel strips; checkerboard strips; checkerboard strips and a color set).
 - `e5_swap_pieces.py`: core-run pieces and strip pieces swapped one at a time, with the core's factors put in one class of faces at a time.
 - `e4_output_K80.txt`, `e5_output_K80.txt`: their outputs.
+- `e6_zoned_core.py`, `e6_output_K80.txt`: the second core (9 x 9, radially zoned), same swaps as E5.

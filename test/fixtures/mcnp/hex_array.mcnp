@@ -18,13 +18,13 @@ c @studio-v1 cell 6 1/1 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%7D
 6 0 1 -2 3 -4 5 -6 (-7:8:-9:10:-11:12) (16:-17:18) IMP:N=1.0
 c --- Cell 1: pin_-2_0 [unit] (Material 2: Iron, rho = -7.87 g/cm3) ---
 c @studio-v1 cell 1 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%7D
-1 2 -7.87 -13 14 -15 U 1 IMP:N=1.0
+1 2 -7.87 -13 14 -15 U=1 IMP:N=1.0
 c --- Cell 2: Hex pins Mod (Material 1: Water, rho = -1 g/cm3) ---
 c @studio-v1 cell 2 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%7D
-2 1 -1.0 13:-14:15 U 1 IMP:N=1.0
+2 1 -1.0 13:-14:15 U=1 IMP:N=1.0
 c --- Cell 3: Hex pins Solid [unit] (Material 1: Water, rho = -1 g/cm3) ---
 c @studio-v1 cell 3 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%7D
-3 1 -1.0 -19:19 U 2 IMP:N=1.0
+3 1 -1.0 -19:19 U=2 IMP:N=1.0
 c @studio-v1 cell 8 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_hex%22%7D
 8 0 -26 -27 -28 -29 -30 -31 -32 33 U=3 LAT=2 FILL=-6:6 -6:6 0:0 2 2 2 2 2 2 2
 c --- Cell 2: Hex pins Mod (Material 1: Water, rho = -1 g/cm3) ---

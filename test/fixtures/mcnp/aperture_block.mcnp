@@ -21,10 +21,10 @@ c @studio-v1 cell 6 1/1 %7B%22kind%22%3A%22world%22%2C%22id%22%3A%22world%22%7D
 6 0 1 -2 3 -4 5 -6 (-7:8:-9:10:-11:12) (-13:14:-15:16:-17:18) (-23:24:-15:16:-25:26) IMP:N=1.0
 c --- Cell 1: ch_0_8 [unit] (Material 2: Air, rho = -0.001205 g/cm3) ---
 c @studio-v1 cell 1 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_channels%22%7D
-1 2 -0.001205 19 -20 15 -16 21 -22 U 1 IMP:N=1.0
+1 2 -0.001205 19 -20 15 -16 21 -22 U=1 IMP:N=1.0
 c --- Cell 2: Channels (14x9 array) Mod (Material 1: Iron, rho = -7.87 g/cm3) ---
 c @studio-v1 cell 2 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_channels%22%7D
-2 1 -7.87 -19:20:-15:16:-21:22 U 1 IMP:N=1.0
+2 1 -7.87 -19:20:-15:16:-21:22 U=1 IMP:N=1.0
 c @studio-v1 cell 7 1/1 %7B%22kind%22%3A%22group%22%2C%22id%22%3A%22g_channels%22%7D
 7 0 -28 U=2 LAT=1 FILL=1 IMP:N=1.0
 c --- Cell 999: Outside World (vacuum boundary, particles terminated) ---

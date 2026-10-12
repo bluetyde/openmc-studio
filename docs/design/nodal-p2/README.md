@@ -14,3 +14,4 @@ Run in WSL with a venv holding `openndm 0.3.0` on top of the OpenMC 0.15.3 envir
 - `e4_output_K80.txt`, `e5_output_K80.txt`: their outputs.
 - `e6_zoned_core.py`, `e6_output_K80.txt`: the second core (9 x 9, radially zoned), same swaps as E5.
 - `e7_thick_reflector.py`: the core-tallied factors on one class of faces at a time, with 1, 2 or 3 reflector layers (`REFL`), k and assembly power against OpenMC. Its findings withdraw the word "oracle" used for E1 and E5/E6.
+- `e8_equivalence.py`, `e8_output_K80.txt`: factors by generalised equivalence theory (true face flux over a parabola built from the MC node flux and net currents); the Fick-law check of the library D; D scaled per group. `MAPS`-style class modes as in E7.

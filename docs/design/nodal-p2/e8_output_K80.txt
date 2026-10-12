@@ -1,0 +1,50 @@
+E8 (e8_equivalence.py), 20,000 particles x 150 batches (30 inactive), K = 80, one run per REFL. Nodal k minus OpenMC k, and the assembly-power error
+(fuel nodes, normalised to their mean) against OpenMC's kappa-fission per assembly. Typed from the console output of 2026-10-12; the Fick-ratio table is
+from the REFL = 2 run. "D as tallied" is the library's D; "D x scale" multiplies each group's D in every node by one factor fitted by least squares so that
+Fick's law reproduces the Monte Carlo net currents between neighbouring nodes (vacuum faces excluded).
+
+REFL = 1 layers, 9 x 9: OpenMC k = 1.01726 +/- 52 pcm; power statistical error rms 0.66 %
+D scale that makes Fick's law match the Monte Carlo currents (fast, thermal): [1.399, 3.785]
+  D as tallied: no factors                                                             fdm:  +4223 pcm, power rms/max  8.9/21.5 %;  sanm:  +4908 pcm, power rms/max  0.9/ 2.5 %
+  D as tallied: face / node average, all faces (E1)                                    fdm:  -1401 pcm, power rms/max 19.9/40.8 %;  sanm:  -1942 pcm, power rms/max 17.2/35.8 %
+  D as tallied: equivalence, all faces                                                 fdm:  +7105 pcm, power rms/max  9.1/21.0 %;  sanm:  +6852 pcm, power rms/max  7.2/14.6 %
+  D as tallied: equivalence, interior faces only                                       fdm:  +3947 pcm, power rms/max 13.2/27.0 %;  sanm:  +4619 pcm, power rms/max  8.3/15.9 %
+  D as tallied: equivalence, fuel/fuel only                                            fdm:  +3918 pcm, power rms/max 10.5/21.6 %;  sanm:  +4456 pcm, power rms/max  5.9/11.9 %
+  D as tallied: equivalence, fuel/reflector only                                       fdm:  +4353 pcm, power rms/max 11.3/26.1 %;  sanm:  +5162 pcm, power rms/max  2.8/ 5.7 %
+  D as tallied: equivalence interior + old definition at the vacuum                    fdm:   +963 pcm, power rms/max 25.9/44.6 %;  sanm:  +1430 pcm, power rms/max 25.8/44.1 %
+  D as tallied: old definition on fuel/reflector and vacuum, equivalence fuel/fuel     fdm:  +1146 pcm, power rms/max 21.9/37.6 %;  sanm:   +748 pcm, power rms/max 22.3/39.3 %
+  D x scale: no factors                                                             fdm:  -3690 pcm, power rms/max  2.9/ 6.3 %;  sanm:  -2985 pcm, power rms/max  4.8/12.1 %
+  D x scale: face / node average, all faces (E1)                                    fdm: -12176 pcm, power rms/max 17.9/37.3 %;  sanm: -12679 pcm, power rms/max 16.4/34.4 %
+  D x scale: equivalence, all faces                                                 fdm:  -1509 pcm, power rms/max  8.4/16.4 %;  sanm:  -1833 pcm, power rms/max  9.5/19.1 %
+  D x scale: equivalence, interior faces only                                       fdm:  -3888 pcm, power rms/max  8.5/17.4 %;  sanm:  -3178 pcm, power rms/max  8.3/14.2 %
+  D x scale: equivalence, fuel/fuel only                                            fdm:  -4090 pcm, power rms/max  7.6/14.8 %;  sanm:  -3540 pcm, power rms/max  6.4/12.3 %
+  D x scale: equivalence, fuel/reflector only                                       fdm:  -3413 pcm, power rms/max  2.9/ 7.0 %;  sanm:  -2550 pcm, power rms/max  7.0/19.0 %
+  D x scale: equivalence interior + old definition at the vacuum                    fdm:  -7032 pcm, power rms/max 26.1/46.7 %;  sanm:  -6381 pcm, power rms/max 28.1/51.6 %
+  D x scale: old definition on fuel/reflector and vacuum, equivalence fuel/fuel     fdm:  -8371 pcm, power rms/max 23.3/42.7 %;  sanm:  -8701 pcm, power rms/max 24.1/44.6 %
+
+REFL = 2 layers, 11 x 11: OpenMC k = 1.03703 +/- 57 pcm; power statistical error rms 0.67 %
+D scale that makes Fick's law match the Monte Carlo currents (fast, thermal): [1.451, 2.336]
+  D as tallied: no factors                                                             fdm:  +4229 pcm, power rms/max  9.7/23.9 %;  sanm:  +5135 pcm, power rms/max  1.5/ 3.5 %
+  D as tallied: face / node average, all faces (E1)                                    fdm:   -428 pcm, power rms/max 20.1/35.4 %;  sanm:   -456 pcm, power rms/max 20.7/36.0 %
+  D as tallied: equivalence, all faces                                                 fdm:  +6840 pcm, power rms/max 10.3/23.5 %;  sanm:  +7269 pcm, power rms/max  5.4/12.2 %
+  D as tallied: equivalence, interior faces only                                       fdm:  +5858 pcm, power rms/max 12.3/27.4 %;  sanm:  +6252 pcm, power rms/max  8.5/17.8 %
+  D as tallied: equivalence, fuel/fuel only                                            fdm:  +3721 pcm, power rms/max 12.4/25.8 %;  sanm:  +4343 pcm, power rms/max  7.2/14.3 %
+  D as tallied: equivalence, fuel/reflector only                                       fdm:  +4484 pcm, power rms/max 11.8/27.0 %;  sanm:  +5567 pcm, power rms/max  5.0/11.0 %
+  D as tallied: equivalence interior + old definition at the vacuum                    fdm:  +5427 pcm, power rms/max 13.5/29.3 %;  sanm:  +5792 pcm, power rms/max 10.4/21.2 %
+  D as tallied: old definition on fuel/reflector and vacuum, equivalence fuel/fuel     fdm:  +6623 pcm, power rms/max  5.4/10.1 %;  sanm:  +6024 pcm, power rms/max  6.8/13.8 %
+  D x scale: no factors                                                             fdm:  -1794 pcm, power rms/max  2.3/ 6.2 %;  sanm:   -518 pcm, power rms/max  8.9/22.1 %
+  D x scale: face / node average, all faces (E1)                                    fdm:  -9268 pcm, power rms/max 18.0/32.8 %;  sanm:  -9147 pcm, power rms/max 19.5/35.4 %
+  D x scale: equivalence, all faces                                                 fdm:  +1259 pcm, power rms/max  5.3/11.8 %;  sanm:  +1984 pcm, power rms/max  7.6/16.0 %
+  D x scale: equivalence, interior faces only                                       fdm:   -592 pcm, power rms/max  8.6/17.6 %;  sanm:    +71 pcm, power rms/max 10.0/17.8 %
+  D x scale: equivalence, fuel/fuel only                                            fdm:  -2581 pcm, power rms/max  7.9/15.9 %;  sanm:  -1626 pcm, power rms/max  7.8/11.7 %
+  D x scale: equivalence, fuel/reflector only                                       fdm:  -1393 pcm, power rms/max  4.5/10.4 %;  sanm:    +77 pcm, power rms/max 12.3/29.1 %
+  D x scale: equivalence interior + old definition at the vacuum                    fdm:  -1129 pcm, power rms/max 11.3/23.6 %;  sanm:   -496 pcm, power rms/max 13.7/24.7 %
+  D x scale: old definition on fuel/reflector and vacuum, equivalence fuel/fuel     fdm:   -677 pcm, power rms/max  6.8/14.2 %;  sanm:  -1108 pcm, power rms/max  9.4/22.2 %
+
+Equivalence factors by class of face (REFL = 1, mean [min, max], fast | thermal; the old definition is face flux over node average):
+  old definition:  vacuum fast 0.369 thermal 0.161;  reflector/reflector 1.068 | 1.071;  fuel/reflector 1.243 | 1.190;  fuel/fuel 1.027 | 1.037
+  equivalence:     vacuum fast 2.980 [1.872, 3.572] thermal 3.227 [0.378, 77.070];  reflector/reflector 1.004 | 1.002;  fuel/reflector 1.006 | 1.098;  fuel/fuel 0.981 | 1.116
+
+Current through the shared x face between neighbours, middle row (REFL = 2), J_mc / J_fd with Fick's law and the nodes' own D (fast | thermal):
+  R-R (col 0|1): 1.34 | 1.62     R-A (1|2): 1.62 | 2.82     A-B (2|3): 1.28 | -7.75    B-B (3|4): 1.23 | 1.25     B-B (4|5): 1.34 | 1.54
+  B-B (5|6): 1.29 | 1.88          B-B (6|7): 1.31 | 1.09     B-A (7|8): 1.25 | -8.31   A-R (8|9): 1.63 | 2.79     R-R (9|10): 1.36 | 1.62

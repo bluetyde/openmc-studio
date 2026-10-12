@@ -1,0 +1,17 @@
+[infinite A] OpenMC k = 1.30560 +/- 63 pcm (71 s)
+[infinite B] OpenMC k = 1.36276 +/- 56 pcm (69 s)
+[strip A R] OpenMC k = 0.71804 +/- 58 pcm (58 s)
+[strip B R] OpenMC k = 0.75799 +/- 66 pcm (61 s)
+[strip B A B R] OpenMC k = 1.12337 +/- 55 pcm (61 s)
+[strip A B A R] OpenMC k = 1.10554 +/- 62 pcm (62 s)
+[color set] OpenMC k = 1.33604 +/- 67 pcm (75 s)
+V0 one-fuel strips, infinite fuel: fuel->R A [0.722 1.619] B [0.726 1.73 ]; R->fuel [1.827 0.891]; R->vacuum [0.361 0.174]; R D [1.1259 0.1894] absorption [0.00037 0.01357]
+V1 checkerboard strips: fuel->R A [0.657 1.469] B [0.665 1.518]; R->fuel [1.81  0.919]; R->vacuum [0.363 0.171]; R D [1.1103 0.1893] absorption [0.00038 0.01358]
+V2 checkerboard strips + color set: fuel->R A [0.657 1.469] B [0.665 1.518]; R->fuel [1.81  0.919]; R->vacuum [0.363 0.171]; R D [1.1103 0.1893] absorption [0.00038 0.01358]
+core (OpenMC reference k = 0.94469), nodal k minus OpenMC k, pcm:
+  V0 one-fuel strips, infinite fuel        no factors   +6459   +7387   with factors   +2514   +1980   (fdm, sanm)
+  V1 checkerboard strips                   no factors   +6530   +7544   with factors   +2046   +1542   (fdm, sanm)
+  V2 checkerboard strips + color set       no factors   +6578   +7596   with factors   +2085   +1573   (fdm, sanm)
+total 456 s
+
+[exited with code 0]

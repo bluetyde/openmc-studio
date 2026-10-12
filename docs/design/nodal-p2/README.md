@@ -3,9 +3,14 @@
 Run in WSL with a venv holding `openndm 0.3.0` on top of the OpenMC 0.15.3 environment; `openmc` and the venv's `python` both on PATH, venv first;
 `OPENMC_CROSS_SECTIONS` set; `OMP_NUM_THREADS=8`. The results table and the rules found are in [`../nodal-package-plan.md`](../nodal-package-plan.md).
 
-- `e1_core_tallied.py [particles batches inactive K]`: constants and discontinuity factors tallied in the core run itself (the oracle). `REUSE=1` reads the last statepoint in the folder; `VARIANT=noouter` drops factors on vacuum faces.
+- `e1_core_tallied.py [particles batches inactive K]`: constants and discontinuity factors tallied in the core run itself (called the oracle at first; E7 shows it is not one). `REUSE=1` reads the last statepoint in the folder; `VARIANT=noouter` drops factors on vacuum faces.
 - `e2_two_step.py [particles batches inactive K]`: infinite lattices and fuel-plus-reflector strips, assembled by neighbour; face flux extrapolated to zero slab width (`ADF=slab` for the fixed slab 1/20).
 - `e3_face_flux.py [particles batches inactive K]`: the face-flux estimators compared by interface continuity and by k (K = 80).
 - `e1_output_K20.txt`, `e2_output_K20.txt`: the K = 20 outputs.
 - `e3_output_K80.txt`: E3's table; its last row (extrapolated) is the oracle number quoted in the plan. `e1_core_tallied.py` itself still uses a fixed slab (its K = 10/20/40 numbers are the fixed-slab rows).
 - `e2_output_K80_extrap.txt`: E2 with the extrapolated face flux (the E2 number quoted in the plan); `e2_output_K20.txt` is the fixed-slab run.
+- `e4_checkerboard.py`: three ways to assemble the two-step input (one-fuel strips; checkerboard strips; checkerboard strips and a color set).
+- `e5_swap_pieces.py`: core-run pieces and strip pieces swapped one at a time, with the core's factors put in one class of faces at a time.
+- `e4_output_K80.txt`, `e5_output_K80.txt`: their outputs.
+- `e6_zoned_core.py`, `e6_output_K80.txt`: the second core (9 x 9, radially zoned), same swaps as E5.
+- `e7_thick_reflector.py`: the core-tallied factors on one class of faces at a time, with 1, 2 or 3 reflector layers (`REFL`), k and assembly power against OpenMC. Its findings withdraw the word "oracle" used for E1 and E5/E6.

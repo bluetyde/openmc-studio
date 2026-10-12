@@ -11,7 +11,7 @@ reactor, shield or facility, and it must not be used to make such decisions. Che
 requires.
 
 - **What works, feature by feature:** [docs/SUPPORT.md](docs/SUPPORT.md) says what the editor, `model.py` and the MCNP export do, what is refused, and
-  the test behind each entry. Open work is in [TODO.md](TODO.md).
+  the test behind each entry. What the tests are checked *against* (and what they are not) is in [docs/oracles.md](docs/oracles.md). Open work is in [TODO.md](TODO.md).
 - **MCNP.** This project makes no statement about whether any exported deck has been run in MCNP. MCNP is export-controlled and its output is not shared
   here. Decks are checked by the exporter's validator (MontePy parse, cards read back against the OpenMC model, sampled geometry comparison) and compared with
   OpenMC. Check a deck yourself before relying on it.

@@ -1,0 +1,22 @@
+[infinite A] OpenMC k = 1.30560 +/- 63 pcm (74 s)
+[infinite B] OpenMC k = 1.36276 +/- 56 pcm (68 s)
+[pair A B] OpenMC k = 1.33524 +/- 56 pcm (68 s)
+[strip B B A R] OpenMC k = 1.12746 +/- 66 pcm (72 s)
+[core run] OpenMC k = 1.01726 +/- 52 pcm (80 s)
+pieces: A|A [0.991 1.034] A|B [0.999 0.978] B|A [0.98  1.103] B|B [0.991 1.044] A->R [0.655 1.472] R->A [1.81  0.944] R->vac [0.363 0.167]
+core run: OpenMC k = 1.01726 +/- 52 pcm; nodal k minus OpenMC k, pcm (fdm, sanm), one node per assembly:
+  constants core, factors core (the oracle)                        -1401   -1942
+  constants core, factors strips                                    +822    +456
+  constants strips, factors core                                    +748    +187
+  constants strips, factors strips (two-step)                      +2788   +2380
+  constants strips; core factors on fuel/reflector faces only      +2772   +2356
+  constants strips; core factors on vacuum faces only              +2743   +2341
+  constants strips; core factors on fuel/fuel faces only            +912    +390
+  strips vs core constants, A at (1,4), % per group (fast, thermal): {'D': [-2.6, 3.2], 'absorption': [4.5, -4.4], 'nu_fission': [-0.2, -4.6]}
+  strips vs core constants, A at (1,1), % per group (fast, thermal): {'D': [-3.6, 6.4], 'absorption': [3.7, -8.2], 'nu_fission': [-1.7, -8.5]}
+  strips vs core constants, B at (4,4), % per group (fast, thermal): {'D': [-1.5, -0.3], 'absorption': [3.7, 0.2], 'nu_fission': [1.7, 0.2]}
+  strips vs core constants, B at (2,2), % per group (fast, thermal): {'D': [-1.8, 0.9], 'absorption': [4.6, -0.3], 'nu_fission': [1.8, -0.3]}
+  strips vs core constants, R at (4,0), % per group (fast, thermal): {'D': [0.3, -0.0], 'absorption': [0.8, 0.0]}
+  strips vs core constants, R at (0,0), % per group (fast, thermal): {'D': [-3.7, 1.5], 'absorption': [-2.5, -1.6]}
+total 364 s
+

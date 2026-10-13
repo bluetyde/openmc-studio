@@ -1,0 +1,8 @@
+zoned core 9 x 9: OpenMC k = 1.01726 +/- 52 pcm; 300 fine groups; 36 s
+B interior     | fast: D_lib 1.0759  D_harm 1.0769  D_flux 1.3318  D_flux/D_lib 1.238  (flux in the groups left out: 0.00%)  | thermal: D_lib 0.3108  D_harm 0.3108  D_flux 0.3807  D_flux/D_lib 1.225  (flux in the groups left out: 0.00%)
+A outer ring   | fast: D_lib 1.0866  D_harm 1.0871  D_flux 1.3477  D_flux/D_lib 1.240  (flux in the groups left out: 0.00%)  | thermal: D_lib 0.2973  D_harm 0.2973  D_flux 0.3586  D_flux/D_lib 1.206  (flux in the groups left out: 0.00%)
+R edge         | fast: D_lib 1.1017  D_harm 1.1060  D_flux 1.4547  D_flux/D_lib 1.320  (flux in the groups left out: 0.00%)  | thermal: D_lib 0.1891  D_harm 0.1891  D_flux 0.2288  D_flux/D_lib 1.210  (flux in the groups left out: 0.00%)
+D_flux / D_lib as the number of intermediate groups per coarse group grows (fast | thermal):
+  B interior    m=1: 1.001|1.000 m=2: 1.057|1.004 m=4: 1.145|1.123 m=8: 1.194|1.201 m=16: 1.211|1.219 m=32: 1.227|1.224 m=60: 1.233|1.225 m=120: 1.235|nan m=240: 1.238|nan
+  A outer ring  m=1: 1.000|1.000 m=2: 1.060|1.005 m=4: 1.146|1.115 m=8: 1.196|1.184 m=16: 1.213|1.200 m=32: 1.230|1.205 m=60: 1.235|1.206 m=120: 1.237|nan m=240: 1.240|nan
+  R edge        m=1: 1.004|1.000 m=2: 1.098|1.006 m=4: 1.215|1.123 m=8: 1.271|1.181 m=16: 1.292|1.201 m=32: 1.310|1.208 m=60: 1.316|1.210 m=120: 1.318|nan m=240: 1.320|nan

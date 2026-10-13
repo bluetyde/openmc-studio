@@ -113,6 +113,15 @@ def run_mc_core(lattice):
     lib.build_library()
     tallies = openmc.Tallies()
     lib.add_to_tallies_file(tallies, merge=True)
+    # E10: the transport cross-section in 120 groups (30 below 0.625 eV, 90 above) in every position, for the flux-averaged D
+    fine_edges = np.unique(np.concatenate([np.logspace(-5, np.log10(0.625), 31), np.logspace(np.log10(0.625), np.log10(2.0e7), 91)]))
+    libF = openmc.mgxs.Library(geometry)
+    libF.energy_groups = openmc.mgxs.EnergyGroups(fine_edges)
+    libF.legendre_order, libF.correction = 0, "P0"
+    libF.mgxs_types, libF.domain_type, libF.by_nuclide = ["transport"], "universe", False
+    libF.domains = lattice_universes(lattice)
+    libF.build_library()
+    libF.add_to_tallies_file(tallies, merge=True)
     mesh = openmc.RegularMesh()
     mesh.dimension = [NC * K, NC * K, 1]
     mesh.lower_left, mesh.upper_right = [-NC * ASM / 2, -NC * ASM / 2, -HZ / 2], [NC * ASM / 2, NC * ASM / 2, HZ / 2]
@@ -140,6 +149,22 @@ def run_mc_core(lattice):
     with openmc.StatePoint(sp_path) as sp:
         k = sp.keff
         lib.load_from_statepoint(sp)
+        libF.load_from_statepoint(sp)
+        n_th = 30
+        global DFLUX, DHARM
+        DFLUX, DHARM = {}, {}
+        for dom in libF.domains:
+            mf = libF.get_mgxs(dom, "transport")
+            sigf = np.nan_to_num(np.asarray(mf.get_xs(xs_type="macro")).reshape(-1))
+            ph = np.nan_to_num(np.asarray(mf.tallies["flux (tracklength)"].get_values()).reshape(-1)[::-1])
+            nf = len(sigf)
+            dflux, dharm = np.zeros(2), np.zeros(2)
+            for gi, idx in enumerate((np.arange(nf - n_th), np.arange(nf - n_th, nf))):     # fast first: the last 30 fine groups are thermal
+                w, sg = ph[idx], sigf[idx]
+                ok = (sg > 0) & (w > 0)
+                dflux[gi] = (w[ok] / (3.0 * sg[ok])).sum() / w[ok].sum()
+                dharm[gi] = 1.0 / (3.0 * (w * sg).sum() / w.sum())
+            DFLUX[dom.id], DHARM[dom.id] = dflux, dharm
         f = sp.get_tally(name="fine flux").mean.reshape(NC * K, NC * K, 2)
         tp = sp.get_tally(name="assembly power")
         global POWER
@@ -184,11 +209,15 @@ dom_pos = {u.id: i for i, u in enumerate(libCore.domains)}
 xs0 = from_mgxs_library(libCore)
 names = ("D", "absorption", "nu_fission", "kappa_fission", "chi", "scatter", "inv_velocity")
 consts = {n: np.zeros((NC, NC, 4 if n == "scatter" else 2)) for n in names}
+consts["Dflux"] = np.zeros((NC, NC, 2))      # E10: flux-averaged D from the 120-group transport tally
+consts["Dharm"] = np.zeros((NC, NC, 2))      # the same tally collapsed the library's way (1 / (3 <sigma_tr>))
 for r in range(NC):
     for c in range(NC):
         rec = xs0.composition(dom_pos[core_wrap.universes[r][c].id])
         for n in names:
             consts[n][r, c] = np.asarray(getattr(rec, n), float).reshape(-1)
+        consts["Dflux"][r, c] = DFLUX[core_wrap.universes[r][c].id]
+        consts["Dharm"][r, c] = DHARM[core_wrap.universes[r][c].id]
 face = np.array([[FACE[(r, c)] for c in range(NC)] for r in range(NC)])     # [row, col, face (-x +x -y +y physical), group fast first]
 phi = np.array([[PHI[(r, c)] for c in range(NC)] for r in range(NC)])       # [row, col, group]
 from pathlib import Path

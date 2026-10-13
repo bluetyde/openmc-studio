@@ -179,41 +179,46 @@ def solve(core, geom, D, mode):
         except Exception:  # noqa: BLE001
             row.append((float("nan"),) * 3)
             continue
-        p = res.radial_power()
+        p = res.radial_power()[::-1]     # openndm lists its results bottom-up (physical y up); the lattice array and the Monte Carlo arrays list the top row first (E11b)
         p = p / p[fuel].mean()
         err = 100 * (p[fuel] / ref[fuel] - 1)
         row.append(((res.k_eff - core["k"]) * 1e5, np.sqrt((err ** 2).mean()), np.abs(err).max()))
     return row
 
 
-cores = {n: load(n) for n in CORES if (DATA / f"{n}.npz").is_file()}
-fits = {n: fit_scales(c) for n, c in cores.items()}
-print("D scales fitted to the Monte Carlo currents (kind: fast, thermal), and the rms relative residual before / after, fast | thermal:")
-for n, (scale, rb, ra) in fits.items():
-    sd = "  ".join(f"{k}: {scale[k][0]:.2f} {scale[k][1]:.2f}" for k in KINDS)
-    print(f"  {n:9s} {sd}    residual {rb[0]:.2f} {rb[1]:.2f} -> {ra[0]:.2f} {ra[1]:.2f}   (OpenMC k {float(cores[n]['k']):.5f} +/- {float(cores[n]['k_sd']) * 1e5:.0f} pcm, "
-          f"{int(cores[n]['particles'])} x {int(cores[n]['batches'])})")
-if all("c_Dflux" in c for c in cores.values()):
-    print("\nflux-averaged D (120-group transport tally) over the library's D (1/(3 <sigma_tr>) in 2 groups): mean over the nodes of each kind, fast | thermal")
+def main():
+    cores = {n: load(n) for n in CORES if (DATA / f"{n}.npz").is_file()}
+    fits = {n: fit_scales(c) for n, c in cores.items()}
+    print("D scales fitted to the Monte Carlo currents (kind: fast, thermal), and the rms relative residual before / after, fast | thermal:")
+    for n, (scale, rb, ra) in fits.items():
+        sd = "  ".join(f"{k}: {scale[k][0]:.2f} {scale[k][1]:.2f}" for k in KINDS)
+        print(f"  {n:9s} {sd}    residual {rb[0]:.2f} {rb[1]:.2f} -> {ra[0]:.2f} {ra[1]:.2f}   (OpenMC k {float(cores[n]['k']):.5f} +/- {float(cores[n]['k_sd']) * 1e5:.0f} pcm, "
+              f"{int(cores[n]['particles'])} x {int(cores[n]['batches'])})")
+    if all("c_Dflux" in c for c in cores.values()):
+        print("\nflux-averaged D (120-group transport tally) over the library's D (1/(3 <sigma_tr>) in 2 groups): mean over the nodes of each kind, fast | thermal")
+        for n, core in cores.items():
+            parts = []
+            for kd in KINDS:
+                sel = np.array([[core["kinds"][r][c] == kd for c in range(core["NC"])] for r in range(core["NC"])])
+                q = (core["c_Dflux"] / core["c_D"])[sel].mean(axis=0)
+                h = (core["c_Dharm"] / core["c_D"])[sel].mean(axis=0)
+                parts.append(f"{kd}: {q[0]:.3f} | {q[1]:.3f} (collapse check {h[0]:.3f} | {h[1]:.3f})")
+            print(f"  {n:9s} " + "   ".join(parts))
+    MODES = ("none", "old", "equivalence", "equivalence, interior", "equivalence, interior + old at the vacuum")
     for n, core in cores.items():
-        parts = []
-        for kd in KINDS:
-            sel = np.array([[core["kinds"][r][c] == kd for c in range(core["NC"])] for r in range(core["NC"])])
-            q = (core["c_Dflux"] / core["c_D"])[sel].mean(axis=0)
-            h = (core["c_Dharm"] / core["c_D"])[sel].mean(axis=0)
-            parts.append(f"{kd}: {q[0]:.3f} | {q[1]:.3f} (collapse check {h[0]:.3f} | {h[1]:.3f})")
-        print(f"  {n:9s} " + "   ".join(parts))
-MODES = ("none", "old", "equivalence", "equivalence, interior", "equivalence, interior + old at the vacuum")
-for n, core in cores.items():
-    geom = geometry(core)
-    print(f"\n{n}: nodal k minus OpenMC k (pcm) and assembly power error (rms / max %), fdm | sanm")
-    variants = [("D as tallied", core["c_D"]), ("flux-averaged D (E10)", core["c_Dflux"]),
-                ("D fitted on this core", scaled_D(core, fits[n][0])),
-                ("fast D fitted on this core", scaled_D(core, fast_only(fits[n][0])))]
-    if n != FIT_ON and FIT_ON in fits:
-        variants.append((f"D fitted on {FIT_ON}", scaled_D(core, fits[FIT_ON][0])))
-        variants.append((f"fast D fitted on {FIT_ON}", scaled_D(core, fast_only(fits[FIT_ON][0]))))
-    for vname, D in variants:
-        for mode in MODES:
-            f, s = solve(core, geom, D, mode)
-            print(f"  {vname:24s} {mode:44s} {f[0]:+7.0f} {f[1]:4.1f}/{f[2]:4.1f}  |  {s[0]:+7.0f} {s[1]:4.1f}/{s[2]:4.1f}")
+        geom = geometry(core)
+        print(f"\n{n}: nodal k minus OpenMC k (pcm) and assembly power error (rms / max %), fdm | sanm")
+        variants = [("D as tallied", core["c_D"]), ("flux-averaged D (E10)", core["c_Dflux"]),
+                    ("D fitted on this core", scaled_D(core, fits[n][0])),
+                    ("fast D fitted on this core", scaled_D(core, fast_only(fits[n][0])))]
+        if n != FIT_ON and FIT_ON in fits:
+            variants.append((f"D fitted on {FIT_ON}", scaled_D(core, fits[FIT_ON][0])))
+            variants.append((f"fast D fitted on {FIT_ON}", scaled_D(core, fast_only(fits[FIT_ON][0]))))
+        for vname, D in variants:
+            for mode in MODES:
+                f, s = solve(core, geom, D, mode)
+                print(f"  {vname:24s} {mode:44s} {f[0]:+7.0f} {f[1]:4.1f}/{f[2]:4.1f}  |  {s[0]:+7.0f} {s[1]:4.1f}/{s[2]:4.1f}")
+
+
+if __name__ == "__main__":
+    main()

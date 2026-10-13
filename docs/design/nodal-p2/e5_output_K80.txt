@@ -1,3 +1,5 @@
+NOTE (2026-10-13): the assembly-power columns of the 8 x 8 checkerboard in this file are wrong: openndm lists results bottom-up and they were read top-down (E11b; corrected in e11_output_solve.txt). k columns and the zoned-core rows are valid.
+
 [infinite A] OpenMC k = 1.30560 +/- 63 pcm (85 s)
 [infinite B] OpenMC k = 1.36276 +/- 56 pcm (66 s)
 [strip B A B R] OpenMC k = 1.12337 +/- 55 pcm (64 s)

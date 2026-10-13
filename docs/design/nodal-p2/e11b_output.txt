@@ -1,0 +1,25 @@
+  print(f"  result.power against kappa sigma_f x flux, node by node: correlation {np.corrcoef(a, b)[0, 1]:+.4f}, rms difference {np.sqrt(((a / b - 1) ** 2).mean()) * 100:.2f} %, largest {np.abs(a / b - 1).max() * 100:.2f} %")
+  print(f"  result.power against nu sigma_f x flux:                  correlation {np.corrcoef(a, c_)[0, 1]:+.4f}, rms difference {np.sqrt(((a / c_ - 1) ** 2).mean()) * 100:.2f} %")
+flux array shape (64, 2) ; nodes 64
+radial_power() shape (8, 8)
+  power from the node flux, row-major      against the Monte Carlo power: correlation +0.965, rms difference   5.4 %
+  radial_power() as returned               against the Monte Carlo power: correlation +0.586, rms difference  16.6 %
+  radial_power(), rows flipped             against the Monte Carlo power: correlation +0.995, rms difference   2.6 %
+  radial_power(), columns flipped          against the Monte Carlo power: correlation +0.995, rms difference   2.6 %
+  radial_power(), transposed               against the Monte Carlo power: correlation +0.585, rms difference  16.6 %
+the node-flux power and radial_power() should agree if radial_power() is in the lattice's row order:
+  radial_power(), as returned    against the node-flux power: correlation +0.370, rms difference  21.3 %
+  radial_power(), rows flipped   against the node-flux power: correlation +0.982, rms difference   4.5 %
+result.power shape (64,)
+  result.power against kappa sigma_f x flux, node by node: correlation +0.9535, rms difference nan %, largest nan %
+  result.power against nu sigma_f x flux:                  correlation +0.9539, rms difference nan %
+  result.power row-major           against the Monte Carlo power: correlation +0.586, rms  16.6 %
+  result.power, rows flipped       against the Monte Carlo power: correlation +0.995, rms   2.6 %
+  radial_power() rows flipped      against the Monte Carlo power: correlation +0.995, rms   2.6 %
+  radial_power() as returned       against the Monte Carlo power: correlation +0.586, rms  16.6 %
+  result.flux fast    as listed (row-major)  against the Monte Carlo node flux: correlation +0.999, rms difference   1.3 %
+  result.flux fast    rows flipped           against the Monte Carlo node flux: correlation +1.000, rms difference   0.7 %
+  result.flux thermal as listed (row-major)  against the Monte Carlo node flux: correlation +0.941, rms difference   6.6 %
+  result.flux thermal rows flipped           against the Monte Carlo node flux: correlation +0.996, rms difference   3.0 %
+  kappa sigma_f x flux, as listed      against result.power as listed: correlation +0.370
+  kappa sigma_f x flux, rows flipped   against result.power as listed: correlation +0.982

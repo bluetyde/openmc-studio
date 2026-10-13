@@ -1,0 +1,95 @@
+D scales fitted to the Monte Carlo currents (kind: fast, thermal), and the rms relative residual before / after, fast | thermal:
+  zoned1    A: 1.27 1.37  B: 1.24 1.01  R: 1.59 1.03    residual 0.27 0.54 -> 0.07 0.52   (OpenMC k 1.01726 +/- 52 pcm, 20000 x 150)
+  zoned2    A: 1.30 1.43  B: 1.24 0.78  R: 1.52 1.13    residual 0.30 0.56 -> 0.10 0.54   (OpenMC k 1.03703 +/- 57 pcm, 20000 x 150)
+  checker1  A: 1.24 0.30  B: 1.27 2.04  R: 1.56 0.93    residual 0.29 0.88 -> 0.15 0.79   (OpenMC k 0.94469 +/- 58 pcm, 20000 x 150)
+
+flux-averaged D (120-group transport tally) over the library's D (1/(3 <sigma_tr>) in 2 groups): mean over the nodes of each kind, fast | thermal
+  zoned1    A: 1.238 | 1.204 (collapse check 1.000 | 1.000)   B: 1.232 | 1.223 (collapse check 1.000 | 1.000)   R: 1.320 | 1.202 (collapse check 1.000 | 1.000)
+  zoned2    A: 1.238 | 1.202 (collapse check 1.000 | 1.000)   B: 1.232 | 1.223 (collapse check 1.000 | 1.000)   R: 1.351 | 1.173 (collapse check 1.001 | 1.000)
+  checker1  A: 1.234 | 1.211 (collapse check 1.000 | 1.000)   B: 1.236 | 1.216 (collapse check 1.000 | 1.000)   R: 1.319 | 1.203 (collapse check 1.000 | 1.000)
+
+zoned1: nodal k minus OpenMC k (pcm) and assembly power error (rms / max %), fdm | sanm
+  D as tallied             none                                           +4223  8.9/21.6  |    +4908  0.7/ 1.7
+  D as tallied             old                                            -1401 19.9/42.0  |    -1942 17.2/36.9
+  D as tallied             equivalence                                    +7105  9.1/22.9  |    +6852  7.2/16.0
+  D as tallied             equivalence, interior                          +3947 13.2/27.7  |    +4619  8.3/15.0
+  D as tallied             equivalence, interior + old at the vacuum       +963 25.9/44.8  |    +1430 25.8/43.9
+  flux-averaged D (E10)    none                                            -505  7.2/17.8  |     +263  2.2/ 5.9
+  flux-averaged D (E10)    old                                            -6920 19.0/40.5  |    -7433 16.3/35.1
+  flux-averaged D (E10)    equivalence                                     -907 10.9/26.0  |     -692  8.0/16.9
+  flux-averaged D (E10)    equivalence, interior                           -422  7.6/18.8  |     +326  2.3/ 4.5
+  flux-averaged D (E10)    equivalence, interior + old at the vacuum      -4134 21.5/38.6  |    -3706 20.7/36.3
+  D fitted on this core    none                                           -1891  8.6/19.6  |    -1160  1.0/ 3.1
+  D fitted on this core    old                                            -7779 20.0/41.8  |    -8246 16.9/36.0
+  D fitted on this core    equivalence                                    -2858 13.2/28.3  |    -2404  8.9/18.9
+  D fitted on this core    equivalence, interior                          -1510  8.5/19.8  |     -785  2.0/ 4.0
+  D fitted on this core    equivalence, interior + old at the vacuum      -4974 22.4/39.3  |    -4570 20.8/37.1
+  fast D fitted on this core none                                           -1977  9.6/22.4  |    -1314  1.0/ 2.1
+  fast D fitted on this core old                                            -7698 20.2/42.6  |    -8213 17.2/37.0
+  fast D fitted on this core equivalence                                    -2846 13.6/29.2  |    -2459  9.3/19.4
+  fast D fitted on this core equivalence, interior                          -1612  9.4/21.6  |     -970  2.8/ 5.9
+  fast D fitted on this core equivalence, interior + old at the vacuum      -4897 22.5/40.3  |    -4528 21.2/37.4
+  D fitted on zoned2       none                                           -1719  8.3/18.4  |     -973  1.4/ 4.5
+  D fitted on zoned2       old                                            -7812 20.2/41.7  |    -8304 17.1/36.0
+  D fitted on zoned2       equivalence                                    -2761 13.4/28.1  |    -2387  9.8/20.2
+  D fitted on zoned2       equivalence, interior                          -1454  8.2/18.6  |     -717  2.2/ 4.9
+  D fitted on zoned2       equivalence, interior + old at the vacuum      -5023 22.7/39.6  |    -4633 21.5/38.1
+  fast D fitted on zoned2  none                                           -1894  9.1/21.2  |    -1192  0.9/ 2.4
+  fast D fitted on zoned2  old                                            -7785 20.0/42.1  |    -8315 16.9/36.3
+  fast D fitted on zoned2  equivalence                                    -2699 12.6/27.6  |    -2310  8.4/17.9
+  fast D fitted on zoned2  equivalence, interior                          -1613  8.8/20.4  |     -932  2.7/ 5.6
+  fast D fitted on zoned2  equivalence, interior + old at the vacuum      -5053 22.2/39.6  |    -4670 21.0/37.0
+
+zoned2: nodal k minus OpenMC k (pcm) and assembly power error (rms / max %), fdm | sanm
+  D as tallied             none                                           +4229  9.7/23.6  |    +5135  1.5/ 3.2
+  D as tallied             old                                             -428 20.1/34.4  |     -456 20.7/35.4
+  D as tallied             equivalence                                    +6840 10.3/22.3  |    +7269  5.4/11.6
+  D as tallied             equivalence, interior                          +5858 12.3/26.0  |    +6252  8.4/17.2
+  D as tallied             equivalence, interior + old at the vacuum      +5427 13.5/27.9  |    +5792 10.4/20.6
+  flux-averaged D (E10)    none                                             -76  7.3/18.5  |     +997  3.6/ 8.8
+  flux-averaged D (E10)    old                                            -5619 19.2/33.1  |    -5633 19.8/34.6
+  flux-averaged D (E10)    equivalence                                     +556  8.7/19.3  |    +1351  2.9/ 5.7
+  flux-averaged D (E10)    equivalence, interior                           +375  8.9/19.6  |    +1184  3.1/ 6.2
+  flux-averaged D (E10)    equivalence, interior + old at the vacuum       -477 11.2/23.7  |     +222  6.6/13.5
+  D fitted on this core    none                                           -1311  8.1/18.9  |     -271  2.6/ 7.8
+  D fitted on this core    old                                            -6734 19.6/33.5  |    -6802 19.0/33.7
+  D fitted on this core    equivalence                                    -1192  9.5/20.0  |     -300  3.5/ 7.4
+  D fitted on this core    equivalence, interior                          -1237  9.5/20.0  |     -341  3.6/ 7.5
+  D fitted on this core    equivalence, interior + old at the vacuum      -2191 12.8/24.8  |    -1434  8.0/16.2
+  fast D fitted on this core none                                           -1742  9.5/22.6  |     -785  1.8/ 4.5
+  fast D fitted on this core old                                            -6915 19.7/34.9  |    -7072 18.9/33.1
+  fast D fitted on this core equivalence                                    -1257  9.8/20.2  |     -408  3.8/ 7.5
+  fast D fitted on this core equivalence, interior                          -1653 11.2/22.9  |     -906  5.1/10.9
+  fast D fitted on this core equivalence, interior + old at the vacuum      -2434 13.8/27.0  |    -1784  8.8/17.9
+
+checker1: nodal k minus OpenMC k (pcm) and assembly power error (rms / max %), fdm | sanm
+  D as tallied             none                                           +4109  9.5/20.2  |    +5340  1.2/ 3.2
+  D as tallied             old                                            -2586 19.5/36.5  |    -3224 16.1/30.8
+  D as tallied             equivalence                                    +7769  9.6/19.1  |    +7706  7.4/14.7
+  D as tallied             equivalence, interior                          +3739 13.3/24.5  |    +4977  7.7/14.2
+  D as tallied             equivalence, interior + old at the vacuum       -392 26.3/41.0  |     +482 25.6/40.9
+  flux-averaged D (E10)    none                                           -1098  7.8/17.0  |     +211  2.6/ 6.3
+  flux-averaged D (E10)    old                                            -8601 18.7/35.3  |    -9191 15.2/29.3
+  flux-averaged D (E10)    equivalence                                    -1640 11.3/21.9  |    -1129  7.9/14.7
+  flux-averaged D (E10)    equivalence, interior                           -970  8.1/17.0  |     +299  2.7/ 6.1
+  flux-averaged D (E10)    equivalence, interior + old at the vacuum      -6011 21.9/34.4  |    -5271 20.4/33.4
+  D fitted on this core    none                                           -2819 12.2/24.3  |    -1746  1.9/ 5.3
+  D fitted on this core    old                                            -9315 20.8/38.9  |   -10068 16.6/30.9
+  D fitted on this core    equivalence                                    -3642 14.2/22.4  |    -3233 12.8/26.4
+  D fitted on this core    equivalence, interior                          -2607 12.3/23.0  |    -2232 11.8/29.8
+  D fitted on this core    equivalence, interior + old at the vacuum      -6605 23.9/39.5  |    -6077 22.7/41.6
+  fast D fitted on this core none                                           -2834 10.0/20.9  |    -1655  1.0/ 2.8
+  fast D fitted on this core old                                            -9591 19.7/37.2  |   -10172 16.0/30.9
+  fast D fitted on this core equivalence                                    -3865 13.3/23.7  |    -3110  8.4/16.4
+  fast D fitted on this core equivalence, interior                          -2331  9.6/19.3  |    -1190  2.6/ 5.0
+  fast D fitted on this core equivalence, interior + old at the vacuum      -6903 22.7/35.6  |    -6240 20.7/34.2
+  D fitted on zoned2       none                                           -2735  9.6/20.9  |    -1546  1.2/ 4.1
+  D fitted on zoned2       old                                            -9714 19.7/36.6  |   -10336 16.0/30.8
+  D fitted on zoned2       equivalence                                    -3928 13.5/24.3  |    -3308  9.2/17.7
+  D fitted on zoned2       equivalence, interior                          -2320  9.2/19.0  |    -1177  2.6/ 5.6
+  D fitted on zoned2       equivalence, interior + old at the vacuum      -7013 22.5/34.4  |    -6370 20.5/34.6
+  fast D fitted on zoned2  none                                           -2743  9.6/20.1  |    -1530  1.2/ 3.5
+  fast D fitted on zoned2  old                                            -9649 19.5/36.3  |   -10232 15.8/30.1
+  fast D fitted on zoned2  equivalence                                    -3717 12.7/22.7  |    -2953  7.9/15.5
+  fast D fitted on zoned2  equivalence, interior                          -2294  9.2/18.6  |    -1118  2.6/ 5.2
+  fast D fitted on zoned2  equivalence, interior + old at the vacuum      -6982 22.4/35.0  |    -6300 20.5/33.9

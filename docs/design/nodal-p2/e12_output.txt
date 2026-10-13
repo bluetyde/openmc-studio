@@ -1,0 +1,46 @@
+E12 (e12_library_path.py), 20,000 particles x 150 batches (30 inactive), the same seeds as E9/E10 (k reproduces to the digit). Typed from the console output of 2026-10-13.
+Solves: nodal k minus OpenMC k (pcm) and assembly power error (rms / max %) of the library as `from_mgxs_library` returns it (D from the `diffusion-coefficient` type),
+fdm and sanm, one node per assembly, no discontinuity factors. Power is read in lattice order (E11b). D columns: condensed D over the 2-group library's D, and in
+parentheses over the 120-group tally's flux-averaged D of E10, fast | thermal.
+
+== zoned1 (9 x 9; all structures in one run, 9 libraries, 110 s)
+  2 groups   D / D_library: A 1.000|1.000 (0.808|0.830)   B 1.000|1.000 (0.811|0.818)   R 1.000|1.000 (0.757|0.832)
+  2 groups   solve: fdm  +4223 pcm, power  8.9/21.6 %;  sanm  +4908 pcm, power  0.7/ 1.7 %
+  CASMO-8    D: A 1.180|1.175 (0.954|0.976)   B 1.176|1.198 (0.954|0.979)   R 1.254|1.157 (0.950|0.963)   condense 0.9 s
+  CASMO-8    solve: fdm   +520 pcm, power  7.6/18.8 %;  sanm  +1269 pcm, power  1.7/ 4.8 %
+  CASMO-16   D: A 1.180|1.194 (0.954|0.991)   B 1.176|1.214 (0.954|0.992)   R 1.254|1.187 (0.950|0.987)   condense 1.0 s
+  CASMO-16   solve: fdm   +516 pcm, power  7.5/18.6 %;  sanm  +1262 pcm, power  1.7/ 4.8 %
+  CASMO-25   D: A 1.232|1.194 (0.996|0.991)   B 1.227|1.214 (0.996|0.992)   R 1.313|1.187 (0.994|0.987)   condense 1.1 s
+  CASMO-25   solve: fdm   -400 pcm, power  7.2/17.9 %;  sanm   +368 pcm, power  2.1/ 5.7 %
+  CASMO-40   D: A 1.232|1.203 (0.996|0.999)   B 1.227|1.223 (0.996|0.999)   R 1.313|1.200 (0.994|0.999)   condense 1.2 s
+  CASMO-40   solve: fdm   -402 pcm, power  7.2/17.9 %;  sanm   +365 pcm, power  2.1/ 5.7 %
+  CASMO-70   D: A 1.233|1.206 (0.996|1.001)   B 1.228|1.225 (0.996|1.001)   R 1.314|1.204 (0.995|1.002)   condense 1.5 s
+  CASMO-70   solve: fdm   -417 pcm, power  7.2/17.8 %;  sanm   +350 pcm, power  2.1/ 5.7 %
+  MPACT-51   D: A 1.233|1.203 (0.996|0.999)   B 1.228|1.222 (0.996|0.999)   R 1.313|1.199 (0.995|0.998)   condense 1.3 s
+  MPACT-51   solve: fdm   -413 pcm, power  7.2/17.9 %;  sanm   +354 pcm, power  2.1/ 5.8 %
+  MPACT-69   D: A 1.233|1.203 (0.996|0.999)   B 1.228|1.223 (0.996|1.000)   R 1.313|1.200 (0.995|0.998)   condense 1.5 s
+  MPACT-69   solve: fdm   -413 pcm, power  7.2/17.9 %;  sanm   +354 pcm, power  2.1/ 5.8 %
+  SCALE-252  D: A 1.241|1.205 (1.003|1.001)   B 1.235|1.224 (1.002|1.001)   R 1.323|1.203 (1.002|1.001)   condense 2.6 s   (D types only)
+
+== zoned2 (11 x 11; CASMO-16, 25, 40 and MPACT-69; 5 libraries, 89 s)
+  2 groups   solve: fdm  +4229 pcm, power  9.7/23.6 %;  sanm  +5135 pcm, power  1.5/ 3.2 %
+  CASMO-16   solve: fdm   +878 pcm, power  7.7/19.5 %;  sanm  +1918 pcm, power  3.1/ 7.7 %
+  CASMO-25   D: A 1.233|1.191 (0.995|0.991)   B 1.227|1.213 (0.996|0.992)   R 1.342|1.157 (0.993|0.987)   condense 1.4 s
+  CASMO-25   solve: fdm     +2 pcm, power  7.4/18.7 %;  sanm  +1072 pcm, power  3.5/ 8.7 %
+  CASMO-40   solve: fdm    +16 pcm, power  7.3/18.6 %;  sanm  +1087 pcm, power  3.5/ 8.8 %
+  MPACT-69   solve: fdm     +6 pcm, power  7.3/18.6 %;  sanm  +1078 pcm, power  3.5/ 8.8 %
+
+== checker1 (8 x 8; the same four structures; 5 libraries, 65 s)
+  2 groups   solve: fdm  +4109 pcm, power  9.5/20.2 %;  sanm  +5340 pcm, power  1.2/ 3.2 %
+  CASMO-16   solve: fdm     +9 pcm, power  8.2/17.6 %;  sanm  +1293 pcm, power  2.3/ 5.4 %
+  CASMO-25   D: A 1.229|1.201 (0.996|0.991)   B 1.231|1.206 (0.996|0.992)   R 1.312|1.188 (0.995|0.987)   condense 0.7 s
+  CASMO-25   solve: fdm   -994 pcm, power  7.9/17.1 %;  sanm   +314 pcm, power  2.6/ 6.3 %
+  CASMO-40   solve: fdm   -994 pcm, power  7.9/17.0 %;  sanm   +312 pcm, power  2.6/ 6.3 %
+  MPACT-69   solve: fdm  -1005 pcm, power  7.9/17.0 %;  sanm   +302 pcm, power  2.6/ 6.3 %
+
+== what the intermediate library costs in the transport run (zoned1, CPU time over all threads, one library at a time added to the 2-group one)
+  2 groups only:                      306 s user (wall 43 s), 1 library tallied
+  + CASMO-25 (all types):             364 s user (wall 50 s), 2 libraries: +19 %
+  + CASMO-40 (all types):             364 s user (wall 50 s), 2 libraries: +19 %
+  + MPACT-69 (all types):             373 s user (wall 52 s), 2 libraries: +22 %
+  (each '+' row has both libraries tallied, the intermediate one and the 2-group one; a run with only the intermediate library, which is all the new path needs, was not timed)

@@ -1,0 +1,34 @@
+E13 (e13_two_step_library.py), 20,000 particles x 150 batches (30 inactive), each piece tallied in CASMO-25 (all types) and condensed to [0, 0.625 eV, 20 MeV]. Typed from the
+console output of 2026-10-13. Nodal k minus OpenMC k (pcm) and assembly power error (rms / max %), fdm | sanm, no discontinuity factors; power read in lattice order (E11b).
+
+[infinite A] OpenMC k = 1.30560 +/- 63 pcm (44 s)
+[infinite B] OpenMC k = 1.36276 +/- 56 pcm (42 s)
+[strip B B A R] OpenMC k = 1.12746 +/- 66 pcm (40 s)
+[strip B A B R] OpenMC k = 1.12337 +/- 55 pcm (40 s)
+[strip A B A R] OpenMC k = 1.10554 +/- 62 pcm (39 s)
+fuel A (infinite): D [1.2996, 0.3698]  absorption [0.00901, 0.08749]  nu-fission [0.00609, 0.14224]
+fuel B (infinite): D [1.3011, 0.3761]  absorption [0.00953, 0.10137]  nu-fission [0.0071, 0.17274]
+fuel from the zoned strip: A D [1.3324, 0.3547] absorption [0.00873, 0.09175];  B D [1.3151, 0.3756] absorption [0.00926, 0.10139]
+reflector (zoned strip): D [1.4464, 0.2248] absorption [0.00038, 0.01359];  (checkerboard strips): D [1.4542, 0.2253] absorption [0.00038, 0.01358]
+
+zoned1: OpenMC k 1.01726
+  two-step: fuel from infinite lattices            +1612  8.8/20.5  |    +2260  1.1/ 2.6
+  two-step: fuel from the strip fuel nodes          +365  7.3/18.3  |    +1107  1.8/ 4.2
+  core run constants by kind, E10 D                 -583  7.1/17.9  |     +185  2.2/ 4.8
+  core run, every position, E10 D                   -505  7.2/17.8  |     +263  2.2/ 5.9
+  core run, every position, old D                  +4223  8.9/21.6  |    +4908  0.7/ 1.7
+
+zoned2: OpenMC k 1.03703
+  two-step: fuel from infinite lattices            +1880  8.9/21.8  |    +2728  1.3/ 3.9
+  two-step: fuel from the strip fuel nodes          +743  7.2/19.4  |    +1716  2.7/ 5.7
+  core run constants by kind, E10 D                 -383  7.5/19.9  |     +702  3.5/ 7.3
+  core run, every position, E10 D                    -76  7.3/18.5  |     +997  3.6/ 8.8
+  core run, every position, old D                  +4229  9.7/23.6  |    +5135  1.5/ 3.2
+
+checker1: OpenMC k 0.94469
+  two-step: fuel from infinite lattices            +1630  9.6/19.7  |    +2720  1.0/ 3.0
+  two-step: fuel from the strip fuel nodes          +388  9.1/18.8  |    +1588  0.9/ 1.9
+  core run constants by kind, E10 D                 -899  8.6/17.8  |     +381  1.5/ 3.5
+  core run, every position, E10 D                  -1098  7.8/17.0  |     +211  2.6/ 6.3
+  core run, every position, old D                  +4109  9.5/20.2  |    +5340  1.2/ 3.2
+total 198 s

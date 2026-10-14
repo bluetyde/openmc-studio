@@ -7,7 +7,9 @@
 //   full     + the CAD integration job (setup/cad/run_integration.cjs; needs OPENMC_CAD_PYTHON too).
 //   nodal    (separate, not part of the chain above) the nodal-package checks, test/nodal/: OpenMC plus openndm, which the physics environment does not have.
 //            Needs OPENNDM_PYTHON (a Python with openmc and openndm), OPENMC_PYTHON (for the openmc executable) and OPENMC_CROSS_SECTIONS. No Monte Carlo
-//            beyond one small run; the cores' Monte Carlo data are saved in docs/design/nodal-p2/data/.
+//            beyond one small run; the cores' Monte Carlo data are saved in docs/design/nodal-p2/data/. test_nodal_p2.py holds the experiments' findings,
+//            test_nodal_wrapper.py the solver wrapper (studio/openmc_studio/nodal.py) against the IAEA 2D benchmark, orientation checks and E15; the wrapper's
+//            parts that need neither package are in test/test_nodal_light.py, which the physics profile runs.
 //
 // Nothing is skipped quietly. A profile whose tools are missing is listed as NOT RUN with the reason, a suite
 // that reports a skip counts as failed, and the exit code is 0 only when everything asked for ran and passed
@@ -58,7 +60,7 @@ function suites(p) {
       {kind:'python-glob', label:'exporter tests/test_*.py + tests/check_export_mcnp.py', cwdHost:exp}];
   }
   if (p === 'full') return [node('setup/cad/run_integration.cjs')];
-  if (p === 'nodal') return [{kind:'python-nodal', label:'test/nodal/test_nodal_p2.py', script:'test/nodal/test_nodal_p2.py', cwdHost:hostPath(REPO)}];
+  if (p === 'nodal') return ['test/nodal/test_nodal_p2.py', 'test/nodal/test_nodal_wrapper.py'].map(script => ({kind:'python-nodal', label:script, script, cwdHost:hostPath(REPO)}));
   return [];
 }
 

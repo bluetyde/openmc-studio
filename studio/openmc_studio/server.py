@@ -22,7 +22,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from . import __version__
-from . import depletion_run, provenance
+from . import depletion_run, nodal_run, provenance
 
 STATIC = Path(__file__).parent / "static"
 MAX_BODY = 25 * 1024 * 1024
@@ -39,11 +39,12 @@ class Run:
         self.ended = None
         self.proc = None
         self.stop_requested = False
+        self.kind = "openmc"      # "nodal" for a Core (nodal) solve
         self.cond = threading.Condition()
 
     def meta(self):
         return {"id": self.id, "name": self.name, "status": self.status, "returncode": self.returncode,
-                "started": self.started, "ended": self.ended}
+                "started": self.started, "ended": self.ended, "kind": self.kind}
 
     def add(self, text):
         with self.cond:
@@ -58,7 +59,7 @@ class Run:
             self.cond.notify_all()
         (self.path / "meta.json").write_text(json.dumps(self.meta(), indent=2))
         try:  # the outcome, and hashes of what the run wrote, beside what produced it
-            outputs = sorted(f.name for f in self.path.iterdir() if f.suffix == ".h5" or f.name in ("dose.json", "tallies.out", "depletion.json"))
+            outputs = sorted(f.name for f in self.path.iterdir() if f.suffix == ".h5" or f.name in ("dose.json", "tallies.out", "depletion.json", "nodal.json"))
             provenance.update(self.path, outcome={"status": self.status, "returncode": code,
                                                   "seconds": round(self.ended - self.started, 1)},
                               outputs={f: provenance.sha256(self.path / f) for f in outputs})
@@ -128,7 +129,7 @@ class Studio:
         name = f"{(project.get('settings') or {}).get('name') or 'model'} resumed"
         return self.start(script, project, name, resume={"from": rid, "src": src, "plan": plan})
 
-    def start(self, script, project, name, resume=None):
+    def start(self, script, project, name, resume=None, nodal=None):
         with self.lock:
             if self.active and self.active.status == "running":
                 raise RuntimeError("A run is already going. Stop it or wait for it to finish.")
@@ -139,9 +140,11 @@ class Studio:
             (path / "model.py").write_text(script, encoding="utf-8")
             (path / "project.json").write_text(json.dumps(project, indent=2), encoding="utf-8")
             run = Run(rid, path, name or slug)
+            if nodal is not None:
+                run.kind = "nodal"
             (path / "meta.json").write_text(json.dumps(run.meta(), indent=2))
             entry, files, extra = "model.py", ("model.py", "project.json"), None
-            if depletion_run.wants(project):  # burn the fuel: deplete.py loads model.py and runs openmc.deplete
+            if nodal is None and depletion_run.wants(project):  # burn the fuel: deplete.py loads model.py and runs openmc.deplete
                 chain = depletion_run.find_chain_file()
                 if chain is None:
                     shutil.rmtree(path, ignore_errors=True)
@@ -153,10 +156,14 @@ class Studio:
                     extra["depletion"]["resumed_from"] = {"run": resume["from"], "results_sha256": resume["plan"]["results_sha256"],
                                                           "steps_done": resume["plan"]["steps_done"], "steps_planned": resume["plan"]["steps_planned"],
                                                           "warnings": resume["plan"]["warnings"]}
-            provenance.write(path, "run", project, files=files, extra=extra)
-            env = os.environ.copy()
-            env["PYTHONUNBUFFERED"] = "1"
-            run.proc = subprocess.Popen([sys.executable, entry], cwd=path, env=env, stdout=subprocess.PIPE,
+            if nodal is not None:   # the Core tab: the nodal two-step driver on this model.py, in the nodal Python
+                extra = {"nodal": {"settings": nodal, "python": nodal_run.nodal_python(), "versions": {k: v for k, v in nodal_run.availability().items() if k in ("openndm", "openmc")}}}
+                argv, env = nodal_run.command(nodal), nodal_run.child_env()
+            else:
+                argv, env = [sys.executable, entry], os.environ.copy()
+                env["PYTHONUNBUFFERED"] = "1"
+            provenance.write(path, "nodal-run" if nodal is not None else "run", project, files=files, extra=extra)
+            run.proc = subprocess.Popen(argv, cwd=path, env=env, stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT, text=True, bufsize=1, start_new_session=True)
             self.runs[rid] = run
             self.active = run
@@ -787,6 +794,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(401, "Missing or wrong token. Start Studio from its launcher.")
         if path == "/api/health":
             return self._send(200, self._health())
+        if path == "/api/nodal/status":
+            return self._send(200, nodal_run.availability())
         if path == "/api/mcnp-progress":
             return self._send(200, self.studio.mcnp.get_progress() or {})
         if path == "/api/mcnp-validation":
@@ -814,7 +823,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(409, str(exc))
         if path == "/api/runs":
             return self._send(200, {"runs": self.studio.list_runs()})
-        m = re.match(r"^/api/runs/([^/]+)/(stream|results|project|script|record-check|report|depletion-record|pin-power)$", path)
+        m = re.match(r"^/api/runs/([^/]+)/(stream|results|project|script|record-check|report|depletion-record|pin-power|nodal)$", path)
         if not m:
             return self._error(404, "Not found")
         rid, what = m.groups()
@@ -827,6 +836,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, (run_dir / "project.json").read_bytes())
         if what == "script":
             return self._send(200, (run_dir / "model.py").read_bytes(), "text/plain; charset=utf-8")
+        if what == "nodal":
+            target = run_dir / "nodal.json"
+            if not target.is_file():
+                return self._error(404, "This run has no nodal.json")
+            return self._send(200, target.read_bytes(), "application/json; charset=utf-8")
         if what == "depletion-record":
             target = run_dir / "depletion.json"
             if not target.is_file():
@@ -913,6 +927,22 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(422, {"error": depletion_run.NO_CHAIN, "findings": []})
             try:
                 run = self.studio.start(script, project, str(body.get("name") or "model"))
+            except RuntimeError as e:
+                return self._error(409, str(e))
+            return self._send(200, run.meta())
+        if url.path == "/api/nodal/run":
+            script = body.get("script")
+            if not isinstance(script, str) or not script.strip():
+                return self._error(400, "No script to run.")
+            try:
+                settings = nodal_run.clean_settings(body.get("settings"))
+            except nodal_run.NodalRequestError as e:
+                return self._error(400, str(e))
+            avail = nodal_run.availability()
+            if not avail["available"]:
+                return self._send(422, {"error": "Needs the nodal package. " + str(avail["reason"]), "findings": []})
+            try:
+                run = self.studio.start(script, body.get("project") or {}, str(body.get("name") or "model") + " nodal", nodal=settings)
             except RuntimeError as e:
                 return self._error(409, str(e))
             return self._send(200, run.meta())

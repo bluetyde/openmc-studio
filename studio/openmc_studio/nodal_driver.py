@@ -297,6 +297,7 @@ def result_json(res: TwoStepResult) -> dict:
 def main(argv=None) -> int:
     import argparse
     import json
+    import sys
     ap = argparse.ArgumentParser(prog="python -m openmc_studio.nodal_driver", description="Nodal two-step solve of the core lattice of a Studio model.py; prints one JSON line.")
     ap.add_argument("model")
     ap.add_argument("--workdir", default=None, help="where the pieces' run folders go (required unless --list)")
@@ -309,6 +310,7 @@ def main(argv=None) -> int:
     ap.add_argument("--kernel", default="sanm", choices=["sanm", "nem", "fdm"])
     ap.add_argument("--reflective", nargs="*", default=[], choices=["x_min", "x_max", "y_min", "y_max"], help="outer faces that are reflective (default: all vacuum)")
     ap.add_argument("--list", action="store_true", help="only list the outermost lattices and exit")
+    ap.add_argument("--out", default=None, help="write the JSON result to this file and print a short summary line instead")
     a = ap.parse_args(argv)
     try:
         if a.list:
@@ -318,11 +320,17 @@ def main(argv=None) -> int:
         if not a.workdir:
             raise NodalInputError("--workdir is required")
         res = two_step_script(a.model, workdir=a.workdir, lattice_name=a.lattice, particles=a.particles, batches=a.batches, inactive=a.inactive, seed=a.seed, threads=a.threads,
-                              kernel=a.kernel, boundaries={f: "reflective" for f in a.reflective} or None)
+                              kernel=a.kernel, boundaries={f: "reflective" for f in a.reflective} or None,
+                              progress=(lambda m: print(m, file=sys.stderr, flush=True)) if a.out else None)
     except (NodalInputError, nodal.NodalUnavailable) as e:
         print(json.dumps({"ok": False, "error": type(e).__name__, "message": str(e)}))
         return 1
-    print(json.dumps(result_json(res)))
+    doc = result_json(res)
+    if a.out:
+        Path(a.out).write_text(json.dumps(doc), encoding="utf-8", newline="\n")
+        print(f"Nodal k = {res.nodal.k_eff:.5f} ({res.nodal.kernel}, {len(res.pieces)} pieces); result written to {a.out}", flush=True)
+    else:
+        print(json.dumps(doc))
     return 0
 
 

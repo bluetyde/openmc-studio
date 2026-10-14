@@ -6,7 +6,7 @@ const fs = require('fs'), vm = require('vm'), path = require('path'), assert = r
 const html = fs.readFileSync(path.join(__dirname, '..', 'studio', 'openmc_studio', 'static', 'index.html'), 'utf8');
 const el = {addEventListener() {}, insertAdjacentHTML() {}, querySelector: () => el, querySelectorAll: () => [], style: {}, dataset: {},
   classList: {add() {}, remove() {}, toggle() {}}, setAttribute() {}, appendChild() {}, append() {}, add() {}, remove() {}, getContext: () => null, parentElement: {}};
-const nodes = {'#otCore': {...el, hidden: true}, '#runs': {...el, innerHTML: ''}};      // the two elements these tests read back; every other selector is the shared stub
+const nodes = {'#otCore': {...el, hidden: true}, '#runs': {...el, innerHTML: ''}, '#core': {...el, innerHTML: ''}};      // the two elements these tests read back; every other selector is the shared stub
 const sb = {console, URLSearchParams, btoa, atob, TextEncoder, escape, unescape, Option: class {}, window: {}, location: {protocol: 'http:', search: ''},
   document: {querySelector: s => nodes[s] || el, querySelectorAll: () => [], getElementById: () => el, createElement: () => el, createTextNode: () => el, addEventListener() {}},
   fetch: () => Promise.resolve({ok: false}), ResizeObserver: class { observe() {} disconnect() {} },
@@ -80,6 +80,26 @@ test('beside an OpenMC result it gives the difference in pcm, and says what it d
   assert.ok(h.includes('20261014-run-x') && h.includes('does not check that run is of this model'));
   run('LOCAL.results = null; LOCAL.resultsRun = null');
   assert.ok(render().includes('No OpenMC run is open'));
+});
+
+test('the form shows each outer face as a choice, from the model by default, and Solve is off without the package', () => {
+  run("CORE.on = true; CORE.run = null; CORE.doc = null; CORE.form.faces = CORE_AUTO()");
+  run('renderCore()');
+  let h = nodes['#core'].innerHTML;
+  for (const f of ['x_min', 'x_max', 'y_min', 'y_max']) {
+    const m = h.match(new RegExp(`<select data-core-face="${f}">(.*?)</select>`));
+    assert.ok(m, f + ' has a select');
+    assert.strictEqual((m[1].match(/<option/g) || []).length, 3, 'three choices');
+    assert.ok(/<option value="auto" selected>from the model/.test(m[1]), 'the model is the default: ' + m[1]);
+  }
+  run("CORE.form.faces.x_min = 'reflective'; renderCore()");
+  h = nodes['#core'].innerHTML;
+  assert.ok(/data-core-face="x_min">.*?<option value="reflective" selected>/.test(h), 'the choice is shown');
+  assert.ok(!/<button[^>]*id="coreSolve"[^>]*disabled/.test(h), 'Solve is on when the package is there');
+  run("CORE.on = false; CORE.why = 'not here'; renderCore()");
+  h = nodes['#core'].innerHTML;
+  assert.ok(/<button[^>]*id="coreSolve"[^>]*disabled/.test(h) && h.includes('Needs the nodal package') && h.includes('not here'));
+  run("CORE.on = true; CORE.form.faces = CORE_AUTO()");
 });
 
 test('the settings sent are the form\'s, and the handlers change the form', () => {

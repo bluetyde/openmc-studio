@@ -1,0 +1,25 @@
+E14 (e14_swap_fields.py), from data/pieces.npz (the pieces of E13: 20,000 x 150, CASMO-25 condensed to 2 groups) and data/<core>.npz. Typed from the console output of 2026-10-14.
+Two-step constants = fuel from the strips' fuel nodes + the reflector strip(s); "core by kind" = the mean over the nodes of each kind of the core run's own constants with its flux-averaged D.
+SANM, no factors. The scatter entries are [from fast->fast, fast->thermal, thermal->fast, thermal->thermal].
+
+===== zoned1: two-step +1107 pcm, the core run's own constants by kind +185 pcm
+    fuel A    D   -1.2   -0.2   absorption   +1.2   -0.5   nu_fission   +0.2   -0.5   scatter   +0.6   +3.2   +3.5   -0.5
+    fuel B    D   -1.0   -0.6   absorption   +1.1   -0.1   nu_fission   +0.6   -0.1   scatter   +0.4   +2.9   +3.3   -0.1
+    reflector D   -1.6   -0.9   absorption   +0.5   -0.2   nu_fission   +nan   +nan   scatter   +0.7   +1.1   +2.5   -0.2
+  replacing ONE field of the two-step constants by the core run's: change of k (pcm), the ten largest
+    fuel scatter [0->1] -862 | fuel scatter (all) -857 | ALL fuel constants -790 | fuel absorption fast +307 | fuel nu_fission thermal +163 | fuel absorption thermal -154
+    fuel absorption (all) +152 | fuel D (all) -147 | fuel D fast -147 | ALL reflector constants -128
+
+===== zoned2: two-step +1716 pcm, the core run's own constants by kind +702 pcm
+    fuel A    D   -1.6   +1.0   absorption   +2.0   -1.8   nu_fission   +0.2   -1.9   scatter   +0.9   +3.9   +5.8   -1.4
+    fuel B    D   -0.9   -0.7   absorption   +1.2   -0.1   nu_fission   +0.6   -0.1   scatter   +0.3   +2.3   -0.6   +0.0
+    reflector D   -3.0   +4.5   absorption   -8.7   -3.0   nu_fission   +nan   +nan   scatter   +1.1   -8.4  +89.2   -3.0
+    fuel scatter [0->1] -739 | fuel scatter (all) -738 | ALL fuel constants -584 | fuel nu_fission thermal +559 | fuel absorption thermal -499 | fuel nu_fission (all) +455
+    ALL reflector constants -419 | fuel absorption fast +379 | reflector D (all) -264 | reflector D fast -235
+
+===== checker1: two-step +1588 pcm, the core run's own constants by kind +381 pcm
+    fuel A    D   -2.2   +0.7   absorption   +2.9   -1.7   nu_fission   +0.4   -1.7   scatter   +1.4   +5.7   +5.9   -1.2
+    fuel B    D   -2.2   +1.5   absorption   +2.8   -2.6   nu_fission   +0.4   -2.7   scatter   +1.5   +4.9  +12.3   -2.0
+    reflector D   -1.4   -0.9   absorption   +0.4   -0.2   nu_fission   +nan   +nan   scatter   +0.6   +1.7   +6.4   -0.2
+    fuel nu_fission thermal +1842 | fuel nu_fission (all) +1776 | fuel absorption thermal -1665 | fuel scatter [0->1] -1476 | fuel scatter (all) -1463 | ALL fuel constants -1037
+    fuel absorption (all) -1029 | fuel absorption fast +648 | fuel D (all) -288 | fuel D fast -281

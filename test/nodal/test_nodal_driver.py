@@ -354,11 +354,11 @@ class FromScript(unittest.TestCase):
             import io
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
-                rc = nodal_driver.main([str(self.script), "--workdir", str(self.tmp / "y"), "--reflective", "x_min", "y_max", "--kernel", "nem"])
+                rc = nodal_driver.main([str(self.script), "--workdir", str(self.tmp / "y"), "--reflective", "x_min", "y_max", "--vacuum", "x_max", "--kernel", "nem"])
         finally:
             nodal_driver.two_step = real
         self.assertEqual(rc, 1)
-        self.assertEqual(seen["boundaries"], {"x_min": "reflective", "y_max": "reflective"})
+        self.assertEqual(seen["boundaries"], {"x_min": "reflective", "y_max": "reflective", "x_max": "vacuum"})
         self.assertEqual(seen["kernel"], "nem")
 
 
@@ -434,13 +434,13 @@ class OuterFaces(unittest.TestCase):
         text = variant(self.kinds, (XM_LINE, tank[0]), (YM_LINE, tank[1]),
                        (MODEL_LINE, 'tx0, tx1 = openmc.XPlane(-nc * ASM / 2 - 5, boundary_type="vacuum"), openmc.XPlane(nc * ASM / 2 + 5, boundary_type="vacuum")\n'
                                     'ty0, ty1 = openmc.YPlane(-nc * ASM / 2 - 5, boundary_type="vacuum"), openmc.YPlane(nc * ASM / 2 + 5, boundary_type="vacuum")\n'
-                                    'tank = openmc.Cell(name="tank", fill=water, region=+tx0 & -tx1 & +ty0 & -ty1 & +zm & -zp & ~(+xm & -xp & +ym & -yp))\n'
+                                    'tank = openmc.Cell(name="tank", fill=clad, region=+tx0 & -tx1 & +ty0 & -ty1 & +zm & -zp & ~(+xm & -xp & +ym & -yp))\n'
                                     "model = openmc.Model(geometry=openmc.Geometry([cell_core, tank]), materials=materials, settings=settings)"))
         g, lat = self.model("tank", text)
         det = nodal_driver.detect_faces(g, lat)
         for f in nodal_driver.FACES:
             self.assertEqual(det[f]["type"], "material", f)
-            self.assertIn("water", det[f]["detail"].lower())
+            self.assertIn("clad", det[f]["detail"].lower(), "the material just outside, not one inside the lattice")
         chosen, used, warns = nodal_driver.resolve_faces(det, None)
         self.assertEqual(set(chosen.values()), {"vacuum"})
         self.assertEqual({u["source"] for u in used.values()}, {"assumed"})

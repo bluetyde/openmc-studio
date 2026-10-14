@@ -235,5 +235,28 @@ class StudioExample(unittest.TestCase):
             self.assertEqual(orig.get("ref", ""), got["ref"])
 
 
+class CommandLine(unittest.TestCase):
+    def run_cli(self, *args):
+        import subprocess
+        r = subprocess.run([sys.executable, "-m", "openmc_studio.seed_materials", *args], cwd=ROOT / "studio", capture_output=True, text=True)
+        return r.returncode, json.loads(r.stdout.strip().splitlines()[-1])
+
+    def test_import_and_export(self):
+        rc, out = self.run_cli("import", str(FIXTURE))
+        self.assertEqual((rc, out["ok"], [m["id"] for m in out["materials"]], len(out["skipped"])), (0, True, ["mat-fuel", "mat-water"], 3))
+        example = ROOT / "examples" / "triso-particle" / "triso-particle.openmc-studio.json"
+        rc, out = self.run_cli("export", str(example))
+        self.assertEqual((rc, out["ok"]), (0, True))
+        self.assertTrue(all(e["revision"] == 1 for e in out["entries"]))
+        rc, out = self.run_cli("export", str(example), "--project", str(FIXTURE))
+        self.assertEqual((rc, [e["revision"] for e in out["entries"]]), (0, [1] * len(out["entries"])), "none of the example's ids is in the fixture project")
+
+    def test_refusals_are_one_json_line_and_exit_one(self):
+        rc, out = self.run_cli("import", str(ROOT / "test" / "fixtures" / "seed" / "nope" / "seed.project.json"))
+        self.assertEqual((rc, out["ok"], out["code"]), (1, False, "E_NOT_FOUND"))
+        rc, out = self.run_cli("export", str(FIXTURE))                 # a SEED project is not a Studio project
+        self.assertEqual((rc, out["ok"]), (1, False))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

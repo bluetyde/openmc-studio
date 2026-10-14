@@ -16,6 +16,7 @@ the package, and nothing else.
 
 ## Open items carried over
 
+- **SEED material round trip, Studio side (2026-10-14; FEED's TODO line 104).** Built: the `openmc.composition/0.1` set, Studio material to and from a project entry, the revision rule, a read-only project import, a command line (`python -m openmc_studio.seed_materials`), 20 deliberate breaks caught; [docs/seed-materials.md](docs/seed-materials.md). **Not built:** writing `seed.project.json` (SEED's project store owns it; the choice between SEED merging the entries and Studio implementing the lock protocol is the user's), any button or route in the page, and the acceptance case itself (needs SEED's `saveProject` and FEED's importer). The heating tally reader on FEED's line 101 is the SEED agent's.
 - **Next up (2026-10-07), in order:**
   1. **MCNP: not tracked here.** This project makes no statement about whether any exported deck has been run in MCNP. MCNP is export-controlled and its output is not shared here. Decks are checked by the exporter's validator (MontePy parse, cards read back against the OpenMC model, sampled geometry comparison) and compared with OpenMC. Check a deck yourself before relying on it.
      A line below that says what could be checked in MCNP describes a check anyone with MCNP can make themselves; it is not planned work in this project.

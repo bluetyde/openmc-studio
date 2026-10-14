@@ -39,6 +39,8 @@ test('the result shows k, the power map in the layout\'s row order, and escapes 
   assert.ok(rows[0].indexOf('1.20') < rows[0].indexOf('0.80'), 'columns in layout order');
   assert.ok(rows[0].includes('nopow') && rows[1].includes('nopow'), 'reflector cells carry no power');
   assert.ok(rows[1].includes('0.90') && rows[1].includes('1.10'), 'second row is the second layout row');
+  assert.ok(rows[0].includes('asm A: relative power 1.200') && rows[0].includes('asm B: relative power 0.800'), 'each number sits under its own kind (first row)');
+  assert.ok(rows[1].includes('asm B: relative power 0.900'), 'and in the second row');
   assert.ok(!h.includes('<b>x</b>'), 'a kind name with markup is escaped');
   assert.ok(h.includes('&lt;b&gt;x&lt;/b&gt;'));
 });
@@ -51,7 +53,7 @@ test('warnings about the model come first, escaped; a large difference from Open
   assert.ok(!run('coreResultHtml(__noWarn)').includes('Read this first'), 'no box when there is nothing to say');
   run('LOCAL.results = {summary: {keff: [0.36087, 0.005]}}; LOCAL.resultsRun = "r"');
   h = render();
-  assert.ok(h.includes('59424 pcm') && h.includes('not a small error of the method'));
+  assert.ok(h.includes('= <b>59424 pcm</b>') && h.includes('not a small error of the method'));
   run('LOCAL.results = {summary: {keff: [0.94469, 0.0004]}}; LOCAL.resultsRun = "r"');
   assert.ok(!render().includes('not a small error of the method'), 'a thousand pcm is not called large');
   run('LOCAL.results = null; LOCAL.resultsRun = null');
@@ -69,7 +71,7 @@ test('it states its assumptions, with the outer faces that were used', () => {
 test('beside an OpenMC result it gives the difference in pcm, and says what it did not check', () => {
   run('LOCAL.results = {summary: {keff: [0.94469, 0.0004]}}; LOCAL.resultsRun = "20261014-run-x"');
   const h = render();
-  assert.ok(h.includes('1042 pcm'), 'nodal minus OpenMC: ' + h.match(/nodal minus OpenMC = [^<]*<b>[^<]*/));
+  assert.ok(h.includes('nodal minus OpenMC = <b>1042 pcm</b>'), 'nodal minus OpenMC: ' + h.match(/nodal minus OpenMC = [^<]*<b>[^<]*/));
   assert.ok(h.includes('20261014-run-x') && h.includes('does not check that run is of this model'));
   run('LOCAL.results = null; LOCAL.resultsRun = null');
   assert.ok(render().includes('No OpenMC run is open'));

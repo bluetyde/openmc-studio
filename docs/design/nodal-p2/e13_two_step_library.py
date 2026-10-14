@@ -158,6 +158,15 @@ for kd in ("A", "B"):
 print(f"fuel from the zoned strip: A D {FUEL_STRIP_Z['A']['D'].round(4).tolist()} absorption {FUEL_STRIP_Z['A']['absorption'].round(5).tolist()};  B D {FUEL_STRIP_Z['B']['D'].round(4).tolist()} absorption {FUEL_STRIP_Z['B']['absorption'].round(5).tolist()}")
 print(f"reflector (zoned strip): D {R_ZONED['D'].round(4).tolist()} absorption {R_ZONED['absorption'].round(5).tolist()};  (checkerboard strips): D {R_CHECK['D'].round(4).tolist()} absorption {R_CHECK['absorption'].round(5).tolist()}")
 
+# E14: keep the pieces' constants (2 groups, fast first) so that they can be swapped against the core run's without another Monte Carlo run
+_pieces = {"infA": FUEL["A"], "infB": FUEL["B"], "stripZ_A": FUEL_STRIP_Z["A"], "stripZ_B": FUEL_STRIP_Z["B"], "stripC_A": FUEL_STRIP_C["A"], "stripC_B": FUEL_STRIP_C["B"],
+           "reflZ": R_ZONED, "reflC": R_CHECK}
+_out = {f"{pn}__{fld}": np.asarray(v, float) for pn, d in _pieces.items() for fld, v in d.items()}
+_out.update({"k_infA": kA.nominal_value, "k_infB": kB.nominal_value, "k_stripZ": kS.nominal_value, "k_stripC1": kC1.nominal_value, "k_stripC2": kC2.nominal_value,
+             "particles": particles, "batches": batches})
+np.savez_compressed(Path(__file__).resolve().parent / "data" / "pieces.npz", **_out)
+print("pieces saved to data/pieces.npz")
+
 import e9_current_d as e9
 
 

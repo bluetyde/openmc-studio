@@ -1,0 +1,34 @@
+E15 (e15_critical_spectrum.py), 20,000 particles x 150 batches (30 inactive); the fine-group data of the infinite lattices of A and B (CASMO-25) are saved in data/fine_inf.npz.
+Typed from the console output of 2026-10-14. Nodal k minus OpenMC k (pcm) and assembly power error (rms %), fdm | sanm, no discontinuity factors.
+
+[infinite A] OpenMC k = 1.30560 +/- 63 pcm (54 s)
+[infinite B] OpenMC k = 1.36276 +/- 56 pcm (51 s)
+[strip B B A R] OpenMC k = 1.12746 +/- 66 pcm (49 s)
+fuel A: k_inf of the homogeneous medium 1.3053; critical B^2 = 0.00536 /cm^2 (k = 1.0000); the 8 hardest groups hold 103.4 % as much flux as without leakage
+   plain    : D [1.2996, 0.3698] absorption [0.00901, 0.08749] nu-fission [0.00609, 0.14224] scatter [0.2881, 0.01775, 0.00045, 0.99838]
+   corrected: D [1.3132, 0.3705] absorption [0.00873, 0.08732] nu-fission [0.00599, 0.14196] scatter [0.28633, 0.01666, 0.00046, 0.99672]
+fuel B: k_inf of the homogeneous medium 1.3629; critical B^2 = 0.00638 /cm^2 (k = 1.0000); the 8 hardest groups hold 103.8 % as much flux as without leakage
+   plain    : D [1.3011, 0.3761] absorption [0.00953, 0.10137] nu-fission [0.0071, 0.17274] scatter [0.28779, 0.01735, 0.00053, 0.97397]
+   corrected: D [1.3173, 0.3769] absorption [0.00918, 0.10116] nu-fission [0.00694, 0.17238] scatter [0.28566, 0.0161, 0.00054, 0.97224]
+
+zoned1: OpenMC k 1.01726
+  fuel: infinite lattice, plain collapse                           +1609  8.9  |    +2257  1.1
+  fuel: infinite lattice, critical-buckling spectrum (k = 1)        -206  7.7  |     +539  1.3
+  fuel: infinite lattice, buckling for the core's own k (1.017)      -97  7.8  |     +643  1.2
+  fuel: the strips' fuel nodes (E13)                                +365  7.3  |    +1107  1.8
+  the core run's own constants by kind                              -583  7.1  |     +185  2.2
+
+zoned2: OpenMC k 1.03703
+  fuel: infinite lattice, plain collapse                           +1877  8.9  |    +2725  1.3
+  fuel: infinite lattice, critical-buckling spectrum (k = 1)        +184  7.6  |    +1150  2.2
+  fuel: infinite lattice, buckling for the core's own k (1.037)     +401  7.8  |    +1351  2.0
+  fuel: the strips' fuel nodes (E13)                                +743  7.2  |    +1716  2.7
+  the core run's own constants by kind                              -383  7.5  |     +702  3.5
+
+checker1: OpenMC k 0.94469
+  fuel: infinite lattice, plain collapse                           +1623  9.6  |    +2713  1.0
+  fuel: infinite lattice, critical-buckling spectrum (k = 1)        -205  9.1  |    +1018  1.1
+  fuel: infinite lattice, buckling for the core's own k (0.945)     -591  9.0  |     +660  1.3
+  fuel: the strips' fuel nodes (E13)                                +388  9.1  |    +1588  0.9
+  the core run's own constants by kind                              -899  8.6  |     +381  1.5
+total 154 s

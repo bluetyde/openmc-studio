@@ -1,0 +1,73 @@
+{
+  "schema": "seed.project/0.1",
+  "projectId": "p-0123456789ab",
+  "name": "Material round trip fixture",
+  "created": "2026-10-14T10:00:00Z",
+  "updated": "2026-10-14T10:00:00Z",
+  "seedVersion": "0.1.0",
+  "folders": {"models": "models", "runs": "runs", "studies": "studies", "oracles": "oracles"},
+  "artifacts": [],
+  "materials": [
+    {
+      "id": "mat-fuel",
+      "revision": 3,
+      "name": "UO2 fuel 3.1 %",
+      "sets": {
+        "openmc.composition": {
+          "schema": "openmc.composition/0.1",
+          "units": "g/cm3",
+          "density": 10.4,
+          "fractionType": "ao",
+          "components": [{"name": "U235", "fraction": 0.031}, {"name": "U238", "fraction": 0.969}, {"name": "O", "fraction": 2}],
+          "compositionText": "U235:0.031, U238:0.969, O:2",
+          "source": {"kind": "synthetic", "text": "illustrative PWR-like pellet"},
+          "conditions": {"temperature": 900},
+          "ranges": {"temperature": {"min": 300, "max": 1200}},
+          "enrichment": 0.031
+        },
+        "thermal.conductivity": {
+          "schema": "feed.thermal-property/0.1",
+          "model": "constant",
+          "value": {"value": 3.2, "unit": "W/m/K"},
+          "referenceTemperature": {"value": 300, "unit": "K"},
+          "source": {"kind": "sourced", "text": "datasheet, 2026"}
+        },
+        "vendor.notes": {"schema": "vendor.notes/9.9", "__proto__": {"x": 1}, "constructor": "kept", "list": [3, 1, 2]}
+      }
+    },
+    {
+      "id": "mat-water",
+      "revision": 1,
+      "name": "Water",
+      "sets": {
+        "openmc.composition": {
+          "schema": "openmc.composition/0.1",
+          "units": "g/cm3",
+          "density": 0.74,
+          "fractionType": "ao",
+          "components": [{"name": "H1", "fraction": 2}, {"name": "O16", "fraction": 1}],
+          "sab": "c_H_in_H2O"
+        }
+      }
+    },
+    {
+      "id": "mat-thermal-only",
+      "revision": 2,
+      "name": "A material with no composition",
+      "sets": {"thermal.conductivity": {"schema": "feed.thermal-property/0.1", "model": "constant", "value": {"value": 1, "unit": "W/m/K"}}}
+    },
+    {
+      "id": "mat-old-schema",
+      "revision": 1,
+      "name": "A composition set of a version Studio does not read",
+      "sets": {"openmc.composition": {"schema": "openmc.composition/0.2", "units": "g/cm3", "density": 1.0}}
+    },
+    {
+      "id": "mat-other-writer",
+      "revision": 1,
+      "name": "Custom OpenMC-only material without a density",
+      "sets": {"openmc.composition": {"schema": "openmc.composition/0.1", "units": "g/cm3", "enrichment": 0.045, "components": [{"name": "U235", "fraction": 1}]}}
+    }
+  ],
+  "extensions": {"projTag": "beta"}
+}

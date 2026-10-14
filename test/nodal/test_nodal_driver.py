@@ -10,8 +10,10 @@ The windows below are wide enough for the pieces' statistics (several hundred pc
 
 Needs openmc, openndm 0.3.0 and OPENMC_CROSS_SECTIONS; run it with `node test/run_all.cjs nodal` or  python test/nodal/test_nodal_driver.py
 """
+import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -210,6 +212,144 @@ class TwoStep(unittest.TestCase):
         self.assertIn("critical-buckling", res.provenance["recipe"])
         self.assertEqual(res.provenance["intermediate_structure"], "CASMO-25")
         self.assertEqual(res.nodal.provenance["kernel"], "sanm")
+
+
+# ── from a Studio-style model.py ─────────────────────────────────────────────────────────────────────────────────────────────────────
+SCRIPT = '''"""core model, Studio style"""
+import openmc
+mat_a = openmc.Material(name="fuel 2.4%"); mat_a.add_nuclide("U235", 0.024); mat_a.add_nuclide("U238", 0.976); mat_a.add_nuclide("O16", 2.0); mat_a.set_density("g/cm3", 10.4)
+mat_b = openmc.Material(name="fuel 3.1%"); mat_b.add_nuclide("U235", 0.031); mat_b.add_nuclide("U238", 0.969); mat_b.add_nuclide("O16", 2.0); mat_b.set_density("g/cm3", 10.4)
+clad = openmc.Material(name="clad"); clad.add_element("Zr", 1.0); clad.set_density("g/cm3", 6.55)
+water = openmc.Material(name="water"); water.add_nuclide("H1", 2.0); water.add_nuclide("O16", 1.0); water.set_density("g/cm3", 0.74); water.add_s_alpha_beta("c_H_in_H2O")
+materials = openmc.Materials([mat_a, mat_b, clad, water])
+PITCH, N = 1.26, 5
+ASM = N * PITCH
+def assembly(fuel, name):
+    f, c = openmc.ZCylinder(r=0.4096), openmc.ZCylinder(r=0.475)
+    pin = openmc.Universe(cells=[openmc.Cell(fill=fuel, region=-f), openmc.Cell(fill=clad, region=+f & -c), openmc.Cell(fill=water, region=+c)])
+    a, b = openmc.ZCylinder(r=0.56), openmc.ZCylinder(r=0.60)
+    tube = openmc.Universe(cells=[openmc.Cell(fill=water, region=-a), openmc.Cell(fill=clad, region=+a & -b), openmc.Cell(fill=water, region=+b)])
+    lat = openmc.RectLattice(name="pins " + name)
+    lat.pitch, lat.lower_left = (PITCH, PITCH), (-ASM / 2, -ASM / 2)
+    lat.universes = [[tube if (i == N // 2 and j == N // 2) else pin for i in range(N)] for j in range(N)]
+    return openmc.Universe(cells=[openmc.Cell(fill=lat, region=-openmc.model.RectangularPrism(ASM, ASM))], name=name)
+u = {"A": assembly(mat_a, "asm A"), "B": assembly(mat_b, "asm B"), "R": openmc.Universe(cells=[openmc.Cell(fill=water)], name="reflector")}
+KINDS = __KINDS__
+nc = len(KINDS)
+core = openmc.RectLattice(name="Core")
+core.pitch = [ASM, ASM, 10.0]
+core.lower_left = [-nc * ASM / 2, -nc * ASM / 2, -5.0]
+core.universes = [[[u[k] for k in row] for row in KINDS] for _ in range(__LAYERS__)]
+xm, xp = openmc.XPlane(-nc * ASM / 2, boundary_type="vacuum"), openmc.XPlane(nc * ASM / 2, boundary_type="vacuum")
+ym, yp = openmc.YPlane(-nc * ASM / 2, boundary_type="vacuum"), openmc.YPlane(nc * ASM / 2, boundary_type="vacuum")
+zm, zp = openmc.ZPlane(-5.0 * __LAYERS__, boundary_type="reflective"), openmc.ZPlane(5.0 * __LAYERS__, boundary_type="reflective")
+cell_core = openmc.Cell(name="Core", fill=core, region=+xm & -xp & +ym & -yp & +zm & -zp)
+settings = openmc.Settings()
+settings.batches, settings.inactive, settings.particles = 20, 5, 100
+model = openmc.Model(geometry=openmc.Geometry([cell_core]), materials=materials, settings=settings)
+if __name__ == "__main__":
+    print("RAN THE MODEL")
+    model.run()
+'''
+
+
+def script_text(kinds, layers=1):
+    """A model.py in the form Studio writes: a one-layer three-dimensional lattice in a world cell, `model` defined, the run under `__main__`."""
+    return SCRIPT.replace("__KINDS__", repr(kinds)).replace("__LAYERS__", str(layers))
+
+
+class FromScript(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp(prefix="nodal_script_"))
+        cls.kinds = load("checker1")["kinds"]
+        cls.script = cls.tmp / "model.py"
+        cls.script.write_text(script_text(cls.kinds), encoding="utf-8", newline="\n")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_the_core_lattice_is_the_outermost_one_and_one_layer_gives_its_height(self):
+        model = nodal_driver.load_model(self.script)
+        self.assertGreater(len(model.geometry.get_all_lattices()), 1, "the assemblies hold pin lattices of their own")
+        lat = nodal_driver.core_lattice(model)
+        self.assertEqual(lat.name, "Core")
+        unis, pitch, height = nodal_driver.layer(lat)
+        self.assertEqual((unis.shape, round(pitch, 6), height), ((8, 8), 6.3, 10.0))
+        self.assertEqual(nodal_driver.core_lattice(model, "Core").name, "Core")
+        with self.assertRaises(nodal.NodalInputError):
+            nodal_driver.core_lattice(model, "Not there")
+        pieces, kinds, labels = nodal_driver.plan_pieces(lat)
+        self.assertEqual(sorted(r for _, r in kinds.values()), ["fuel", "fuel", "reflector"])
+        self.assertEqual([[l.split("#")[0] for l in row] for row in labels][1][:3], ["reflector", "asm A", "asm B"], "top row first, as the script lists it")
+
+    def test_loading_does_not_run_the_model(self):
+        r = subprocess.run([sys.executable, "-m", "openmc_studio.nodal_driver", str(self.script), "--list"], cwd=ROOT / "studio", capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("RAN THE MODEL", r.stdout)
+        out = json.loads(r.stdout.strip().splitlines()[-1])
+        self.assertEqual([(x["name"], x["shape"]) for x in out["lattices"]], [("Core", [1, 8, 8])])
+
+    def test_two_layers_a_missing_model_and_a_script_without_fuel_are_refused(self):
+        two = self.tmp / "two_layers.py"
+        two.write_text(script_text(self.kinds, layers=2), encoding="utf-8", newline="\n")
+        with self.assertRaises(nodal.NodalInputError) as cm:
+            nodal_driver.plan_pieces(nodal_driver.core_lattice(nodal_driver.load_model(two)))
+        self.assertIn("axial layer", str(cm.exception))
+        bad = self.tmp / "no_model.py"
+        bad.write_text("x = 1\n", encoding="utf-8")
+        with self.assertRaises(nodal.NodalInputError):
+            nodal_driver.load_model(bad)
+        water_only = self.tmp / "water_only.py"
+        water_only.write_text(script_text([["R", "R"], ["R", "R"]]), encoding="utf-8", newline=chr(10))
+        with self.assertRaises(nodal.NodalInputError) as cm:
+            nodal_driver.plan_pieces(nodal_driver.core_lattice(nodal_driver.load_model(water_only)))
+        self.assertIn("fissile", str(cm.exception))
+
+    def test_the_command_line_runs_the_whole_thing(self):
+        env = dict(os.environ, OMP_NUM_THREADS=os.environ.get("OMP_NUM_THREADS", "4"))
+        r = subprocess.run([sys.executable, "-W", "ignore", "-m", "openmc_studio.nodal_driver", str(self.script), "--workdir", str(self.tmp / "run"), "--particles", "6000",
+                            "--batches", "60", "--inactive", "15", "--seed", "11"], cwd=ROOT / "studio", capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 0, r.stdout[-500:] + r.stderr[-1500:])
+        out = json.loads(r.stdout.strip().splitlines()[-1])
+        core = load("checker1")
+        d = (out["k_eff"] - float(core["k"])) * 1e5
+        self.assertLess(abs(d - E15["checker1"]), WINDOW, f"through the command line: {d:+.0f} pcm")
+        self.assertEqual(out["height_cm"], 10.0)
+        self.assertEqual(out["provenance"]["boundaries"]["x_min"], "vacuum")
+        self.assertEqual(np.array(out["power"]).shape, (8, 8))
+        self.assertEqual(len(out["pieces"]), 4)
+        self.assertEqual(sorted(k.split("#")[0] for k in out["constants"]), ["asm A", "asm B", "reflector"])
+
+    def test_a_refusal_is_one_json_line_and_exit_one(self):
+        bad = subprocess.run([sys.executable, "-m", "openmc_studio.nodal_driver", str(self.script), "--workdir", str(self.tmp / "x"), "--lattice", "Nope"],
+                             cwd=ROOT / "studio", capture_output=True, text=True)
+        self.assertEqual(bad.returncode, 1)
+        reply = json.loads(bad.stdout.strip().splitlines()[-1])
+        self.assertFalse(reply["ok"])
+        self.assertIn("Nope", reply["message"])
+
+
+    def test_reflective_faces_reach_the_solve(self):
+        seen = {}
+
+        def stub(*args, **kw):
+            seen.update(kw)
+            raise nodal.NodalInputError("stopped after reading the arguments")
+        real = nodal_driver.two_step
+        nodal_driver.two_step = stub
+        try:
+            import contextlib
+            import io
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = nodal_driver.main([str(self.script), "--workdir", str(self.tmp / "y"), "--reflective", "x_min", "y_max", "--kernel", "nem"])
+        finally:
+            nodal_driver.two_step = real
+        self.assertEqual(rc, 1)
+        self.assertEqual(seen["boundaries"], {"x_min": "reflective", "y_max": "reflective"})
+        self.assertEqual(seen["kernel"], "nem")
 
 
 if __name__ == "__main__":

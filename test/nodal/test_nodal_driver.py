@@ -352,5 +352,19 @@ class FromScript(unittest.TestCase):
         self.assertEqual(seen["kernel"], "nem")
 
 
+    def test_reflective_faces_change_the_solve_and_are_recorded(self):
+        # the same seed gives the same pieces, so only the solve differs: a reflective left face must raise k by a lot (a quarter of the leakage path is closed)
+        env = dict(os.environ, OMP_NUM_THREADS=os.environ.get("OMP_NUM_THREADS", "4"))
+        ks = {}
+        for tag, extra in (("vac", []), ("refl", ["--reflective", "x_min"])):
+            r = subprocess.run([sys.executable, "-W", "ignore", "-m", "openmc_studio.nodal_driver", str(self.script), "--workdir", str(self.tmp / ("b_" + tag)), "--particles", "3000",
+                                "--batches", "40", "--inactive", "10", "--seed", "5"] + extra, cwd=ROOT / "studio", capture_output=True, text=True, env=env)
+            self.assertEqual(r.returncode, 0, r.stdout[-300:] + r.stderr[-1000:])
+            ks[tag] = json.loads(r.stdout.strip().splitlines()[-1])
+        self.assertEqual(ks["refl"]["provenance"]["boundaries"]["x_min"], "reflective")
+        self.assertEqual(ks["refl"]["provenance"]["boundaries"]["x_max"], "vacuum")
+        self.assertGreater((ks["refl"]["k_eff"] - ks["vac"]["k_eff"]) * 1e5, 1500)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -122,6 +122,20 @@ class Run(unittest.TestCase):
         listed = next(r for r in self.call("GET", "/api/runs")[1]["runs"] if r["id"] == meta["id"])
         self.assertEqual((listed["kind"], listed["status"]), ("nodal", "done"))
 
+    def test_b2_a_project_with_depletion_on_is_still_only_a_nodal_run(self):
+        real = nodal_run.command
+        nodal_run.command = lambda settings, environ=None: [sys.executable, "-c", "print('stub nodal child')"]
+        try:
+            code, meta = self.call("POST", "/api/nodal/run", {"script": self.script, "project": {"settings": {"depletion": True}}, "name": "dep", "settings": {}})
+            self.assertEqual(code, 200, meta)
+            self.wait(60)
+        finally:
+            nodal_run.command = real
+        run = self.studio.runs[meta["id"]]
+        self.assertEqual((run.status, run.kind), ("done", "nodal"))
+        self.assertFalse((run.path / "deplete.py").exists(), "no depletion script is made for a nodal run")
+        self.assertIn("stub nodal child", (run.path / "run.log").read_text(encoding="utf-8"))
+
     def test_c_stopping_leaves_no_child_process(self):
         code, meta = self.call("POST", "/api/nodal/run", {"script": self.script, "project": {}, "name": "stopme", "settings": {"particles": 20000, "batches": 150, "inactive": 30}})
         self.assertEqual(code, 200, meta)

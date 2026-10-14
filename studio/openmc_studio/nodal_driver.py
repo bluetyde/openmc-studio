@@ -50,6 +50,7 @@ class TwoStepResult:
     kinds: dict                                  # kind label -> {"universe": id, "role": "fuel" | "reflector"}
     pieces: list                                 # (label, role, k, k_std, seconds)
     settings: dict
+    warnings: list = field(default_factory=list)      # facts about the model that make this method's answer doubtful, in words
     provenance: dict = field(default_factory=dict)
 
 
@@ -189,6 +190,18 @@ def mean_constants(samples) -> dict:
     return {f: np.mean([np.asarray(s[f], float) for s in samples], axis=0) for f in nodal.FIELDS}
 
 
+AXIAL_RATIO = 4.0          # a lattice shorter than this many node widths leaks axially so much that a radial-only answer cannot be close
+
+
+def model_warnings(pitch: float, height: float, constants: dict) -> list:
+    """Plain-words warnings from what is known about the model (not from the answer): the method has no axial leakage and reads no boundary from the model."""
+    out = []
+    if height < AXIAL_RATIO * pitch:
+        out.append(f"The lattice is {height:g} cm tall, {height / pitch:.1f} node widths: axial leakage is large for a core this short and this solve has none (the pieces are axially reflective), "
+                   f"so its k is expected to be well above the model's true k, not a small error.")
+    return out
+
+
 def two_step(lattice, materials, *, workdir, particles=20000, batches=150, inactive=30, seed=None, threads=None, kernel="sanm", boundaries=None, progress=None) -> TwoStepResult:
     """Run the pieces for `lattice` and solve the core.
 
@@ -221,8 +234,9 @@ def two_step(lattice, materials, *, workdir, particles=20000, batches=150, inact
                 "(flux-averaged D); no discontinuity factors; one node per assembly; radial 2D, axial reflective", intermediate_structure=nodal.INTERMEDIATE_NAME,
                 settings=settings_kw, pitch_cm=pitch, height_cm=height, kernel=kernel, boundaries=res.boundaries)
     res.provenance.update(prov)
+    warnings = model_warnings(pitch, height, constants)
     return TwoStepResult(nodal=res, constants=constants, kinds={lab: {"universe": u.id, "role": r} for lab, (u, r) in kinds.items()},
-                         pieces=[(p.label, p.role, p.k, p.k_std, round(p.seconds, 1)) for p in pieces], settings=settings_kw, provenance=prov)
+                         pieces=[(p.label, p.role, p.k, p.k_std, round(p.seconds, 1)) for p in pieces], settings=settings_kw, provenance=prov, warnings=warnings)
 
 
 # ── from a Studio model.py ───────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -291,7 +305,7 @@ def result_json(res: TwoStepResult) -> dict:
     n = res.nodal
     return {"ok": True, "k_eff": n.k_eff, "kernel": n.kernel, "converged": n.converged, "layout": n.kinds, "power": np.asarray(n.power).tolist(), "node_size_cm": n.node_size_cm,
             "height_cm": n.height_cm, "boundaries": n.boundaries, "kinds": res.kinds, "constants": {k: {f: np.asarray(v).tolist() for f, v in c.items()} for k, c in res.constants.items()},
-            "pieces": [dict(label=l, role=r, k=k, k_std=sd, seconds=sec) for l, r, k, sd, sec in res.pieces], "provenance": res.provenance}
+            "pieces": [dict(label=l, role=r, k=k, k_std=sd, seconds=sec) for l, r, k, sd, sec in res.pieces], "provenance": res.provenance, "warnings": res.warnings}
 
 
 def main(argv=None) -> int:

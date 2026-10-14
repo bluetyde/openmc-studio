@@ -113,6 +113,7 @@ class Run(unittest.TestCase):
         d = (doc["k_eff"] - float(td.load("checker1")["k"])) * 1e5
         self.assertLess(abs(d - td.E15["checker1"]), 1500, f"{d:+.0f} pcm")
         self.assertEqual(doc["provenance"]["boundaries"]["x_min"], "vacuum")
+        self.assertEqual(doc["faces"]["x_min"]["source"], "model", "the faces came from the model's own planes")
         self.assertEqual(doc["settings"]["particles"] if "settings" in doc else doc["provenance"]["settings"]["particles"], 3000)
         prov = json.loads((run.path / "provenance.json").read_text(encoding="utf-8"))
         self.assertEqual(prov["kind"], "nodal-run")

@@ -327,6 +327,7 @@ class FromScript(unittest.TestCase):
         self.assertEqual(out["height_cm"], 10.0)
         self.assertEqual(len(out["warnings"]), 1, "10 cm is 1.6 node widths")
         self.assertEqual(out["provenance"]["boundaries"]["x_min"], "vacuum")
+        self.assertEqual((out["faces"]["x_min"]["source"], out["faces"]["x_min"]["boundary"]), ("model", "vacuum"), "the solve used the model's own plane")
         self.assertEqual(np.array(out["power"]).shape, (8, 8))
         self.assertEqual(len(out["pieces"]), 4)
         self.assertEqual(sorted(k.split("#")[0] for k in out["constants"]), ["asm A", "asm B", "reflector"])
@@ -373,6 +374,133 @@ class FromScript(unittest.TestCase):
         self.assertEqual(ks["refl"]["provenance"]["boundaries"]["x_min"], "reflective")
         self.assertEqual(ks["refl"]["provenance"]["boundaries"]["x_max"], "vacuum")
         self.assertGreater((ks["refl"]["k_eff"] - ks["vac"]["k_eff"]) * 1e5, 1500)
+
+
+# ── the outer faces, read from the model ────────────────────────────────────────────────────────────────────────────────────────────────
+def variant(kinds, *edits):
+    """The Studio-style script with text edits (old, new) applied; each old text must occur once."""
+    text = script_text(kinds)
+    for old, new in edits:
+        assert text.count(old) == 1, old
+        text = text.replace(old, new)
+    return text
+
+
+XM_LINE = 'xm, xp = openmc.XPlane(-nc * ASM / 2, boundary_type="vacuum"), openmc.XPlane(nc * ASM / 2, boundary_type="vacuum")'
+YM_LINE = 'ym, yp = openmc.YPlane(-nc * ASM / 2, boundary_type="vacuum"), openmc.YPlane(nc * ASM / 2, boundary_type="vacuum")'
+MODEL_LINE = "model = openmc.Model(geometry=openmc.Geometry([cell_core]), materials=materials, settings=settings)"
+
+
+class OuterFaces(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp(prefix="nodal_faces_"))
+        cls.kinds = load("checker1")["kinds"]
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def model(self, name, text):
+        p = self.tmp / f"{name}.py"
+        p.write_text(text, encoding="utf-8", newline="\n")
+        m = nodal_driver.load_model(p)
+        return m.geometry, nodal_driver.core_lattice(m)
+
+    def test_planes_through_the_faces_give_their_boundary_conditions(self):
+        g, lat = self.model("plain", script_text(self.kinds))
+        det = nodal_driver.detect_faces(g, lat)
+        half = 4 * 6.3
+        for f in nodal_driver.FACES:
+            self.assertEqual(det[f]["type"], "vacuum", f)
+        self.assertAlmostEqual(det["x_min"]["position_cm"], -half)
+        self.assertAlmostEqual(det["y_max"]["position_cm"], half)
+        g, lat = self.model("refl", variant(self.kinds, (XM_LINE, XM_LINE.replace('-nc * ASM / 2, boundary_type="vacuum"', '-nc * ASM / 2, boundary_type="reflective"'))))
+        det = nodal_driver.detect_faces(g, lat)
+        self.assertEqual((det["x_min"]["type"], det["x_max"]["type"]), ("reflective", "vacuum"), "only the left plane was changed")
+        chosen, used, warns = nodal_driver.resolve_faces(det, None)
+        self.assertEqual(chosen, {"x_min": "reflective", "x_max": "vacuum", "y_min": "vacuum", "y_max": "vacuum"})
+        self.assertEqual(used["x_min"]["source"], "model")
+        self.assertEqual(warns, [])
+
+    def test_y_faces_are_the_right_way_up(self):
+        # a reflective plane at the TOP of the lattice (larger y) is y_max, which is the top row of the map
+        g, lat = self.model("top", variant(self.kinds, (YM_LINE, YM_LINE.replace('openmc.YPlane(nc * ASM / 2, boundary_type="vacuum")', 'openmc.YPlane(nc * ASM / 2, boundary_type="reflective")'))))
+        det = nodal_driver.detect_faces(g, lat)
+        self.assertEqual((det["y_max"]["type"], det["y_min"]["type"]), ("reflective", "vacuum"))
+
+    def test_material_outside_a_face_is_named_and_warned_about(self):
+        tank = (XM_LINE.replace(', boundary_type="vacuum"', ""), YM_LINE.replace(', boundary_type="vacuum"', ""))
+        text = variant(self.kinds, (XM_LINE, tank[0]), (YM_LINE, tank[1]),
+                       (MODEL_LINE, 'tx0, tx1 = openmc.XPlane(-nc * ASM / 2 - 5, boundary_type="vacuum"), openmc.XPlane(nc * ASM / 2 + 5, boundary_type="vacuum")\n'
+                                    'ty0, ty1 = openmc.YPlane(-nc * ASM / 2 - 5, boundary_type="vacuum"), openmc.YPlane(nc * ASM / 2 + 5, boundary_type="vacuum")\n'
+                                    'tank = openmc.Cell(name="tank", fill=water, region=+tx0 & -tx1 & +ty0 & -ty1 & +zm & -zp & ~(+xm & -xp & +ym & -yp))\n'
+                                    "model = openmc.Model(geometry=openmc.Geometry([cell_core, tank]), materials=materials, settings=settings)"))
+        g, lat = self.model("tank", text)
+        det = nodal_driver.detect_faces(g, lat)
+        for f in nodal_driver.FACES:
+            self.assertEqual(det[f]["type"], "material", f)
+            self.assertIn("water", det[f]["detail"].lower())
+        chosen, used, warns = nodal_driver.resolve_faces(det, None)
+        self.assertEqual(set(chosen.values()), {"vacuum"})
+        self.assertEqual({u["source"] for u in used.values()}, {"assumed"})
+        self.assertEqual(len(warns), 4)
+        self.assertTrue(all("treats the face as vacuum" in w for w in warns))
+        chosen, used, warns = nodal_driver.resolve_faces(det, {"x_min": "reflective"})
+        self.assertEqual((chosen["x_min"], used["x_min"]["source"], len(warns)), ("reflective", "override", 3))
+
+    def test_a_translated_core_cell_moves_the_faces(self):
+        text = variant(self.kinds, (XM_LINE, 'xm, xp = openmc.XPlane(-nc * ASM / 2 + 5.0, boundary_type="reflective"), openmc.XPlane(nc * ASM / 2 + 5.0, boundary_type="vacuum")'),
+                       ("settings = openmc.Settings()", "cell_core.translation = (5.0, 0.0, 0.0)\nsettings = openmc.Settings()"))
+        g, lat = self.model("moved", text)
+        det = nodal_driver.detect_faces(g, lat)
+        self.assertEqual((det["x_min"]["type"], det["x_max"]["type"]), ("reflective", "vacuum"))
+        self.assertAlmostEqual(det["x_min"]["position_cm"], -4 * 6.3 + 5.0)
+
+    def test_a_nested_lattice_is_unknown_and_says_so(self):
+        text = variant(self.kinds, (MODEL_LINE, "model = openmc.Model(geometry=openmc.Geometry(openmc.Universe(cells=[openmc.Cell(fill=openmc.Universe(cells=[cell_core]), "
+                                                "region=+xm & -xp & +ym & -yp & +zm & -zp)])), materials=materials, settings=settings)"))
+        g, lat = self.model("nested", text)
+        det = nodal_driver.detect_faces(g, lat)
+        self.assertEqual({d["type"] for d in det.values()}, {"unknown"})
+        chosen, used, warns = nodal_driver.resolve_faces(det, None)
+        self.assertEqual((set(chosen.values()), len(warns)), ({"vacuum"}, 4))
+
+    def test_white_and_periodic_are_refused_unless_overridden(self):
+        g, lat = self.model("white", variant(self.kinds, (XM_LINE, XM_LINE.replace('-nc * ASM / 2, boundary_type="vacuum"', '-nc * ASM / 2, boundary_type="white"'))))
+        det = nodal_driver.detect_faces(g, lat)
+        self.assertEqual(det["x_min"]["type"], "white")
+        with self.assertRaises(nodal.NodalInputError) as cm:
+            nodal_driver.resolve_faces(det, None)
+        self.assertIn("left face", str(cm.exception))
+        chosen, used, warns = nodal_driver.resolve_faces(det, {"x_min": "vacuum"})
+        self.assertEqual(chosen["x_min"], "vacuum")
+
+    def test_conflicting_planes_on_one_face_are_refused(self):
+        text = variant(self.kinds, (MODEL_LINE, 'extra = openmc.XPlane(-nc * ASM / 2, boundary_type="reflective")\n'
+                                                "model = openmc.Model(geometry=openmc.Geometry([cell_core, openmc.Cell(fill=water, region=+extra & -xm)]), materials=materials, settings=settings)"))
+        g, lat = self.model("conflict", text)
+        with self.assertRaises(nodal.NodalInputError) as cm:
+            nodal_driver.detect_faces(g, lat)
+        self.assertIn("different boundary conditions", str(cm.exception))
+
+    def test_without_the_geometry_every_face_is_vacuum_and_says_so(self):
+        chosen, used, warns = nodal_driver.resolve_faces(None, None)
+        self.assertEqual((set(chosen.values()), {u["source"] for u in used.values()}, len(warns)), ({"vacuum"}, {"default"}, 4))
+        with self.assertRaises(nodal.NodalInputError):
+            nodal_driver.resolve_faces(None, {"left": "vacuum"})
+
+    def test_the_command_line_prints_what_the_model_has(self):
+        p = self.tmp / "cli.py"
+        p.write_text(variant(self.kinds, (XM_LINE, XM_LINE.replace('-nc * ASM / 2, boundary_type="vacuum"', '-nc * ASM / 2, boundary_type="reflective"'))), encoding="utf-8", newline="\n")
+        r = subprocess.run([sys.executable, "-m", "openmc_studio.nodal_driver", str(p), "--faces"], cwd=ROOT / "studio", capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = json.loads(r.stdout.strip().splitlines()[-1])
+        self.assertEqual((out["used"]["x_min"]["boundary"], out["used"]["x_min"]["source"], out["used"]["x_max"]["boundary"]), ("reflective", "model", "vacuum"))
+        r = subprocess.run([sys.executable, "-m", "openmc_studio.nodal_driver", str(p), "--faces", "--vacuum", "x_min"], cwd=ROOT / "studio", capture_output=True, text=True)
+        out = json.loads(r.stdout.strip().splitlines()[-1])
+        self.assertEqual((out["used"]["x_min"]["boundary"], out["used"]["x_min"]["source"]), ("vacuum", "override"), "--vacuum wins over the model")
+        self.assertEqual(out["detected"]["x_min"]["type"], "reflective", "and the detection is still what the model has")
 
 
 if __name__ == "__main__":

@@ -25,6 +25,9 @@ const DOC = {k_eff: 0.95511, kernel: 'sanm', converged: true, node_size_cm: 6.3,
   layout: [['reflector#5', 'asm A#2', 'asm B#3'], ['reflector#5', 'asm B#3', '<b>x</b>#9']],
   power: [[0, 1.2, 0.8], [0, 0.9, 1.1]],
   boundaries: {x_min: 'reflective', x_max: 'vacuum', y_min: 'vacuum', y_max: 'vacuum'},
+  faces: {x_min: {boundary: 'reflective', source: 'model', detail: 'a plane at -25.2 cm with boundary condition reflective'},
+          x_max: {boundary: 'vacuum', source: 'assumed', detail: 'just outside the face at 25.2 cm the model has Water (cell tank)'},
+          y_min: {boundary: 'vacuum', source: 'override', detail: 'set by the caller: vacuum'}, y_max: {boundary: 'vacuum', source: 'model', detail: 'a plane at 25.2 cm with boundary condition vacuum'}},
   kinds: {'asm A#2': {universe: 2, role: 'fuel'}, 'asm B#3': {universe: 3, role: 'fuel'}, 'reflector#5': {universe: 5, role: 'reflector'}, '<b>x</b>#9': {universe: 9, role: 'fuel'}},
   pieces: [{label: 'infinite asm A#2', role: 'infinite', k: 1.3027, k_std: 0.0012, seconds: 9.4}, {label: 'strip asm B#3 reflector#5', role: 'strip', k: 1.1231, k_std: 0.0011, seconds: 8}],
   warnings: ['The lattice is 10 cm tall, 1.6 node widths: <axial> leakage is large.'],
@@ -61,8 +64,10 @@ test('warnings about the model come first, escaped; a large difference from Open
 
 test('it states its assumptions, with the outer faces that were used', () => {
   const h = render();
-  assert.ok(/left: reflective, right: vacuum, top: vacuum, bottom: vacuum/.test(h), 'faces in the page\'s words');
-  assert.ok(h.includes('not read from the model'));
+  assert.ok(/left: <b>reflective<\/b> \(model\): a plane at -25.2 cm/.test(h), 'each face with what was used, where it came from and why');
+  assert.ok(/right: <b>vacuum<\/b> \(assumed\): just outside the face at 25.2 cm the model has Water/.test(h), 'an assumed face says what is outside it');
+  assert.ok(/bottom: <b>vacuum<\/b> \(override\)/.test(h) && /top: <b>vacuum<\/b> \(model\)/.test(h));
+  assert.ok(!h.includes('not read from the model'), 'the faces are read from the model now');
   assert.ok(h.includes('no pass line'), 'no claim that it holds for this model');
   assert.ok(h.includes('Radial two-dimensional') && h.includes('discontinuity factors'));
   assert.ok(h.includes('openndm 0.3.0') && h.includes('6000 × 60'));
@@ -78,20 +83,23 @@ test('beside an OpenMC result it gives the difference in pcm, and says what it d
 });
 
 test('the settings sent are the form\'s, and the handlers change the form', () => {
-  run("CORE.form = {preset:'quick', particles:6000, batches:60, inactive:15, seed:1, kernel:'sanm', reflective:[]}; CORE.on = true; renderCore = () => {}");
+  run("CORE.form = {preset:'quick', particles:6000, batches:60, inactive:15, seed:1, kernel:'sanm', faces:CORE_AUTO()}; CORE.on = true; renderCore = () => {}");
   const chg = (dataset, value, checked) => { sb.__e = {target: {dataset, value, checked}}; run('coreChange(__e)'); };
   chg({core: 'preset'}, 'standard');
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(run('coreSettings()'))), {particles: 20000, batches: 150, inactive: 30, seed: 1, kernel: 'sanm', reflective: []});
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(run('coreSettings()'))), {particles: 20000, batches: 150, inactive: 30, seed: 1, kernel: 'sanm', reflective: [], vacuum: []});
   chg({core: 'inactive'}, '0');
   assert.strictEqual(run('CORE.form.inactive'), 0, 'zero inactive batches can be asked for');
   assert.strictEqual(run('CORE.form.preset'), 'custom');
   chg({core: 'kernel'}, 'nem');
-  chg({coreFace: 'y_max'}, '', true);
-  chg({coreFace: 'x_min'}, '', true);
-  chg({coreFace: 'y_max'}, '', false);
+  chg({coreFace: 'y_max'}, 'reflective');
+  chg({coreFace: 'x_min'}, 'reflective');
+  chg({coreFace: 'y_max'}, 'vacuum');
+  chg({coreFace: 'x_max'}, 'sideways');
   const s = JSON.parse(JSON.stringify(run('coreSettings()')));
   assert.strictEqual(s.kernel, 'nem');
-  assert.deepStrictEqual(s.reflective, ['x_min'], 'faces ticked and unticked');
+  assert.deepStrictEqual(s.reflective, ['x_min'], 'faces set and reset');
+  assert.deepStrictEqual(s.vacuum, ['y_max'], 'and the ones forced to vacuum');
+  assert.strictEqual(run('CORE.form.faces.x_max'), 'auto', 'a value the select does not offer changes nothing');
   chg({core: 'particles'}, 'abc');
   assert.strictEqual(run('CORE.form.particles'), 20000, 'text that is not a number changes nothing');
 });
@@ -110,6 +118,7 @@ test('Solve sends the script, the project and the settings; a project with error
   assert.strictEqual(posts[0][1].script, 'SCRIPT');
   assert.strictEqual(posts[0][1].name, 'core');
   assert.deepStrictEqual(posts[0][1].settings.reflective, ['x_min']);
+  assert.deepStrictEqual(posts[0][1].settings.vacuum, ['y_max']);
   assert.strictEqual(run('LOCAL.run'), '20261014-000000-core-nodal', 'the Stop button now stops it');
   run('LOCAL.run = "busy"');
   await run('coreSolve()');

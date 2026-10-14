@@ -98,7 +98,9 @@ What this says:
 
 - **Not done:** the pass line (the user's), leakage-corrected fuel constants (critical-spectrum or buckling correction) and position-dependent fuel/fuel factors, a second core, 3D, rods, boron.
 
-**P1: wrap the solver (2 days).** A small module that takes the library, the lattice map and pitch, runs openndm, and returns k, a power map and (optional) critical boron.
+**P1: wrap the solver (2 days). Built 2026-10-14** (`studio/openmc_studio/nodal.py`; tests `test/nodal/test_nodal_wrapper.py`, `test/test_nodal_light.py`): `solve_core(layout, constants, pitch, height, kernel, boundaries)` takes the map top row first and flips it for openndm and back; `critical_buckling_fuel` is E15's collapse; `condensed_constants`, `fine_arrays` and `configure_library` are the OpenMC side of the E12 recipe (lazy imports, so Studio starts without the package; a missing or unchecked openndm is `NodalUnavailable`, versions outside [0.3.0, 0.4.0) are refused). No discontinuity-factor argument and no subdivision, by the findings above. The gate: the IAEA 2D benchmark through the wrapper, SANM +34 pcm from 1.02959 at one node per assembly (the +21.5 below is the plan's earlier number from openndm's published numbers; not reproduced, setup unknown) and -1 pcm at 4 x 4 nodes per assembly, which also confirms the map and constants taken from the FeenoX example geometry. BIBLIS-2D was not run (its data were not at hand). Not built yet: the driver that runs the infinite-lattice and strip pieces from a Studio model, power in absolute units, boron search, the tab.
+
+Original text of P1: A small module that takes the library, the lattice map and pitch, runs openndm, and returns k, a power map and (optional) critical boron.
 Set `OMP_NUM_THREADS` explicitly (the deep dive saw it stall at 16 threads, fine at 1 to 8). Pin one openndm version. Test against openndm's own published numbers
 (IAEA-2D SANM +21.5 pcm from 1.02959, BIBLIS-2D) before anything of ours: if the wrapper cannot reproduce them, stop.
 

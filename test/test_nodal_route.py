@@ -44,6 +44,12 @@ class Settings(unittest.TestCase):
                 nodal_run.clean_settings(bad)
             self.assertIn(word, str(cm.exception))
 
+    def test_only_the_checked_openndm_line_is_accepted(self):
+        for v in ("0.3.0", "0.3.9", "0.3"):
+            self.assertIsNone(nodal_run.version_problem(v), v)
+        for v in ("0.2.9", "0.4.0", "1.3.0", "0", "x"):
+            self.assertIn("0.3.x only", nodal_run.version_problem(v) or "", v)
+
     def test_the_command_and_environment(self):
         env = {"OPENNDM_PYTHON": "/venv/bin/python", "PATH": "/usr/bin", "PYTHONPATH": "/x"}
         s = nodal_run.clean_settings({"particles": 1234, "batches": 30, "inactive": 5, "seed": 9, "threads": 2, "kernel": "nem", "reflective": ["x_min", "y_max"], "lattice": "Core"})

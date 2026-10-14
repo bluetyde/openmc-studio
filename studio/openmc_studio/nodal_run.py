@@ -44,12 +44,16 @@ def availability(environ=None, max_age=60.0) -> dict:
     elif got.get("openmc") is None:
         reason = "OpenMC cannot be imported by " + py + "."
     else:
-        ver = tuple(int("".join(c for c in p if c.isdigit()) or 0) for p in str(got["openndm"]).split(".")[:2])
-        if ver != (0, 3):
-            reason = f"openndm {got['openndm']} is installed; the nodal rules were checked on 0.3.x only."
+        reason = version_problem(got["openndm"])
     val = {"available": reason is None, "python": py, "openndm": got.get("openndm"), "openmc": got.get("openmc"), "reason": reason}
     _cache.update(at=now, key=py, value=val)
     return val
+
+
+def version_problem(version) -> str | None:
+    """None for openndm 0.3.x, else why not: the reading rules were checked on that line only."""
+    ver = tuple(int("".join(c for c in p if c.isdigit()) or 0) for p in str(version).split(".")[:2])
+    return None if ver == (0, 3) else f"openndm {version} is installed; the nodal rules were checked on 0.3.x only."
 
 
 class NodalRequestError(ValueError):

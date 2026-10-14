@@ -23,6 +23,7 @@ user's to set.
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -293,7 +294,10 @@ def fine_arrays(lib, domain) -> dict:
     require_openndm()
     from openndm.gc.mgxs import from_mgxs_library
     n = len(lib.energy_groups.group_edges) - 1
-    xs = from_mgxs_library(lib, d_tolerance=D_TOLERANCE)
+    with warnings.catch_warnings():
+        # openndm complains about negative P0 self-scatter in single fine groups of a condensed-later library; the two-group collapse is what is used
+        warnings.filterwarnings("ignore", message=".*negative scattering transfer.*")
+        xs = from_mgxs_library(lib, d_tolerance=D_TOLERANCE)
     rec = xs.composition([d.id for d in lib.domains].index(domain.id))
     flux = np.asarray(lib.get_mgxs(domain, "transport").tallies["flux (tracklength)"].get_values()).reshape(-1)[::-1]
     s = np.asarray(rec.scatter, float).reshape(n, n)

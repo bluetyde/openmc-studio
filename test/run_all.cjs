@@ -60,7 +60,7 @@ function suites(p) {
       {kind:'python-glob', label:'exporter tests/test_*.py + tests/check_export_mcnp.py', cwdHost:exp}];
   }
   if (p === 'full') return [node('setup/cad/run_integration.cjs')];
-  if (p === 'nodal') return ['test/nodal/test_nodal_p2.py', 'test/nodal/test_nodal_wrapper.py'].map(script => ({kind:'python-nodal', label:script, script, cwdHost:hostPath(REPO)}));
+  if (p === 'nodal') return ['test/nodal/test_nodal_p2.py', 'test/nodal/test_nodal_wrapper.py', 'test/nodal/test_nodal_driver.py'].map(script => ({kind:'python-nodal', label:script, script, cwdHost:hostPath(REPO)}));
   return [];
 }
 

@@ -251,6 +251,22 @@ class CommandLine(unittest.TestCase):
         rc, out = self.run_cli("export", str(example), "--project", str(FIXTURE))
         self.assertEqual((rc, [e["revision"] for e in out["entries"]]), (0, [1] * len(out["entries"])), "none of the example's ids is in the fixture project")
 
+    def test_for_seed_prints_the_request_body_of_the_merge(self):
+        import subprocess
+        example = ROOT / "examples" / "triso-particle" / "triso-particle.openmc-studio.json"
+        r = subprocess.run([sys.executable, "-m", "openmc_studio.seed_materials", "export", str(example), "--for-seed"], cwd=ROOT / "studio", capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = json.loads(r.stdout)
+        self.assertEqual(set(body), {"ownedSets", "entries"}, "exactly the two properties SEED reads; no ok")
+        self.assertEqual(body["ownedSets"], ["openmc.composition"])
+        self.assertGreater(len(body["entries"]), 0)
+        for e in body["entries"]:
+            check_entry(e)
+        plain = self.run_cli("export", str(example))[1]
+        self.assertEqual(plain["entries"], body["entries"], "the same entries as without the option")
+        rc, out = self.run_cli("export", str(example), "--project", str(FIXTURE), "--for-seed")
+        self.assertEqual(rc, 0)
+
     def test_refusals_are_one_json_line_and_exit_one(self):
         rc, out = self.run_cli("import", str(ROOT / "test" / "fixtures" / "seed" / "nope" / "seed.project.json"))
         self.assertEqual((rc, out["ok"], out["code"]), (1, False, "E_NOT_FOUND"))

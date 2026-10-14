@@ -49,7 +49,7 @@ python -m openmc_studio.seed_materials import PROJECT              # what Studio
 python -m openmc_studio.seed_materials export STUDIO.json [--project PROJECT]
 ```
 
-`export` prints the entries as one JSON line (with `--project`, new revisions of the ids the project holds, their other sets carried). It writes no file. The entries are for SEED's project store to merge.
+`export` prints the entries as one JSON line (with `--project`, new revisions of the ids the project holds, their other sets carried). It writes no file. The entries are for SEED's project store to merge. With `--for-seed` it prints instead `{"ownedSets": ["openmc.composition"], "entries": [...]}`, exactly the body SEED's `import-materials` reads on stdin (SEED's `docs/material-merge.md`): the set named is the one Studio owns; what the merge does with it stays SEED's decision.
 
 ## Who writes the manifest (the open decision)
 
@@ -58,7 +58,7 @@ SEED's `saveProject(dir, manifest, expectedRevision)` owns the write: lock, re-r
 - **(a) SEED merges.** SEED adds a caller that takes the entries above and applies them through `saveProject`. Studio only produces entries. This is what Studio is built for.
 - **(b) Studio writes.** Studio would implement the same lock protocol and hash in Python. Two implementations of one protocol; not done, and not recommended.
 
-That choice is the user's. What is open on SEED's side is not Studio's to build or to edit.
+**Decided 2026-10-14: (a).** SEED's side is built (its human-only `import-materials`); the SEED agent ran Studio's `import` and `export` against the fixture. What is open on SEED's side is not Studio's to build or to edit.
 
 ## What was and was not checked
 

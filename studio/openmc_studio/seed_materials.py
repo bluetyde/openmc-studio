@@ -241,7 +241,7 @@ def export_entries(materials: list, previous_doc: dict | None = None, imported: 
 def main(argv=None) -> int:
     """Command line, one JSON line out (exit 0 ok, 1 refused):
         python -m openmc_studio.seed_materials import PROJECT            the project's materials Studio can read, with what it skipped and why
-        python -m openmc_studio.seed_materials export STUDIO.json [--project PROJECT]
+        python -m openmc_studio.seed_materials export STUDIO.json [--project PROJECT] [--for-seed]
                                                                           the entries for the materials of a Studio project file; with --project, new revisions of the ids it holds
     Neither writes a file: the entries are handed to SEED's project store."""
     import argparse
@@ -252,6 +252,7 @@ def main(argv=None) -> int:
     b = sub.add_parser("export")
     b.add_argument("studio")
     b.add_argument("--project", default=None)
+    b.add_argument("--for-seed", action="store_true", help='print {"ownedSets": ["openmc.composition"], "entries": [...]}, the form the import-materials verb of SEED reads on stdin')
     args = ap.parse_args(argv)
     try:
         if args.verb == "import":
@@ -262,7 +263,10 @@ def main(argv=None) -> int:
             if not isinstance(studio.get("materials"), list):
                 raise MaterialError("E_SCHEMA_INVALID", "/materials", "not an OpenMC Studio project file")
             entries = export_entries(studio["materials"], read_project(args.project) if args.project else None)
-            print(json.dumps({"ok": True, "entries": entries}))
+            if args.for_seed:      # the bare request body SEED's merge reads (no "ok"); the set named is the one Studio owns, the merge decision stays SEED's
+                print(json.dumps({"ownedSets": [SET_NAME], "entries": entries}))
+            else:
+                print(json.dumps({"ok": True, "entries": entries}))
     except MaterialError as e:
         print(json.dumps({"ok": False, "code": e.code, "field": e.field, "message": e.message}))
         return 1

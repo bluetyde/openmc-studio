@@ -135,6 +135,10 @@ class RoundTrip(unittest.TestCase):
             e = sm.to_project_entry({**fuel, **change}, prev)
             check_entry(e)
             self.assertEqual(e["revision"], 4, label)
+            now = e["sets"]["openmc.composition"]
+            self.assertEqual((now["density"], now["fractionType"], now["compositionText"], e["name"]),
+                             (change.get("density", 10.4), change.get("frac", "ao"), change.get("comps", "U235:0.031, U238:0.969, O:2"), change.get("name", "UO2 fuel 3.1 %")), label)
+            self.assertEqual(now.get("sab"), change.get("sab"), label)
             for k in ("thermal.conductivity", "vendor.notes"):
                 self.assertEqual(sm.canonical(e["sets"][k]), sm.canonical(self.by_id["mat-fuel"]["sets"][k]), f"{label}: {k} is carried exactly")
             owned = e["sets"]["openmc.composition"]
@@ -173,6 +177,13 @@ class RoundTrip(unittest.TestCase):
             sm.from_project_entry(e)
         self.assertTrue(cm.exception.field.endswith("/components"))
 
+    def test_a_composition_set_in_other_units_is_refused(self):
+        e = copy.deepcopy(self.by_id["mat-fuel"])
+        e["sets"]["openmc.composition"]["units"] = "kg/m3"
+        with self.assertRaises(sm.MaterialError) as cm:
+            sm.from_project_entry(e)
+        self.assertEqual((cm.exception.code, cm.exception.field.rsplit("/", 1)[-1]), ("E_UNITS", "units"))
+
     def test_duplicate_ids_in_a_project_are_refused(self):
         d = fixture()
         d["materials"].append(copy.deepcopy(d["materials"][1]))
@@ -201,9 +212,10 @@ class ReadProject(unittest.TestCase):
                 sm.read_project(d)
             big = d / "big"
             big.mkdir()
-            (big / "seed.project.json").write_text(" " * (sm.MAX_PROJECT_BYTES + 1), encoding="utf-8")
-            with self.assertRaises(sm.MaterialError):
+            (big / "seed.project.json").write_text(json.dumps({"schema": "seed.project/0.1", "materials": [], "pad": "x" * (sm.MAX_PROJECT_BYTES + 1)}), encoding="utf-8")
+            with self.assertRaises(sm.MaterialError) as cm:
                 sm.read_project(big)
+            self.assertIn("8 MB", cm.exception.message)
 
 
 class StudioExample(unittest.TestCase):

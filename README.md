@@ -416,7 +416,7 @@ the drive is mounted.
   MCNP export do, what is refused, and the test behind each entry. Design plans are in `docs/design/`.
 - **Tests**: `node test/run_all.cjs quick` (Node only, about a minute), `browser`, `physics` (OpenMC runs and
   the MCNP export; set `OPENMC_PYTHON`, `OPENMC_CROSS_SECTIONS`, `OPENMC_MCNP_PROJECT`) or `full` (adds the CAD
-  job). Anything that can't run is reported as NOT RUN, never skipped quietly; the summary is saved in
+  job). A separate `nodal` profile runs the nodal-package checks (`test/nodal/`, needs `OPENNDM_PYTHON`, a Python with openmc and openndm). Anything that can't run is reported as NOT RUN, never skipped quietly; the summary is saved in
   `test/results/last-run.md`.
 - **Run records**: every run folder and every MCNP export folder has a `provenance.json`: Studio and exporter
   commits, OpenMC/Python/MontePy versions, the nuclear data's SHA-256, the run settings and seed, how results

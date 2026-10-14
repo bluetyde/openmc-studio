@@ -77,7 +77,7 @@ Written 2026-10-10 from the tests as they are; it is a catalogue, not a promise 
 - **Mesh tallies other than the axial heating bins and the pin-map checks** have no closed form here; energy-binned and current tallies are checked for plumbing, not against a formula.
 - **A closed form checks the arithmetic, not the physics assumed:** a void ball and a pure B-10 slab say nothing about scattering, resonances or thermal-scattering data beyond the thermal-scattering regression (`test/test_thermal_scattering.py`, which checks that the library loads, the thermal spectrum changes and the exporter writes the `MT` card).
 - **The thin slabs are blind to small cross-section errors** (an error of about 3 % in density is caught, 1 % is not; `oracles/seed/README.md` has the measured sensitivities).
-- **The nodal package** has no passing oracle yet: its pass line is the user's to set, and the numbers so far are in `docs/design/nodal-package-plan.md`.
+- **The nodal package** has comparison tests (`test/nodal/test_nodal_p2.py`, profile `nodal`) but no pass line: that is the user's to set. The tests hold what the experiments found, against OpenMC's own k and kappa-fission power from three saved runs (`docs/design/nodal-p2/data/`): the reading rules of openndm's results (with negative controls), that the library's D must be flux-averaged (k +3k to +6k off with the old D, within 1.5k with the new one), the hand formula for the flux average against OpenMC's condensing, and one documented limit. They are about the three small cores of one material set and one seed; they do not show the package right for a real core.
 
 ## Adding one
 

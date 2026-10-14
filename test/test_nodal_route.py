@@ -34,12 +34,13 @@ class Settings(unittest.TestCase):
     def test_defaults(self):
         s = nodal_run.clean_settings(None)
         self.assertEqual((s["particles"], s["batches"], s["inactive"], s["kernel"], s["reflective"], s["lattice"]), (6000, 60, 15, "sanm", [], None))
+        self.assertEqual(s["vacuum"], [])
 
     def test_each_bad_value_is_named(self):
         for bad, word in (({"particles": 50}, "particles"), ({"particles": 10**7}, "particles"), ({"particles": 1.5}, "particles"), ({"particles": True}, "particles"),
                           ({"batches": 5}, "batches"), ({"batches": 20, "inactive": 20}, "inactive"), ({"seed": 0}, "seed"), ({"threads": 0}, "threads"),
                           ({"kernel": "x"}, "kernel"), ({"reflective": ["left"]}, "reflective"), ({"reflective": ["x_min", "x_min"]}, "reflective"),
-                          ({"reflective": "x_min"}, "reflective"), ({"lattice": ""}, "lattice"), ({"lattice": 3}, "lattice"), ({"unknown": 1}, "unknown"), ("text", "object")):
+                          ({"reflective": "x_min"}, "reflective"), ({"vacuum": ["x_min", "x_min"]}, "vacuum"), ({"vacuum": ["left"]}, "vacuum"), ({"reflective": ["x_min"], "vacuum": ["x_min", "y_max"]}, "both"), ({"lattice": ""}, "lattice"), ({"lattice": 3}, "lattice"), ({"unknown": 1}, "unknown"), ("text", "object")):
             with self.assertRaises(nodal_run.NodalRequestError, msg=str(bad)) as cm:
                 nodal_run.clean_settings(bad)
             self.assertIn(word, str(cm.exception))
@@ -52,17 +53,20 @@ class Settings(unittest.TestCase):
 
     def test_the_command_and_environment(self):
         env = {"OPENNDM_PYTHON": "/venv/bin/python", "PATH": "/usr/bin", "PYTHONPATH": "/x"}
-        s = nodal_run.clean_settings({"particles": 1234, "batches": 30, "inactive": 5, "seed": 9, "threads": 2, "kernel": "nem", "reflective": ["x_min", "y_max"], "lattice": "Core"})
+        s = nodal_run.clean_settings({"particles": 1234, "batches": 30, "inactive": 5, "seed": 9, "threads": 2, "kernel": "nem", "reflective": ["x_min", "y_max"], "vacuum": ["x_max"], "lattice": "Core"})
         argv = nodal_run.command(s, env)
         self.assertEqual(argv[:5], ["/venv/bin/python", "-W", "ignore", "-m", "openmc_studio.nodal_driver"])
         for pair in (("--particles", "1234"), ("--batches", "30"), ("--inactive", "5"), ("--seed", "9"), ("--threads", "2"), ("--kernel", "nem"), ("--lattice", "Core"), ("--out", "nodal.json")):
             self.assertEqual(argv[argv.index(pair[0]) + 1], pair[1])
-        self.assertEqual(argv[argv.index("--reflective") + 1:], ["x_min", "y_max"])
+        self.assertEqual(argv[argv.index("--reflective") + 1:argv.index("--vacuum")], ["x_min", "y_max"])
+        self.assertEqual(argv[argv.index("--vacuum") + 1:], ["x_max"])
         e = nodal_run.child_env(env)
         self.assertEqual(e["PATH"].split(os.pathsep)[0], os.path.dirname("/venv/bin/python"), "the nodal Python's folder (its openmc executable) comes first")
         self.assertTrue(e["PYTHONPATH"].startswith(nodal_run.PACKAGE_PARENT) and e["PYTHONPATH"].endswith("/x"))
         self.assertEqual(e["PYTHONUNBUFFERED"], "1")
-        self.assertNotIn("--reflective", nodal_run.command(nodal_run.clean_settings({}), env))
+        plain = nodal_run.command(nodal_run.clean_settings({}), env)
+        self.assertNotIn("--reflective", plain)
+        self.assertNotIn("--vacuum", plain)
 
 
 class Http(unittest.TestCase):

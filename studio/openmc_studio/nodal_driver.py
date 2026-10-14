@@ -13,7 +13,7 @@ A kind is a fuel kind when its universe holds a nuclide with Z >= 90 and a refle
 the same constants, whatever their neighbours (the found limit: wrapper universes make them separate kinds). Radial two-dimensional only; the axial direction is reflective
 in every piece, so axial leakage is not represented. The result carries the recipe and the pieces' k, which are the numbers to look at before trusting the solve.
 
-Nothing runs at import; a run needs openmc, openndm and nuclear data (OPENMC_CROSS_SECTIONS), and Monte Carlo time: the pieces are small (one assembly and a few of them).
+The core's outer faces are read from the model (`detect_faces`: a plane through the lattice's face with a boundary condition, or what material lies outside it) unless the caller overrides a face; the result records per face what was used and why. Nothing runs at import; a run needs openmc, openndm and nuclear data (OPENMC_CROSS_SECTIONS), and Monte Carlo time: the pieces are small (one assembly and a few of them).
 What it was checked against, and what it was not: test/nodal/test_nodal_driver.py and docs/design/nodal-package-plan.md.
 """
 from __future__ import annotations
@@ -50,6 +50,7 @@ class TwoStepResult:
     kinds: dict                                  # kind label -> {"universe": id, "role": "fuel" | "reflector"}
     pieces: list                                 # (label, role, k, k_std, seconds)
     settings: dict
+    faces: dict = field(default_factory=dict)         # per outer face: what was used, from where (model, override, default, assumed) and why
     warnings: list = field(default_factory=list)      # facts about the model that make this method's answer doubtful, in words
     provenance: dict = field(default_factory=dict)
 
@@ -201,14 +202,105 @@ def model_warnings(pitch: float, height: float, constants: dict) -> list:
                    f"so its k is expected to be well above the model's true k, not a small error.")
     return out
 
+# ── the core's outer faces, read from the model ────────────────────────────────────────────────────────────────────────────────────────
+FACES = ("x_min", "x_max", "y_min", "y_max")
+_FACE_WORDS = {"x_min": "left", "x_max": "right", "y_min": "bottom", "y_max": "top"}
 
-def two_step(lattice, materials, *, workdir, particles=20000, batches=150, inactive=30, seed=None, threads=None, kernel="sanm", boundaries=None, progress=None) -> TwoStepResult:
+
+def _core_cell(geometry, lattice):
+    """The cell that is filled with the lattice, when it is a cell of the root universe with no rotation; None otherwise."""
+    cells = [c for c in geometry.get_all_cells().values() if c.fill is lattice]
+    if len(cells) != 1 or cells[0].id not in geometry.root_universe.cells or cells[0].rotation is not None:
+        return None
+    return cells[0]
+
+
+def detect_faces(geometry, lattice) -> dict:
+    """What the model has at each lateral face of the core lattice: {face: {"type", "position_cm", "detail"}} with type one of
+      vacuum | reflective | periodic | white   a plane through the face carries that boundary condition;
+      material                                 no boundary condition there: the model goes on (a tank, a reflector block) with the material named in `detail`, or void;
+      unknown                                  the lattice is nested, rotated, or the face cannot be placed, so nothing can be said.
+    x_min / x_max are the lattice's left and right faces, y_min the bottom and y_max the top (the top row of the map is at y_max)."""
+    unis, pitch, height = layer(lattice)
+    ny, nx = unis.shape
+    cell = _core_cell(geometry, lattice)
+    if cell is None:
+        return {f: {"type": "unknown", "position_cm": None, "detail": "the lattice is not directly in the root universe (or its cell is rotated), so its faces cannot be placed in the model"} for f in FACES}
+    shift = [0.0, 0.0, 0.0] if cell.translation is None else [float(v) for v in cell.translation]
+    ll = [float(v) for v in lattice.lower_left]
+    pos = {"x_min": ll[0] + shift[0], "x_max": ll[0] + nx * pitch + shift[0], "y_min": ll[1] + shift[1], "y_max": ll[1] + ny * pitch + shift[1]}
+    zmid = (ll[2] + height / 2 if len(ll) == 3 else 0.0) + shift[2]
+    xmid, ymid = 0.5 * (pos["x_min"] + pos["x_max"]), 0.5 * (pos["y_min"] + pos["y_max"])
+    surfaces = list(geometry.get_all_surfaces().values())
+    out = {}
+    for face, p in pos.items():
+        kind = "x-plane" if face.startswith("x") else "y-plane"
+        coord = "x0" if face.startswith("x") else "y0"
+        tol = 1e-6 * max(1.0, abs(p))
+        bcs = sorted({s.boundary_type for s in surfaces if s.type == kind and abs(getattr(s, coord) - p) <= tol and s.boundary_type != "transmission"})
+        if len(bcs) > 1:
+            raise NodalInputError(f"the {_FACE_WORDS[face]} face of the core lattice (at {p:g} cm) has planes with different boundary conditions: {bcs}")
+        if bcs:
+            out[face] = {"type": bcs[0], "position_cm": p, "detail": f"a plane at {p:g} cm with boundary condition {bcs[0]}"}
+            continue
+        eps = 1e-3
+        point = {"x_min": (p - eps, ymid, zmid), "x_max": (p + eps, ymid, zmid), "y_min": (xmid, p - eps, zmid), "y_max": (xmid, p + eps, zmid)}[face]
+        found = [o for o in geometry.find(point) if hasattr(o, "fill")]
+        if not found:
+            out[face] = {"type": "unknown", "position_cm": p, "detail": f"nothing is just outside the face at {p:g} cm and no plane with a boundary condition is on it"}
+        else:
+            fill = found[-1].fill
+            name = "void" if fill is None else (getattr(fill, "name", None) or type(fill).__name__)
+            out[face] = {"type": "material", "position_cm": p, "detail": f"just outside the face at {p:g} cm the model has {name} (cell {found[-1].name or found[-1].id})"}
+    return out
+
+
+def resolve_faces(detected: dict | None, override: dict | None) -> tuple[dict, dict, list]:
+    """(boundaries for the solve, what each face used and why, warnings). An override of a face wins over the model; with `detected` None the model was not read and every face
+    not overridden is vacuum, with a warning."""
+    override = override or {}
+    bad = [f for f in override if f not in FACES]
+    if bad:
+        raise NodalInputError(f"unknown face(s) {bad}")
+    chosen, used, warns = {}, {}, []
+    for face in FACES:
+        word = _FACE_WORDS[face]
+        if face in override:
+            chosen[face] = override[face]
+            used[face] = {"boundary": override[face], "source": "override", "detail": f"set by the caller: {override[face]}"}
+            continue
+        if detected is None:
+            chosen[face] = "vacuum"
+            used[face] = {"boundary": "vacuum", "source": "default", "detail": "the model was not read: vacuum is assumed"}
+            warns.append(f"The {word} face is taken as vacuum without looking at the model.")
+            continue
+        d = detected[face]
+        t = d["type"]
+        if t in ("vacuum", "reflective"):
+            chosen[face] = t
+            used[face] = {"boundary": t, "source": "model", "detail": d["detail"]}
+        elif t == "material":
+            chosen[face] = "vacuum"
+            used[face] = {"boundary": "vacuum", "source": "assumed", "detail": d["detail"]}
+            warns.append(f"The {word} face: {d['detail']}. OpenMC transports through it; this solve treats the face as vacuum, so material the model has there (a reflector or tank) is not represented.")
+        elif t == "unknown":
+            chosen[face] = "vacuum"
+            used[face] = {"boundary": "vacuum", "source": "assumed", "detail": d["detail"]}
+            warns.append(f"The {word} face: {d['detail']}; vacuum is assumed.")
+        else:
+            raise NodalInputError(f"the {word} face of the core lattice has boundary condition {t!r} in the model, which this solve does not represent; set that face to vacuum or reflective yourself")
+    return chosen, used, warns
+
+
+
+def two_step(lattice, materials, *, workdir, particles=20000, batches=150, inactive=30, seed=None, threads=None, kernel="sanm", boundaries=None, geometry=None, progress=None) -> TwoStepResult:
     """Run the pieces for `lattice` and solve the core.
 
     materials   the openmc.Materials the universes use (OPENMC_CROSS_SECTIONS must be set in the environment).
     workdir     where the pieces' run folders go (one per piece); nothing else is written.
-    boundaries  the core's outer faces for the solve (nodal.solve_core's names); default vacuum on all four sides. They are NOT read from the OpenMC model: a model with reflective
-                sides must say so here, and the result's provenance records what was used.
+    boundaries  overrides for the core's outer faces ({'x_min': 'reflective', ...}, nodal.solve_core's names); a face not named is read from the model.
+    geometry    the openmc.Geometry the lattice belongs to: the faces are read from it (`detect_faces`). Without it every face not overridden is vacuum, with a warning.
+                The result records, per face, what was used and where it came from.
     """
     nodal.require_openndm()
     say = progress or (lambda m: None)
@@ -229,14 +321,15 @@ def two_step(lattice, materials, *, workdir, particles=20000, batches=150, inact
                 refl_samples[lab].append(nodal.condensed_constants(lib, d))
     for lab, samples in refl_samples.items():
         constants[lab] = mean_constants(samples)
-    res = nodal.solve_core(labels, constants, pitch, height, kernel=kernel, boundaries=boundaries, threads=threads or 4)
+    chosen, faces_used, face_warnings = resolve_faces(detect_faces(geometry, lattice) if geometry is not None else None, boundaries)
+    res = nodal.solve_core(labels, constants, pitch, height, kernel=kernel, boundaries=chosen, threads=threads or 4)
     prov = dict(schema=nodal.SCHEMA, versions=nodal.versions(), recipe="fuel: infinite lattice, CASMO-25, critical-buckling spectrum correction (k = 1); reflector: strip(s), CASMO-25 condensed by OpenMC "
                 "(flux-averaged D); no discontinuity factors; one node per assembly; radial 2D, axial reflective", intermediate_structure=nodal.INTERMEDIATE_NAME,
                 settings=settings_kw, pitch_cm=pitch, height_cm=height, kernel=kernel, boundaries=res.boundaries)
     res.provenance.update(prov)
-    warnings = model_warnings(pitch, height, constants)
+    warnings = model_warnings(pitch, height, constants) + face_warnings
     return TwoStepResult(nodal=res, constants=constants, kinds={lab: {"universe": u.id, "role": r} for lab, (u, r) in kinds.items()},
-                         pieces=[(p.label, p.role, p.k, p.k_std, round(p.seconds, 1)) for p in pieces], settings=settings_kw, provenance=prov, warnings=warnings)
+                         pieces=[(p.label, p.role, p.k, p.k_std, round(p.seconds, 1)) for p in pieces], settings=settings_kw, provenance=prov, warnings=warnings, faces=faces_used)
 
 
 # ── from a Studio model.py ───────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -297,7 +390,7 @@ def two_step_script(path, *, workdir, lattice_name=None, **kw) -> TwoStepResult:
     model = load_model(path)
     lattice = core_lattice(model, lattice_name)
     materials = openmc.Materials(model.geometry.get_all_materials().values())
-    return two_step(lattice, materials, workdir=workdir, **kw)
+    return two_step(lattice, materials, workdir=workdir, geometry=model.geometry, **kw)
 
 
 def result_json(res: TwoStepResult) -> dict:
@@ -305,7 +398,7 @@ def result_json(res: TwoStepResult) -> dict:
     n = res.nodal
     return {"ok": True, "k_eff": n.k_eff, "kernel": n.kernel, "converged": n.converged, "layout": n.kinds, "power": np.asarray(n.power).tolist(), "node_size_cm": n.node_size_cm,
             "height_cm": n.height_cm, "boundaries": n.boundaries, "kinds": res.kinds, "constants": {k: {f: np.asarray(v).tolist() for f, v in c.items()} for k, c in res.constants.items()},
-            "pieces": [dict(label=l, role=r, k=k, k_std=sd, seconds=sec) for l, r, k, sd, sec in res.pieces], "provenance": res.provenance, "warnings": res.warnings}
+            "pieces": [dict(label=l, role=r, k=k, k_std=sd, seconds=sec) for l, r, k, sd, sec in res.pieces], "provenance": res.provenance, "warnings": res.warnings, "faces": res.faces}
 
 
 def main(argv=None) -> int:
@@ -322,11 +415,19 @@ def main(argv=None) -> int:
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--threads", type=int, default=None)
     ap.add_argument("--kernel", default="sanm", choices=["sanm", "nem", "fdm"])
-    ap.add_argument("--reflective", nargs="*", default=[], choices=["x_min", "x_max", "y_min", "y_max"], help="outer faces that are reflective (default: all vacuum)")
+    ap.add_argument("--reflective", nargs="*", default=[], choices=["x_min", "x_max", "y_min", "y_max"], help="outer faces to set reflective, over what the model says")
+    ap.add_argument("--vacuum", nargs="*", default=[], choices=["x_min", "x_max", "y_min", "y_max"], help="outer faces to set vacuum, over what the model says")
+    ap.add_argument("--faces", action="store_true", help="only print what the model has at the lattice's four outer faces and exit")
     ap.add_argument("--list", action="store_true", help="only list the outermost lattices and exit")
     ap.add_argument("--out", default=None, help="write the JSON result to this file and print a short summary line instead")
     a = ap.parse_args(argv)
     try:
+        if a.faces:
+            model = load_model(a.model)
+            det = detect_faces(model.geometry, core_lattice(model, a.lattice))
+            chosen, used, warns = resolve_faces(det, {**{f: "vacuum" for f in a.vacuum}, **{f: "reflective" for f in a.reflective}} or None)
+            print(json.dumps({"ok": True, "detected": det, "used": used, "warnings": warns}))
+            return 0
         if a.list:
             model = load_model(a.model)
             print(json.dumps({"ok": True, "lattices": [{"name": lat.name, "id": lat.id, "shape": list(np.asarray(lat.universes, dtype=object).shape)} for lat in lattices_of(model)]}))
@@ -334,7 +435,7 @@ def main(argv=None) -> int:
         if not a.workdir:
             raise NodalInputError("--workdir is required")
         res = two_step_script(a.model, workdir=a.workdir, lattice_name=a.lattice, particles=a.particles, batches=a.batches, inactive=a.inactive, seed=a.seed, threads=a.threads,
-                              kernel=a.kernel, boundaries={f: "reflective" for f in a.reflective} or None,
+                              kernel=a.kernel, boundaries={**{f: "vacuum" for f in a.vacuum}, **{f: "reflective" for f in a.reflective}} or None,
                               progress=(lambda m: print(m, file=sys.stderr, flush=True)) if a.out else None)
     except (NodalInputError, nodal.NodalUnavailable) as e:
         print(json.dumps({"ok": False, "error": type(e).__name__, "message": str(e)}))

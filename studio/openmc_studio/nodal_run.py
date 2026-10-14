@@ -66,7 +66,7 @@ def clean_settings(s) -> dict:
         s = {}
     if not isinstance(s, dict):
         raise NodalRequestError("settings must be an object")
-    extra = set(s) - {"particles", "batches", "inactive", "seed", "kernel", "reflective", "lattice", "threads"}
+    extra = set(s) - {"particles", "batches", "inactive", "seed", "kernel", "reflective", "vacuum", "lattice", "threads"}
     if extra:
         raise NodalRequestError(f"unknown setting(s): {sorted(extra)}")
 
@@ -83,13 +83,19 @@ def clean_settings(s) -> dict:
     kernel = s.get("kernel", "sanm")
     if kernel not in KERNELS:
         raise NodalRequestError(f"kernel must be one of {KERNELS}")
-    refl = s.get("reflective", [])
-    if not isinstance(refl, list) or any(f not in FACES for f in refl) or len(set(refl)) != len(refl):
-        raise NodalRequestError(f"reflective must be a list of distinct faces from {FACES}")
+    forced = {}
+    for key in ("reflective", "vacuum"):
+        lst = s.get(key, [])
+        if not isinstance(lst, list) or any(f not in FACES for f in lst) or len(set(lst)) != len(lst):
+            raise NodalRequestError(f"{key} must be a list of distinct faces from {FACES}")
+        forced[key] = lst
+    if set(forced["reflective"]) & set(forced["vacuum"]):
+        raise NodalRequestError("a face cannot be both reflective and vacuum")
+    refl = forced["reflective"]
     lattice = s.get("lattice")
     if lattice is not None and (not isinstance(lattice, str) or not 1 <= len(lattice) <= 120):
         raise NodalRequestError("lattice must be a name of 1 to 120 characters")
-    return {"particles": particles, "batches": batches, "inactive": inactive, "seed": seed, "threads": threads, "kernel": kernel, "reflective": list(refl), "lattice": lattice}
+    return {"particles": particles, "batches": batches, "inactive": inactive, "seed": seed, "threads": threads, "kernel": kernel, "reflective": list(refl), "vacuum": list(forced["vacuum"]), "lattice": lattice}
 
 
 def command(settings: dict, environ=None) -> list:
@@ -101,6 +107,8 @@ def command(settings: dict, environ=None) -> list:
         argv += ["--lattice", settings["lattice"]]
     if settings["reflective"]:
         argv += ["--reflective", *settings["reflective"]]
+    if settings.get("vacuum"):
+        argv += ["--vacuum", *settings["vacuum"]]
     return argv
 
 

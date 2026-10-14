@@ -95,6 +95,22 @@ class Planning(unittest.TestCase):
             self.assertLessEqual(sum(u.name != "reflector" for u in row), nodal_driver.FUEL_DEPTH)
         self.assertEqual(len(labels), 8)
 
+    def test_the_strip_runs_from_the_inner_fuel_out_to_the_reflector(self):
+        # zoned1's middle row is R A B B B B B A R: from the left edge inwards R, A, B, B; the strip is B B A R (inner end first), three fuel assemblies deep
+        lattice, _ = make_core(load("zoned1")["kinds"])
+        pieces, _, _ = nodal_driver.plan_pieces(lattice)
+        strips = [p for p in pieces if p.role == "strip"]
+        self.assertEqual(len(strips), 1, "the four lines through the middle of this symmetric core are the same strip")
+        self.assertEqual([u.name for u in strips[0].grid[0]], ["asm B", "asm B", "asm A", "reflector"])
+        self.assertEqual(strips[0].x_bcs, ("reflective", "vacuum"))
+
+    def test_constants_of_a_kind_in_several_strips_are_averaged(self):
+        a = {f: np.array([1.0, 2.0]) for f in nodal.FIELDS}
+        b = {f: np.array([3.0, 6.0]) for f in nodal.FIELDS}
+        m = nodal_driver.mean_constants([a, b])
+        np.testing.assert_allclose(m["D"], [2.0, 4.0])
+        np.testing.assert_allclose(nodal_driver.mean_constants([a])["D"], [1.0, 2.0])
+
     def test_a_thick_reflector_makes_a_strip_with_every_layer(self):
         lattice, _ = make_core(load("zoned2")["kinds"])
         pieces, _, _ = nodal_driver.plan_pieces(lattice)
@@ -113,6 +129,12 @@ class Planning(unittest.TestCase):
             nodal_driver.plan_pieces(lattice)
         with self.assertRaises(nodal.NodalInputError):
             nodal_driver.plan_pieces(openmc.HexLattice())
+        lattice, _ = make_core(load("zoned1")["kinds"])
+        lattice.universes = [lattice.universes, lattice.universes]            # two axial layers
+        lattice.lower_left, lattice.pitch = (*lattice.lower_left, 0.0), (*lattice.pitch, 10.0)
+        self.assertEqual(lattice.ndim, 3)
+        with self.assertRaises(nodal.NodalInputError):
+            nodal_driver.plan_pieces(lattice)
         lattice, _ = make_core([["R", "R"], ["R", "R"]])                      # nothing fissile
         with self.assertRaises(nodal.NodalInputError):
             nodal_driver.plan_pieces(lattice)

@@ -171,6 +171,11 @@ def _run_piece(piece: Piece, pitch: float, materials, settings_kw: dict, workdir
     return lib
 
 
+def mean_constants(samples) -> dict:
+    """The mean of several two-group constant sets (a reflector kind that appears in more than one strip)."""
+    return {f: np.mean([np.asarray(s[f], float) for s in samples], axis=0) for f in nodal.FIELDS}
+
+
 def two_step(lattice, materials, *, workdir, particles=20000, batches=150, inactive=30, seed=None, threads=None, kernel="sanm", progress=None) -> TwoStepResult:
     """Run the pieces for `lattice` and solve the core.
 
@@ -195,7 +200,7 @@ def two_step(lattice, materials, *, workdir, particles=20000, batches=150, inact
                 lab = next(l for l, (u, r) in kinds.items() if u is d)
                 refl_samples[lab].append(nodal.condensed_constants(lib, d))
     for lab, samples in refl_samples.items():
-        constants[lab] = {f: np.mean([s[f] for s in samples], axis=0) for f in nodal.FIELDS}
+        constants[lab] = mean_constants(samples)
     res = nodal.solve_core(labels, constants, pitch, HEIGHT_CM, kernel=kernel, threads=threads or 4)
     prov = dict(schema=nodal.SCHEMA, versions=nodal.versions(), recipe="fuel: infinite lattice, CASMO-25, critical-buckling spectrum correction (k = 1); reflector: strip(s), CASMO-25 condensed by OpenMC "
                 "(flux-averaged D); no discontinuity factors; one node per assembly; radial 2D, axial reflective", intermediate_structure=nodal.INTERMEDIATE_NAME,

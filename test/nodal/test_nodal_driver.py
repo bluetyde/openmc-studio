@@ -147,6 +147,14 @@ class Planning(unittest.TestCase):
         with self.assertRaises(nodal.NodalInputError):
             nodal_driver.plan_pieces(lattice)
 
+    def test_model_warnings(self):
+        w = nodal_driver.model_warnings(6.3, 10.0, {})
+        self.assertEqual(len(w), 1)
+        self.assertIn("10 cm tall", w[0])
+        self.assertIn("1.6 node widths", w[0])
+        self.assertEqual(nodal_driver.model_warnings(21.5, 366.0, {}), [], "a full-height core is not warned")
+        self.assertEqual(nodal_driver.model_warnings(6.3, 25.2, {}), [], "four node widths is the edge: not warned")
+
     def test_fuel_is_told_from_reflector_by_its_nuclides(self):
         lattice, _ = make_core(load("zoned1")["kinds"])
         _, kinds, _ = nodal_driver.plan_pieces(lattice)
@@ -317,6 +325,7 @@ class FromScript(unittest.TestCase):
         d = (out["k_eff"] - float(core["k"])) * 1e5
         self.assertLess(abs(d - E15["checker1"]), WINDOW, f"through the command line: {d:+.0f} pcm")
         self.assertEqual(out["height_cm"], 10.0)
+        self.assertEqual(len(out["warnings"]), 1, "10 cm is 1.6 node widths")
         self.assertEqual(out["provenance"]["boundaries"]["x_min"], "vacuum")
         self.assertEqual(np.array(out["power"]).shape, (8, 8))
         self.assertEqual(len(out["pieces"]), 4)

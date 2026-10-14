@@ -246,6 +246,9 @@ input[type=checkbox]{accent-color:var(--accent)}
 .rtable td{padding:2px 12px 2px 0;white-space:nowrap}
 .rtable td.num{text-align:right;font-variant-numeric:tabular-nums}
 .rel-ok{color:var(--ok)}.rel-q{color:var(--warn)}.rel-bad{color:var(--err)}
+.coremap{border-collapse:separate;border-spacing:2px;margin:4px 0}.coremap th,.coremap td{padding:2px 8px;text-align:left}
+.corewarn{border:1px solid var(--warn);border-radius:4px;padding:4px 10px;margin:6px 0;background:var(--panel2)}.corewarn ul{margin:2px 0 2px 16px;padding:0}
+.corecell{width:44px;height:34px;text-align:center !important;font-size:11px;color:#fff;border-radius:3px}.corecell.nopow{background:var(--panel2);color:var(--faint)}
 .runrow{display:flex;align-items:center;gap:10px;padding:4px 0;border-bottom:1px solid var(--line)}
 .runrow .rname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .runrow .rmeta{color:var(--faint);font:11.5px var(--mono);white-space:nowrap}
@@ -377,11 +380,13 @@ input[type=checkbox]{accent-color:var(--accent)}
           <button class="otab" role="tab" id="otLog" aria-selected="false" type="button">Log</button>
           <button class="otab" role="tab" id="otResults" aria-selected="false" type="button" hidden>Results</button>
           <button class="otab" role="tab" id="otRuns" aria-selected="false" type="button" hidden>Runs</button>
+          <button class="otab" role="tab" id="otCore" aria-selected="false" type="button" hidden title="Solve the core lattice with the nodal method">Core</button>
         </div>
         <ul class="olist" id="problems"></ul>
         <ul class="olist" id="log" hidden></ul>
         <div class="opane" id="results" hidden></div>
         <div class="opane" id="runs" hidden></div>
+        <div class="opane" id="core" hidden></div>
       </div>
     </section>
 
@@ -4404,7 +4409,7 @@ function finishLogProgress(id, sev, text) {
   }
 }
 function setOutTab(which) {
-  [['problems', '#otProblems'], ['log', '#otLog'], ['results', '#otResults'], ['runs', '#otRuns']].forEach(([k, tab]) => {
+  [['problems', '#otProblems'], ['log', '#otLog'], ['results', '#otResults'], ['runs', '#otRuns'], ['core', '#otCore']].forEach(([k, tab]) => {
     $(tab).setAttribute('aria-selected', which === k);
     $('#' + k).hidden = which !== k;
   });
@@ -5326,6 +5331,7 @@ async function localInit() {
   }
   LOCAL.on = true; LOCAL.depletionChain = h.depletion_chain || null;
   $('#otResults').hidden = false; $('#otRuns').hidden = false;
+  coreInit();
   log(h.cross_sections_found ? 'ok' : 'warn',
     `Connected to the local runner: OpenMC ${esc(h.openmc)}, Python ${esc(h.python)}. Runs are saved in <code>${esc(h.runs_dir)}</code>.` +
     (h.cross_sections_found ? '' : ' <b>OPENMC_CROSS_SECTIONS is not set or the file is missing</b>, so runs will fail. Run point_conda_env_here.sh.'));
@@ -5944,13 +5950,15 @@ async function refreshRuns() {
   $('#runs').innerHTML = list.length ? list.map(r =>
     `<div class="runrow"><span class="statusdot ${esc(r.status)}" title="${esc(r.status)}"></span><span class="rname">${esc(r.name)} <span class="rmeta">${esc(r.id)}</span></span>` +
     `<span class="rmeta">${esc(r.status)} · ${when(r.started)}</span>` +
-    `<button class="tbtn" type="button" data-results="${esc(r.id)}" ${r.status === 'running' ? 'disabled' : ''}>Results</button>` +
+    (r.kind === 'nodal' ? `<button class="tbtn" type="button" data-core-result="${esc(r.id)}" ${r.status === 'done' ? '' : 'disabled'}>Core result</button>`
+                        : `<button class="tbtn" type="button" data-results="${esc(r.id)}" ${r.status === 'running' ? 'disabled' : ''}>Results</button>`) +
     `<button class="tbtn" type="button" data-load="${esc(r.id)}">Open model</button></div>`).join('')
     : '<p class="envline">No runs yet.</p>';
 }
-$('#runs').addEventListener('click', async e => {
-  const r = e.target.closest('[data-results]'), l = e.target.closest('[data-load]');
+async function runsClick(e) {
+  const r = e.target.closest('[data-results]'), l = e.target.closest('[data-load]'), c = e.target.closest('[data-core-result]');
   if (r) loadResults(r.dataset.results, true);
+  if (c) showCoreRun(c.dataset.coreResult);
   if (l) {
     const runId = l.dataset.load;
     try {
@@ -5961,7 +5969,7 @@ $('#runs').addEventListener('click', async e => {
       log('ok', `Opened the model from run ${esc(runId)}.`); renderAll();
       try {
         const meta = (await api('/api/runs')).runs.find(x => x.id === runId);
-        if (meta && (meta.status === 'done' || (meta.status !== 'running' && S.settings.depletion))) {
+        if (meta && meta.kind !== 'nodal' && (meta.status === 'done' || (meta.status !== 'running' && S.settings.depletion))) {
           loadResults(runId, false);
         } else {
           clearResults();
@@ -5969,7 +5977,120 @@ $('#runs').addEventListener('click', async e => {
       } catch (err) { clearResults(); }
     } catch (err) { log('error', `Couldn't open that model: ${esc(err.message)}`); }
   }
-});
+}
+$('#runs').addEventListener('click', runsClick);
+
+/* ───────── Core (nodal) tab: the two-step nodal solve of the model's core lattice (server: nodal_run.py, nodal_driver.py) ───────── */
+// Needs the nodal package on the server (openndm in the Python OPENNDM_PYTHON names); without it the tab is hidden and the log says why. The solve runs as a run of its own
+// (kind "nodal"): small Monte Carlo pieces from the model's lattice, then openndm. What it assumes is printed beside the result, because the page cannot tell if it is right for a model:
+// the outer faces are vacuum unless ticked here (they are NOT read from the model), radial two-dimensional, one set of constants per kind of assembly, no discontinuity factors.
+const CORE = {on:false, why:'', run:null, doc:null, docRun:null, form:{preset:'quick', particles:6000, batches:60, inactive:15, seed:1, kernel:'sanm', reflective:[]}};
+const CORE_PRESETS = {quick:[6000, 60, 15], standard:[20000, 150, 30]};
+const CORE_FACES = [['x_min', 'left'], ['x_max', 'right'], ['y_max', 'top'], ['y_min', 'bottom']];
+function coreCellColor(rel, lo, hi) {
+  const t = hi > lo ? Math.max(0, Math.min(1, (rel - lo) / (hi - lo))) : 0.5;
+  return `hsl(${Math.round(215 - 215 * t)}, 55%, ${Math.round(30 + 16 * t)}%)`;
+}
+function coreResultHtml(doc) {
+  const kind = l => String(l).split('#')[0];
+  const fuel = doc.power.flat().filter(v => v > 0), lo = Math.min(...fuel), hi = Math.max(...fuel);
+  const rows = doc.layout.map((row, i) => `<tr>${row.map((l, j) => {
+    const v = doc.power[i][j];
+    return v > 0 ? `<td class="corecell" style="background:${coreCellColor(v, lo, hi)}" title="${esc(kind(l))}: relative power ${v.toFixed(3)}">${v.toFixed(2)}</td>`
+                 : `<td class="corecell nopow" title="${esc(kind(l))}: no fission power">·</td>`;
+  }).join('')}</tr>`).join('');
+  const kinds = Object.keys(doc.kinds).map(l => `${esc(kind(l))} (${esc(doc.kinds[l].role)})`).join(', ');
+  const pieces = doc.pieces.map(p => `<tr><td>${esc(p.label.replace(/#\d+/g, ''))}</td><td>${esc(p.role)}</td><td>${p.k.toFixed(4)} ± ${(p.k_std * 1e5).toFixed(0)} pcm</td><td>${p.seconds.toFixed(0)} s</td></tr>`).join('');
+  const s = LOCAL.results && LOCAL.results.summary && LOCAL.results.summary.keff;
+  const cmp = s ? `<p class="envline">OpenMC run open under Results (<code>${esc(LOCAL.resultsRun)}</code>): k = ${s[0].toFixed(5)} ± ${(s[1] * 1e5).toFixed(0)} pcm, so nodal minus OpenMC = <b>${((doc.k_eff - s[0]) * 1e5).toFixed(0)} pcm</b>.${Math.abs(doc.k_eff - s[0]) > 0.05 ? ' A difference this large is not a small error of the method: look at the assumptions below before trusting either number.' : ''} Studio does not check that run is of this model.</p>`
+                 : '<p class="envline">No OpenMC run is open under Results to compare with. Run the model (or open a past run) and solve again, or read its k there.</p>';
+  const faces = CORE_FACES.map(([f, n]) => `${n}: ${doc.boundaries[f]}`).join(', ');
+  const pv = doc.provenance || {};
+  const warn = (doc.warnings || []).length ? `<div class="corewarn"><b>Read this first</b><ul>${doc.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul></div>` : '';
+  return `<h4>Nodal result</h4>${warn}<p class="envline">k-eff <b>${doc.k_eff.toFixed(5)}</b> (${esc(doc.kernel)}${doc.converged ? '' : ', <b>not converged</b>'}), ${doc.layout.length} × ${doc.layout[0].length} assemblies, node ${doc.node_size_cm} cm, height ${doc.height_cm} cm</p>${cmp}` +
+    `<h4>Assembly power (relative, mean 1 over the fuel; top row first)</h4><table class="coremap">${rows}</table>` +
+    `<h4>What this assumes</h4><ul class="envline"><li>Outer faces: ${esc(faces)}. They are not read from the model; tick the faces that are reflective or symmetry planes in it.</li>` +
+    `<li>Radial two-dimensional: axial leakage is not represented (each piece is the lattice's own height, reflective).</li><li>One set of constants per kind of assembly (${kinds}): two positions of one kind get the same constants whatever their neighbours.</li>` +
+    `<li>Fuel from an infinite lattice with a critical-buckling spectrum correction; reflector from strips through the middle row and column; no discontinuity factors; one node per assembly.</li>` +
+    `<li>On three small test cores this recipe put k 0.5 to 1.2 thousand pcm above OpenMC's and assembly power within 1 to 3 % rms (docs/design/nodal-package-plan.md). There is no pass line yet, and no statement that it holds for this model.</li></ul>` +
+    `<h4>Pieces run</h4><table class="coremap pieces"><tr><th>piece</th><th>kind</th><th>k</th><th>time</th></tr>${pieces}</table>` +
+    `<p class="envline">${esc(pv.recipe || '')}<br>openndm ${esc(((pv.versions || {}).openndm) || '?')}, OpenMC ${esc(((pv.versions || {}).openmc) || '?')}, ${((pv.settings || {}).particles) || '?'} × ${((pv.settings || {}).batches) || '?'} per piece, seed ${((pv.settings || {}).seed) ?? '?'}.</p>`;
+}
+function renderCore() {
+  const box = $('#core'), f = CORE.form;
+  const off = !CORE.on ? `<p class="envline"><b>Needs the nodal package.</b> ${esc(CORE.why)}</p>` : '';
+  const faces = CORE_FACES.map(([k, n]) => `<label><input type="checkbox" data-core-face="${k}" ${f.reflective.includes(k) ? 'checked' : ''}> ${n}</label>`).join(' ');
+  const busy = !!CORE.run;
+  box.innerHTML = `${off}<h4>Solve the core lattice with the nodal method</h4>` +
+    `<p class="envline">Runs small Monte Carlo pieces from the model's core lattice (one assembly alone for each fuel kind, and a strip through the reflector), then solves the whole core with openndm. It is a separate run, listed under Runs.</p>` +
+    `<p class="envline"><label>Pieces <select data-core="preset"><option value="quick" ${f.preset === 'quick' ? 'selected' : ''}>Quick (6,000 × 60)</option><option value="standard" ${f.preset === 'standard' ? 'selected' : ''}>Standard (20,000 × 150)</option><option value="custom" ${f.preset === 'custom' ? 'selected' : ''}>Custom</option></select></label> ` +
+    `<label>particles <input data-core="particles" type="number" min="100" max="200000" step="100" value="${f.particles}" style="width:80px"></label> <label>batches <input data-core="batches" type="number" min="10" max="500" value="${f.batches}" style="width:60px"></label> ` +
+    `<label>inactive <input data-core="inactive" type="number" min="0" value="${f.inactive}" style="width:50px"></label> <label>seed <input data-core="seed" type="number" min="1" value="${f.seed}" style="width:70px"></label> ` +
+    `<label>kernel <select data-core="kernel"><option value="sanm" ${f.kernel === 'sanm' ? 'selected' : ''}>SANM</option><option value="nem" ${f.kernel === 'nem' ? 'selected' : ''}>NEM</option><option value="fdm" ${f.kernel === 'fdm' ? 'selected' : ''}>FDM</option></select></label></p>` +
+    `<p class="envline">Reflective outer faces (the rest are vacuum): ${faces}</p>` +
+    `<p class="envline"><button class="tbtn" type="button" id="coreSolve" ${!CORE.on || busy ? 'disabled' : ''}>Solve</button>${busy ? ` Running <code>${esc(CORE.run)}</code> (the Stop button stops it)` : ''}</p>` +
+    (CORE.doc ? `<p class="envline">Result of run <code>${esc(CORE.docRun)}</code>:</p>` + coreResultHtml(CORE.doc) : '<p class="envline">No nodal result yet.</p>');
+}
+async function coreInit() {
+  try {
+    const s = await api('/api/nodal/status');
+    CORE.on = !!s.available; CORE.why = s.reason || '';
+    $('#otCore').hidden = !CORE.on;
+    if (!CORE.on) log('info', `The Core (nodal) tab is off: ${esc(CORE.why)}`);
+  } catch (e) { CORE.on = false; $('#otCore').hidden = true; }
+  renderCore();
+}
+function coreSettings() {
+  const f = CORE.form;
+  return {particles:f.particles, batches:f.batches, inactive:f.inactive, seed:f.seed, kernel:f.kernel, reflective:f.reflective};
+}
+async function coreSolve() {
+  if (!CORE.on || LOCAL.run) return;
+  const P = problems(), errs = P.filter(p => p.sev === 'error');
+  if (errs.length) { setOutTab('log'); log('error', `Not solved: fix ${errs.length} problem${errs.length === 1 ? '' : 's'} first (see Problems).`); return; }
+  let meta;
+  try { meta = await api('/api/nodal/run', {method:'POST', body:JSON.stringify({script:generate(P), project:S, name:S.settings.name, settings:coreSettings()})}); }
+  catch (e) { setOutTab('log'); log('error', `Couldn't start the nodal solve: ${esc(e.message)}`); return; }
+  CORE.run = meta.id; LOCAL.run = meta.id; setRunning(true); renderCore();
+  log('info', `Nodal solve <code>${esc(meta.id)}</code> started (the pieces' progress is in this Log).`);
+  streamCore(meta.id);
+  refreshRuns();
+}
+function streamCore(id) {
+  const ul = $('#log');
+  const es = new EventSource(`/api/runs/${encodeURIComponent(id)}/stream?token=${encodeURIComponent(LOCAL.token)}`);
+  LOCAL.es = es;
+  es.addEventListener('line', ev => {
+    const li = document.createElement('li'); li.className = 'raw'; li.textContent = JSON.parse(ev.data).text;
+    ul.appendChild(li); ul.scrollTop = ul.scrollHeight;
+  });
+  es.addEventListener('end', async ev => {
+    es.close(); LOCAL.es = null; LOCAL.run = null; CORE.run = null; setRunning(false);
+    const m = JSON.parse(ev.data);
+    if (m.status === 'done') { await showCoreRun(id); log('ok', 'Nodal solve finished.'); }
+    else if (m.status === 'stopped') { log('warn', 'Nodal solve stopped.'); renderCore(); }
+    else { log('error', `Nodal solve ${esc(m.status)}. Read the lines above: the driver says what it could not do.`); renderCore(); }
+    refreshRuns();
+  });
+  es.onerror = () => { if (es.readyState === EventSource.CLOSED && LOCAL.run === id) { LOCAL.run = null; CORE.run = null; setRunning(false); log('error', 'Lost the connection to the Studio server.'); renderCore(); } };
+}
+async function showCoreRun(id) {
+  try { CORE.doc = await api(`/api/runs/${encodeURIComponent(id)}/nodal`); CORE.docRun = id; }
+  catch (e) { log('error', `Couldn't read the nodal result of ${esc(id)}: ${esc(e.message)}`); return; }
+  renderCore(); setOutTab('core');
+}
+function coreChange(e) {
+  const t = e.target, f = CORE.form;
+  if (t.dataset.coreFace) { f.reflective = CORE_FACES.map(x => x[0]).filter(k => (k === t.dataset.coreFace ? t.checked : f.reflective.includes(k))); renderCore(); return; }
+  const k = t.dataset.core; if (!k) return;
+  if (k === 'preset') { f.preset = t.value; if (CORE_PRESETS[t.value]) [f.particles, f.batches, f.inactive] = CORE_PRESETS[t.value]; }
+  else if (k === 'kernel') f.kernel = t.value;
+  else { const v = Math.round(+t.value); if (Number.isFinite(v)) f[k] = v; f.preset = 'custom'; }
+  renderCore();
+}
+$('#core').addEventListener('change', coreChange);
+function coreClick(e) { if (e.target.closest('#coreSolve')) coreSolve(); }
+$('#core').addEventListener('click', coreClick);
 
 /* ───────── Live code tabs: editable numbers, click-to-select, live model.mcnp ───────── */
 const CODEVIEW = {py:null, mcnp:null};   // {owners, refs} for what's on screen
@@ -10310,6 +10431,7 @@ $('#otProblems').addEventListener('click', () => setOutTab('problems'));
 $('#otLog').addEventListener('click', () => setOutTab('log'));
 $('#otResults').addEventListener('click', () => setOutTab('results'));
 $('#otRuns').addEventListener('click', () => { setOutTab('runs'); refreshRuns(); });
+$('#otCore').addEventListener('click', () => { setOutTab('core'); renderCore(); });
 $('#tabView').addEventListener('click', () => setDocTab('view'));
 $('#tabCode').addEventListener('click', () => setDocTab('code'));
 $('#tabMcnp').addEventListener('click', () => setDocTab('mcnp'));

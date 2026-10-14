@@ -103,6 +103,9 @@ class FineGroups(unittest.TestCase):
             rate_two = out[f][0] * w[fast].sum() + out[f][1] * w[~fast].sum()
             self.assertAlmostEqual(rate_fine, rate_two, places=12, msg=f)
         self.assertAlmostEqual(out["chi"].sum(), 1.0)
+        np.testing.assert_allclose(out["chi"], [1.0, 0.0])             # chi = [0.7, 0.3, 0, 0]: all born in the two fast groups
+        half = nodal.collapse(dict(a, chi=np.array([0.35, 0.15, 0.0, 0.0])), w, fast)
+        self.assertAlmostEqual(half["chi"].sum(), 1.0, msg="a chi that sums to one half is normalised, not passed on")
         # scattering out of the fast group, summed over destinations, is the flux-weighted fine total
         tot = (w[fast][:, None] * a["scatter"][fast]).sum()
         self.assertAlmostEqual(out["scatter"][0].sum() * w[fast].sum(), tot, places=12)

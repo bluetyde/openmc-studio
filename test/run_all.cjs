@@ -5,6 +5,9 @@
 //            companion exporter's own tests. Needs OPENMC_PYTHON, OPENMC_CROSS_SECTIONS, OPENMC_MCNP_PROJECT;
 //            starts the machine-wide MCNPy bridge (port 25333), so claim it where agents share a machine.
 //   full     + the CAD integration job (setup/cad/run_integration.cjs; needs OPENMC_CAD_PYTHON too).
+//   nodal    (separate, not part of the chain above) the nodal-package checks, test/nodal/: OpenMC plus openndm, which the physics environment does not have.
+//            Needs OPENNDM_PYTHON (a Python with openmc and openndm), OPENMC_PYTHON (for the openmc executable) and OPENMC_CROSS_SECTIONS. No Monte Carlo
+//            beyond one small run; the cores' Monte Carlo data are saved in docs/design/nodal-p2/data/.
 //
 // Nothing is skipped quietly. A profile whose tools are missing is listed as NOT RUN with the reason, a suite
 // that reports a skip counts as failed, and the exit code is 0 only when everything asked for ran and passed
@@ -20,10 +23,11 @@ const REPO = path.resolve(__dirname, '..');
 const WIN = process.platform === 'win32';
 const env = process.env;
 const PROFILES = ['quick', 'browser', 'physics', 'full'];
+const SEPARATE = ['nodal'];   // profiles that stand alone: they do not include the ones before them
 const args = process.argv.slice(2);
-const profile = args.find(a => PROFILES.includes(a)) || 'quick';
+const profile = args.find(a => PROFILES.includes(a) || SEPARATE.includes(a)) || 'quick';
 const only = args.includes('--only') ? args[args.indexOf('--only') + 1] : null;
-const want = PROFILES.slice(0, PROFILES.indexOf(profile) + 1);
+const want = SEPARATE.includes(profile) ? [profile] : PROFILES.slice(0, PROFILES.indexOf(profile) + 1);
 
 const q = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
 const hostPath = p => WIN ? execFileSync('wsl.exe', ['wslpath', '-a', p.split(path.sep).join('/')]).toString().trim() : p;
@@ -36,6 +40,7 @@ function missingFor(p) {
     if (!env.NODE_PATH) miss.push('NODE_PATH (to find playwright)');
     else try { require.resolve('playwright', {paths:env.NODE_PATH.split(path.delimiter)}); } catch (e) { miss.push('playwright on NODE_PATH'); }
   }
+  if (p === 'nodal') ['OPENNDM_PYTHON', 'OPENMC_PYTHON', 'OPENMC_CROSS_SECTIONS'].forEach(k => { if (!env[k]) miss.push(k); });
   if (p === 'physics' || p === 'full') ['OPENMC_PYTHON', 'OPENMC_CROSS_SECTIONS', 'OPENMC_MCNP_PROJECT'].forEach(k => { if (!env[k]) miss.push(k); });
   if (p === 'full' && !env.OPENMC_CAD_PYTHON) miss.push('OPENMC_CAD_PYTHON');
   return miss;
@@ -53,6 +58,7 @@ function suites(p) {
       {kind:'python-glob', label:'exporter tests/test_*.py + tests/check_export_mcnp.py', cwdHost:exp}];
   }
   if (p === 'full') return [node('setup/cad/run_integration.cjs')];
+  if (p === 'nodal') return [{kind:'python-nodal', label:'test/nodal/test_nodal_p2.py', script:'test/nodal/test_nodal_p2.py', cwdHost:hostPath(REPO)}];
   return [];
 }
 
@@ -64,6 +70,7 @@ function run(s) {
   const opts = {encoding:'utf8', maxBuffer:1 << 28, timeout:45 * 60 * 1000, killSignal:'SIGKILL'};
   const shell = cmd => spawnSync(WIN ? 'wsl.exe' : 'bash', [...(WIN ? ['-e', 'bash'] : []), '-lc', cmd], opts);
   if (s.kind === 'node') return spawnSync(process.execPath, [path.join(REPO, s.script)], {...opts, cwd:REPO, env:{...env, ...s.extra}});
+  if (s.kind === 'python-nodal') return shell(`export PATH="$(dirname ${q(env.OPENNDM_PYTHON)}):$(dirname ${q(env.OPENMC_PYTHON)}):$PATH" OPENMC_CROSS_SECTIONS=${q(env.OPENMC_CROSS_SECTIONS)}; cd ${q(s.cwdHost)} && python ${q(s.script)}`);
   if (s.kind === 'python') return shell(`${pyEnv()}; cd ${q(s.cwdHost)} && python ${q(s.script)}`);
   // the exporter's suites, one after another; any failure fails the entry and names the file
   return shell(`${pyEnv()}; cd ${q(s.cwdHost)} && rc=0; for t in tests/test_*.py tests/check_export_mcnp.py; do ` +

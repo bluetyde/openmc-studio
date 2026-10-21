@@ -1,0 +1,7 @@
+E20 (e20_refinement.py), from data/strips_e19.npz, data/pieces.npz and data/fine_inf.npz (no Monte Carlo). Typed from the console output of 2026-10-21.
+Nodal minus OpenMC (pcm), no factors; each node split sub x sub (sub = 1, 2, 4) with that node's constants.
+
+periodic [B B A], E19 node constants                     sanm (1, 2, 4):     +27     +27     +27 | fdm (1, 2, 4):     +12     +18     +24
+vacuum   [B B A], E19 node constants                     sanm (1, 2, 4):  -1065   -1064   -1066 | fdm (1, 2, 4):   -412    -892   -1021
+reflector [B B A | R], E19 node constants                sanm (1, 2, 4):   +369    +366    +365 | fdm (1, 2, 4):   -175     +53    +264
+reflector [B B A | R], recipe constants vs E13 run       sanm (1, 2, 4):     -4      -7      -8 | fdm (1, 2, 4):   -555    -318    -107

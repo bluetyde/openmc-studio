@@ -1,0 +1,8 @@
+E17 (e17_reflector_layers.py), from data/*.npz (no Monte Carlo). Typed from the console output of 2026-10-21.
+Fuel = the core run's own by kind in every row. Nodal k minus OpenMC k (pcm) | assembly power rms %, SANM, no factors.
+Reflector sets: by kind = one set (mean over all reflector nodes); by distance = one set per Manhattan distance to the nearest fuel node; by node = every node its own set.
+
+zoned1   by kind (1 set) +185 2.2 | by distance (2 sets) +223 2.2 | by node (32 sets) +239 2.2
+zoned2   by kind (1 set) +702 3.5 | by distance (4 sets) +981 3.6 | by node (72 sets) +1001 3.6
+checker1 by kind (1 set) +381 1.5 | by distance (2 sets) +427 1.5 | by node (28 sets) +450 1.5
+Reflector node constants by distance (D fast | thermal), zoned2: 1: 1.4324 0.2192; 2: 1.4898 0.2128; 3: 1.5763 0.2116; 4: 1.7318 0.2128 (fast D grows with distance from the fuel).

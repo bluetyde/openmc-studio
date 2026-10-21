@@ -19,6 +19,11 @@ Run in WSL with a venv holding `openndm 0.3.0` on top of the OpenMC 0.15.3 envir
 - `e10_d_source.py`, `e10_output.txt`: the fast-group D against the flux-averaged D, from a 300-group transport tally in three positions of the 9 x 9 zoned core, and how many intermediate groups the collapse needs. `e9a_dump.py` now also tallies a 120-group transport library in every position and saves the flux-averaged D (`c_Dflux`) and the library-style collapse (`c_Dharm`) in `data/*.npz`; `e9_current_d.py` solves with it (`e10_output_solve.txt`).
 - `e11_checker_diag.py`, `e11_output.txt`: where the 8 x 8 checkerboard's power error sat (by kind, by flux group, Fick's law by pair of kinds); `e11b_orientation.py`, `e11b_output.txt`: the check that showed openndm's results are listed bottom-up (the cause), `e11_output_solve.txt`: E9/E10's solves redone with the right row order. The old outputs carry a note: their checkerboard power columns are invalid.
 - `e12_library_path.py`, `e12_output.txt`: the flux-averaged D through OpenMC's own library path (an intermediate structure condensed with `get_condensed_library`), the cost, and the nodal solve of the result on the three cores (`CORE=zoned1|zoned2|checker1`, `STRUCTS=...`).
+- `e16_gap_split.py`, `e16_output.txt`: the fuel and reflector sources crossed (the remaining gap of the two-step, split).
+- `e17_reflector_layers.py`, `e17_output.txt`: the reflector by kind, by distance to the fuel, by node.
+- `e18_strip_self_consistency.py`, `e18_output.txt`: the strip [B B A | R] solved as four nodes against its own Monte Carlo k.
+- `e19_strip_controls.py`, `e19_output.txt`: periodic, vacuum and reflector rows (Monte Carlo; saves `data/strips_e19.npz`).
+- `e20_refinement.py`, `e20_output.txt`: the same rows on a refined mesh (discretisation against homogenisation).
 - `e14_swap_fields.py`, `e14_output.txt`: the two-step constants against the core run's, one field at a time (`data/pieces.npz` holds the pieces' constants).
 - `e15_critical_spectrum.py`, `e15_output.txt`: the critical-buckling correction of the fuel's fine-group constants (`data/fine_inf.npz`; `REBUILD=1` reruns the Monte Carlo).
 - `e13_two_step_library.py`, `e13_output.txt`: the two-step inputs built from small runs through the library path (infinite lattices, strips), assembled by kind and solved against the three cores.

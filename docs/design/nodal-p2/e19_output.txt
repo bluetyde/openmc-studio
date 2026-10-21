@@ -1,0 +1,7 @@
+E19 (e19_strip_controls.py), 20,000 x 150 particles (30 inactive) per piece, seed 11; the per-node constants and k are saved in data/strips_e19.npz (a rerun gave the same numbers to the digit).
+Typed from the console output of 2026-10-21. Rows of nodes with one wrapper universe per position (each node its own constants from the same run as the k), CASMO-25 condensed to two groups with the
+flux-averaged D. Nodal minus OpenMC (pcm), no factors.
+
+periodic  [B B A]       reflective at both ends   OpenMC k 1.34445 +/- 59 pcm | sanm   +27  fdm   +12
+vacuum    [B B A]       reflective | vacuum       OpenMC k 1.04515 +/- 70 pcm | sanm -1065  fdm  -412
+reflector [B B A | R]   reflective | vacuum       OpenMC k 1.12922 +/- 62 pcm | sanm  +369  fdm  -175

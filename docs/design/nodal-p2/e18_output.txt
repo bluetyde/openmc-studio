@@ -1,0 +1,6 @@
+E18 (e18_strip_self_consistency.py), from data/pieces.npz and data/fine_inf.npz (no Monte Carlo). Typed from the console output of 2026-10-21.
+The strip [B B A | R] (reflective at the fuel end, vacuum beyond, y reflective), OpenMC k = 1.12746 (E13, about +/- 60 pcm), solved as four nodes. Nodal k minus OpenMC k (pcm), no factors.
+
+  all constants from the strip run itself (stripZ_B, stripZ_A, reflZ)            sanm  +502 | fdm   -46
+  fuel from the infinite lattices, corrected (E15); reflector reflZ              sanm    -4 | fdm  -555
+  fuel from the infinite lattices, plain collapse; reflector reflZ               sanm +1419 | fdm  +937

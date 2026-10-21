@@ -1,0 +1,22 @@
+E16 (e16_gap_split.py), from data/*.npz (no Monte Carlo). Typed from the console output of 2026-10-21.
+Nodal k minus OpenMC k (pcm) and assembly power rms %, SANM, no factors. F1 = infinite-lattice fuel with the critical-buckling correction (E15), F0 = the core run's own fuel constants by kind;
+R1 = the reflector from the strip(s) (E13), R0 = the core run's own reflector constants by kind (arithmetic mean over its nodes).
+
+zoned1 (OpenMC k 1.01726)
+  F1 + R1 (the two-step)        +539  1.3
+  F1 + R0                       +411  1.1
+  F0 + R1                       +317  2.5
+  F0 + R0 (node-level best)     +185  2.2
+  R1 against R0, percent (fast | thermal): D -1.6 -0.9; absorption +0.5 -0.2; scatter (from-to) +0.7 +1.1 +2.5 -0.2
+zoned2 (OpenMC k 1.03703)
+  F1 + R1                      +1150  2.2
+  F1 + R0                       +739  2.1
+  F0 + R1                      +1132  3.4
+  F0 + R0                       +702  3.5
+  R1 against R0: D -3.0 +4.5; absorption -8.7 -3.0; scatter +1.1 -8.4 +89.2 -3.0
+checker1 (OpenMC k 0.94469)
+  F1 + R1                      +1018  1.1
+  F1 + R0                       +854  1.0
+  F0 + R1                       +551  1.9
+  F0 + R0                       +381  1.5
+  R1 against R0: D -1.4 -0.9; absorption +0.4 -0.2; scatter +0.6 +1.7 +6.4 -0.2

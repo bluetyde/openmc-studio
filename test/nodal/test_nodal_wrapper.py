@@ -283,6 +283,152 @@ class E15ThroughTheWrapper(unittest.TestCase):
         self.assertGreater(rms(res.power[::-1]), 8.0, "reading the rows upside down must be visibly wrong on this core")
 
 
+# ── E16 to E18: where the two-step's remaining gap sits, kept as numbers ──────────────────────────────────────────────────────────────────
+# (docs/design/nodal-p2/e16_output.txt, e17_output.txt, e18_output.txt: the experiments' console output; deterministic from the saved data, so the tolerance is a few pcm)
+E16 = {   # nodal k minus OpenMC k, pcm: (F1+R1 the two-step, F1+R0, F0+R1, F0+R0)
+    "zoned1": (539, 411, 317, 185), "zoned2": (1150, 739, 1132, 702), "checker1": (1018, 854, 551, 381)}
+E17 = {   # fuel = the core run's own; reflector by kind, by distance to the fuel, by node
+    "zoned1": (185, 223, 239), "zoned2": (702, 981, 1001), "checker1": (381, 427, 450)}
+
+
+def node_own(core, r, c):
+    return {f: np.asarray(core["c_" + f][r, c], float).reshape(-1) for f in FIELDS[1:]} | {"D": np.asarray(core["c_Dflux"][r, c], float)}
+
+
+def mean_nodes(core, nodes):
+    cs = [node_own(core, r, c) for r, c in nodes]
+    return {f: np.mean([x[f] for x in cs], axis=0) for f in cs[0]}
+
+
+def pcm(core, layout, cons):
+    res = nodal.solve_core(layout, cons, float(core["asm"]), float(core["hz"]))
+    return (res.k_eff - float(core["k"])) * 1e5
+
+
+class ReflectorGap(unittest.TestCase):
+    edges = FINE["edges"]
+
+    def test_the_remaining_gap_split_between_fuel_and_reflector(self):
+        for name, want in E16.items():
+            core = load_core(name)
+            own = core_by_kind(core)
+            f1 = {"A": nodal.critical_buckling_fuel(fine("A"), self.edges), "B": nodal.critical_buckling_fuel(fine("B"), self.edges)}
+            r1 = reflector(name)
+            got = (pcm(core, core["kinds"], {**f1, "R": r1}), pcm(core, core["kinds"], {**f1, "R": own["R"]}),
+                   pcm(core, core["kinds"], {"A": own["A"], "B": own["B"], "R": r1}), pcm(core, core["kinds"], own))
+            for g, w, label in zip(got, want, ("F1+R1", "F1+R0", "F0+R1", "F0+R0")):
+                self.assertAlmostEqual(g, w, delta=8, msg=f"{name} {label}")
+        # the reading E16 draws: the reflector carries most of the gap only on the core with two reflector layers
+        z2 = E16["zoned2"]
+        self.assertGreater((z2[0] - z2[1]) / (z2[0] - z2[3]), 0.85)           # reflector share of the gap on the 11 x 11 core
+        self.assertLess((E16["zoned1"][0] - E16["zoned1"][1]) / (E16["zoned1"][0] - E16["zoned1"][3]), 0.5)
+        self.assertLess((E16["checker1"][0] - E16["checker1"][1]) / (E16["checker1"][0] - E16["checker1"][3]), 0.5)
+
+    def test_more_reflector_sets_make_k_worse_not_better(self):
+        """E17, kept as a limit: splitting the reflector by distance to the fuel, or per node, moves k AWAY from OpenMC's on every core (by 40 to 300 pcm). The idea of 'one kind per layer' does not help;
+        a change that makes this fail has found something new, and the page of E17 should be revisited."""
+        for name, want in E17.items():
+            core = load_core(name)
+            nc = core["NC"]
+            kinds = core["kinds"]
+            fuel = [(r, c) for r in range(nc) for c in range(nc) if kinds[r][c] != "R"]
+            dist = {(r, c): min(abs(r - fr) + abs(c - fc) for fr, fc in fuel) for r in range(nc) for c in range(nc) if kinds[r][c] == "R"}
+            base = {kd: mean_nodes(core, [(r, c) for r in range(nc) for c in range(nc) if kinds[r][c] == kd]) for kd in ("A", "B")}
+            by_kind = dict(base, R=mean_nodes(core, list(dist)))
+            labels_d = [[kinds[r][c] if kinds[r][c] != "R" else f"R{dist[(r, c)]}" for c in range(nc)] for r in range(nc)]
+            by_dist = dict(base)
+            for dd in sorted(set(dist.values())):
+                by_dist[f"R{dd}"] = mean_nodes(core, [n for n, v in dist.items() if v == dd])
+            labels_n = [[kinds[r][c] if kinds[r][c] != "R" else f"R_{r}_{c}" for c in range(nc)] for r in range(nc)]
+            by_node = dict(base)
+            for (r, c) in dist:
+                by_node[f"R_{r}_{c}"] = node_own(core, r, c)
+            got = (pcm(core, kinds, by_kind), pcm(core, labels_d, by_dist), pcm(core, labels_n, by_node))
+            for g, w, label in zip(got, want, ("by kind", "by distance", "by node")):
+                self.assertAlmostEqual(g, w, delta=8, msg=f"{name} {label}")
+            self.assertGreater(got[1], got[0] + 20, f"{name}: splitting by distance does not help")
+            self.assertGreater(got[2], got[0] + 20, f"{name}: per-node constants do not help")
+
+    def test_the_strip_reproduced_by_its_own_constants(self):
+        """E18: the strip [B B A | R] solved as four nodes. SANM with the strip's own constants is 500 pcm above OpenMC's strip, FDM 46 below; the corrected infinite-lattice fuel with the strip's
+        reflector gives SANM -4 pcm. The method error at this interface, with no factors, is of the size of the two-step's remaining gap."""
+        k_mc = float(PIECES["k_stripZ"])
+
+        def piece(name):
+            return {f: np.asarray(PIECES[f"{name}__{f}"], float).reshape(-1) for f in FIELDS}
+
+        def run(cons, kernel):
+            res = nodal.solve_core([["B", "B", "A", "R"]], cons, 6.3, 1.0, kernel=kernel,
+                                   boundaries={"x_min": "reflective", "x_max": "vacuum", "y_min": "reflective", "y_max": "reflective"})
+            return (res.k_eff - k_mc) * 1e5
+        own = {"A": piece("stripZ_A"), "B": piece("stripZ_B"), "R": piece("reflZ")}
+        self.assertAlmostEqual(run(own, "sanm"), 502, delta=8)
+        self.assertAlmostEqual(run(own, "fdm"), -46, delta=8)
+        corr = {"A": nodal.critical_buckling_fuel(fine("A"), self.edges), "B": nodal.critical_buckling_fuel(fine("B"), self.edges), "R": piece("reflZ")}
+        self.assertAlmostEqual(run(corr, "sanm"), -4, delta=8)
+        plain = {"A": nodal.critical_buckling_fuel(fine("A"), self.edges, correct=False), "B": nodal.critical_buckling_fuel(fine("B"), self.edges, correct=False), "R": piece("reflZ")}
+        self.assertAlmostEqual(run(plain, "sanm"), 1419, delta=8)
+
+
+STRIPS = np.load(DATA / "strips_e19.npz")
+
+
+def strip_nodal(order, tag, x_max, kernel, sub):
+    """E19/E20: a row of nodes with the saved per-node constants of the run `tag`, reflective at the left, `x_max` at the right, each node split sub x sub."""
+    kinds = sorted(set(order))
+    comp = np.array([[kinds.index(k) for k in order]], dtype=int)
+    bc = {"x_min": "reflective", "x_max": x_max, "y_min": "reflective", "y_max": "reflective", "z_min": "reflective", "z_max": "reflective"}
+    geom = openndm.Geometry.from_lattice(comp, pitch=6.3, dz=[1.0], boundaries=bc, outside="vacuum", subdivide=(sub, sub, 1))
+    xs = openndm.XSLibrary(2, len(kinds))
+    for i, name in enumerate(kinds):
+        c = nodal.check_constants(name, {f: np.asarray(STRIPS[f"{tag}__{name}__{f}"], float) for f in FIELDS})
+        xs.set_composition(i, D=c["D"], absorption=c["absorption"], nu_fission=c["nu_fission"], kappa_fission=c["kappa_fission"], chi=c["chi"], scatter=c["scatter"], inv_velocity=c["inv_velocity"])
+        xs.set_adf(i, np.ones((4, 2)), n_axes=2)
+    xs.finalize(warn=False)
+    return (openndm.Model(geom, xs, openndm.Settings(kernel=kernel, verbosity=0)).solve().k_eff - float(STRIPS[f"{tag}__k"])) * 1e5
+
+
+class StripControls(unittest.TestCase):
+    """E19 and E20 (docs/design/nodal-p2/e19_output.txt, e20_output.txt): where the strip's error sits. Not a claim about accuracy: the error of the nodal solution with node-averaged constants and no
+    factors, against OpenMC's own k for the same row of nodes (k with about 60 pcm of statistical error)."""
+
+    def test_only_the_faces_to_vacuum_and_reflector_cost_anything(self):
+        self.assertAlmostEqual(strip_nodal(["B0", "B1", "A2"], "periodic", "reflective", "sanm", 1), 27, delta=8)       # fuel/fuel faces: right
+        self.assertAlmostEqual(strip_nodal(["B0", "B1", "A2"], "vacuum", "vacuum", "sanm", 1), -1065, delta=8)           # fuel next to vacuum: 1,000 pcm too low
+        self.assertAlmostEqual(strip_nodal(["B0", "B1", "A2", "R3"], "reflector", "vacuum", "sanm", 1), 369, delta=8)    # a reflector layer in front of the vacuum: 370 pcm too high
+
+    def test_the_error_is_the_constants_not_the_mesh(self):
+        """SANM at one node per assembly has converged: splitting every node 4 x 4 moves k by under 10 pcm. FDM does not: it drifts towards SANM's value as the mesh is refined, so its
+        small error at one node per assembly was an accident of cancellation."""
+        for order, tag, xmax in ((["B0", "B1", "A2"], "vacuum", "vacuum"), (["B0", "B1", "A2", "R3"], "reflector", "vacuum")):
+            coarse, fine4 = strip_nodal(order, tag, xmax, "sanm", 1), strip_nodal(order, tag, xmax, "sanm", 4)
+            self.assertLess(abs(coarse - fine4), 10, tag)
+        f1, f4 = strip_nodal(["B0", "B1", "A2", "R3"], "reflector", "vacuum", "fdm", 1), strip_nodal(["B0", "B1", "A2", "R3"], "reflector", "vacuum", "fdm", 4)
+        self.assertGreater(f4 - f1, 300, "FDM moves by hundreds of pcm on refinement")
+        self.assertAlmostEqual(f4, 264, delta=8)
+
+    def test_the_recipe_constants_reproduce_the_strip_at_any_mesh(self):
+        """E20, last row: the recipe's constants (corrected infinite-lattice fuel, the strip's reflector) give the strip's k within 10 pcm for SANM at 1, 2 and 4 sub-nodes. The core's remaining
+        +500 to +1,100 pcm is therefore not an error this strip can show."""
+        k_mc = float(PIECES["k_stripZ"])
+        edges = FINE["edges"]
+        cons = {"A": nodal.critical_buckling_fuel(fine("A"), edges), "B": nodal.critical_buckling_fuel(fine("B"), edges), "R": {f: np.asarray(PIECES[f"reflZ__{f}"], float).reshape(-1) for f in FIELDS}}
+        for sub in (1, 2, 4):
+            kinds = ["A", "B", "R"]
+            comp = np.array([[1, 1, 0, 2]], dtype=int)
+            bc = {"x_min": "reflective", "x_max": "vacuum", "y_min": "reflective", "y_max": "reflective", "z_min": "reflective", "z_max": "reflective"}
+            geom = openndm.Geometry.from_lattice(comp, pitch=6.3, dz=[1.0], boundaries=bc, outside="vacuum", subdivide=(sub, sub, 1))
+            xs = openndm.XSLibrary(2, 3)
+            for i, name in enumerate(kinds):
+                c = nodal.check_constants(name, cons[name])
+                xs.set_composition(i, D=c["D"], absorption=c["absorption"], nu_fission=c["nu_fission"], kappa_fission=c["kappa_fission"], chi=c["chi"], scatter=c["scatter"],
+                                   inv_velocity=c["inv_velocity"])
+                xs.set_adf(i, np.ones((4, 2)), n_axes=2)
+            xs.finalize(warn=False)
+            d = (openndm.Model(geom, xs, openndm.Settings(kernel="sanm", verbosity=0)).solve().k_eff - k_mc) * 1e5
+            self.assertLess(abs(d), 10, f"sub {sub}: {d:+.0f} pcm")
+
+
 # ── refusals ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 class Refusals(unittest.TestCase):
     def solve(self, layout=None, cons=None, **kw):

@@ -70,6 +70,7 @@ test('it states its assumptions, with the outer faces that were used', () => {
   assert.ok(!h.includes('not read from the model'), 'the faces are read from the model now');
   assert.ok(h.includes('no pass line'), 'no claim that it holds for this model');
   assert.ok(h.includes('Radial two-dimensional') && h.includes('discontinuity factors'));
+  assert.ok(h.includes('only as slabs') && h.includes('up to three layers'), 'what is and is not taken from outside a face');
   assert.ok(h.includes('openndm 0.3.0') && h.includes('6000 × 60'));
 });
 

@@ -79,6 +79,7 @@ class RunChecksUnit(unittest.TestCase):
         trial = codes(run_checks.findings(self.tmp, dict(SUMMARY, particles=1000)))
         self.assertEqual(trial["particles-per-batch"]["level"], "info", "1000 is a trial run in the manual's words: a note, not a warning")
         self.assertIn("recommended for a final calculation", trial["particles-per-batch"]["message"])
+        self.assertIn("below the 5000 recommended", trial["particles-per-batch"]["message"], "the manual's 5000, not another number")
         edge = codes(run_checks.findings(self.tmp, dict(SUMMARY, particles=200)))
         self.assertEqual(edge["particles-per-batch"]["level"], "info", "200 itself is not below 200")
 

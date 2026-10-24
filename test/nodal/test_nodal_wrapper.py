@@ -429,6 +429,37 @@ class StripControls(unittest.TestCase):
             self.assertLess(abs(d), 10, f"sub {sub}: {d:+.0f} pcm")
 
 
+class NodeWidths(unittest.TestCase):
+    """solve_core with node_widths: a column or row of another width, in the order the map is given (rows top to bottom, columns left to right)."""
+
+    def run_widths(self, wx, wy, layout=(("R",), ("F",), ("F",), ("R",)), boundaries=None):
+        return nodal.solve_core([list(r) for r in layout], two_kinds(), 20.0, 1.0, node_widths=(wx, wy), boundaries=boundaries)
+
+    def test_the_rows_are_taken_top_to_bottom(self):
+        thick_top = self.run_widths([20.0], [20.0, 20.0, 20.0, 1.0])
+        thick_bottom = self.run_widths([20.0], [1.0, 20.0, 20.0, 20.0])
+        self.assertGreater(thick_top.power[1, 0], thick_top.power[2, 0], "a thick reflector on the top row lifts the upper fuel row")
+        self.assertLess(thick_bottom.power[1, 0], thick_bottom.power[2, 0], "and on the bottom row the lower one")
+        self.assertAlmostEqual(thick_top.k_eff, thick_bottom.k_eff, delta=2e-5, msg="a mirror image has the same k")
+        np.testing.assert_allclose(thick_top.power, thick_bottom.power[::-1], atol=5e-5)
+
+    def test_the_columns_are_taken_left_to_right(self):
+        layout = (("R", "F", "F", "R"),)
+        thick_left = self.run_widths([20.0, 20.0, 20.0, 1.0], [20.0], layout)
+        thin_left = self.run_widths([1.0, 20.0, 20.0, 20.0], [20.0], layout)
+        self.assertGreater(thick_left.power[0, 1], thick_left.power[0, 2], "a thick reflector on the left column lifts the left fuel column")
+        self.assertLess(thin_left.power[0, 1], thin_left.power[0, 2], "and on the right column the right one")
+        np.testing.assert_allclose(thick_left.power, thin_left.power[:, ::-1], atol=5e-5)
+
+    def test_widths_equal_to_the_pitch_change_nothing_and_bad_widths_are_refused(self):
+        plain = nodal.solve_core([["R"], ["F"], ["F"], ["R"]], two_kinds(), 20.0, 1.0)
+        same = self.run_widths([20.0], [20.0] * 4)
+        self.assertAlmostEqual(plain.k_eff, same.k_eff, delta=1e-9)
+        for wx, wy in (([20.0, 20.0], [20.0] * 4), ([20.0], [20.0] * 3), ([20.0], [20.0, 0.0, 20.0, 20.0]), ([-1.0], [20.0] * 4)):
+            with self.assertRaises(nodal.NodalInputError, msg=str((wx, wy))):
+                self.run_widths(wx, wy)
+
+
 # ── refusals ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 class Refusals(unittest.TestCase):
     def solve(self, layout=None, cons=None, **kw):

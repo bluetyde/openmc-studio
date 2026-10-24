@@ -6012,6 +6012,7 @@ function coreResultHtml(doc) {
     `<h4>Assembly power (relative, mean 1 over the fuel; top row first)</h4><table class="coremap">${rows}</table>` +
     `<h4>Outer faces, as used</h4><ul class="envline">${faces}</ul><h4>What this assumes</h4><ul class="envline">` +
     `<li>Radial two-dimensional: axial leakage is not represented (each piece is the lattice's own height, reflective).</li><li>One set of constants per kind of assembly (${kinds}): two positions of one kind get the same constants whatever their neighbours.</li>` +
+    `<li>Material the model has outside a face (a tank, a reflector block) is part of the solve only as slabs: up to three layers of materials, as thick along the whole face as at its middle. Otherwise the face is taken as vacuum, and the faces above say which.</li>` +
     `<li>Fuel from an infinite lattice with a critical-buckling spectrum correction; reflector from strips through the middle row and column; no discontinuity factors; one node per assembly.</li>` +
     `<li>On three small test cores this recipe put k 0.5 to 1.2 thousand pcm above OpenMC's and assembly power within 1 to 3 % rms (docs/design/nodal-package-plan.md). There is no pass line yet, and no statement that it holds for this model.</li></ul>` +
     `<h4>Pieces run</h4><table class="coremap pieces"><tr><th>piece</th><th>kind</th><th>k</th><th>time</th></tr>${pieces}</table>` +

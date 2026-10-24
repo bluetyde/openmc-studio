@@ -129,12 +129,15 @@ class NodalResult:
     provenance: dict = field(default_factory=dict)
 
 
-def solve_core(layout, constants: dict, pitch_cm: float, height_cm: float = 1.0, *, kernel: str = "sanm", boundaries: dict | None = None, threads: int = 4) -> NodalResult:
+def solve_core(layout, constants: dict, pitch_cm: float, height_cm: float = 1.0, *, kernel: str = "sanm", boundaries: dict | None = None, threads: int = 4,
+               node_widths: tuple | None = None) -> NodalResult:
     """Solve a 2D core, one node per assembly.
 
     layout     rows of kind names, TOP ROW FIRST (as an OpenMC lattice lists them); None marks a position outside the core.
     constants  kind -> two-group constants (D, absorption, nu_fission, chi, scatter [from, to], optional kappa_fission, inv_velocity), fast group first.
     boundaries physical faces 'x_min', 'x_max', 'y_min', 'y_max' (y_max is the TOP of the map) -> 'vacuum' | 'reflective' | 'zero_flux'; default all vacuum.
+    node_widths (widths_x_left_to_right, widths_y_top_to_bottom) in cm, one per column and per row of the map, when the nodes are not all `pitch_cm` wide (a ring of reflector layers of other
+               thickness around the core); the power map keeps the shape of the layout.
     """
     openndm = require_openndm()
     rows = [list(r) for r in layout]
@@ -161,7 +164,13 @@ def solve_core(layout, constants: dict, pitch_cm: float, height_cm: float = 1.0,
         if bad:
             raise NodalInputError(f"unknown boundary face(s) {bad}")
         bc.update(boundaries)
-    geom = openndm.Geometry.from_lattice(comp, pitch=pitch_cm, dz=[float(height_cm)], boundaries=bc, outside="vacuum", subdivide=1)
+    extra = {}
+    if node_widths is not None:
+        wx, wy = [float(v) for v in node_widths[0]], [float(v) for v in node_widths[1]]
+        if len(wx) != comp.shape[1] or len(wy) != comp.shape[0] or min(wx + wy) <= 0:
+            raise NodalInputError(f"node_widths must give a positive width for each of the {comp.shape[1]} columns and {comp.shape[0]} rows")
+        extra = {"dx": wx, "dy": wy[::-1]}          # openndm's row 0 is the lowest y: the widths follow the flipped map
+    geom = openndm.Geometry.from_lattice(comp, pitch=pitch_cm, dz=[float(height_cm)], boundaries=bc, outside="vacuum", subdivide=1, **extra)
     xs = openndm.XSLibrary(2, len(used))
     for k in used:
         c = clean[k]

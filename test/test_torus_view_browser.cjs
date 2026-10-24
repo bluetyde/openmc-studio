@@ -20,15 +20,16 @@ const fs = require('fs'), path = require('path'), assert = require('assert');
       window.__setup = (ring, extra) => {
         S = sampleModel(); S.groups = []; S.tallies = []; S.sources = [];
         const m = S.materials[0].id, m2 = S.materials[1].id;
+        S.materials[0].color = '#00c800';      // the torus is the only green thing, so "drawn" can mean "torus" (a void part is drawn as a faint ball)
         S.settings.worldR = 60; S.settings.worldFill = 'void';
         S.parts = [...(extra || []).map((o, i) => Object.assign(newPart('x' + i, 'extra' + i, o.shape), {material: o.material === 'void' ? 'void' : m2}, o)),
           Object.assign(newPart('t1', 'Ring', 'torus'), {material: m}, ring)];
         S.parts.forEach(p => { if (p.material === m2 && p.shape === 'torus') p.material = m; });
       };
     });
-    const grid3 = async (ring, extra) => page.evaluate(({ring, extra}) => {
+    const grid3 = async (ring, extra, cut) => page.evaluate(({ring, extra, cut}) => {
       __setup(ring, extra);
-      view.mode = '3d'; document.querySelector('#cutaway') && (document.querySelector('#cutaway').checked = false);
+      view.mode = '3d'; view.plane = 'xz'; view.slice = 0; document.querySelector('#cutaway').checked = !!cut;
       let covered = 0, disagree = 0, total = 0;
       for (const [yaw, pitch] of [[-0.9, 0.45], [0.3, 1.2], [2.0, -0.6], [1.0, 0.05], [-2.4, 1.45]]) {
         CAM.yaw = yaw; CAM.pitch = pitch; CAM.dist = 110;
@@ -36,12 +37,12 @@ const fs = require('fs'), path = require('path'), assert = require('assert');
         const gl = V3.gl, c = document.getElementById('vp3'), W = c.width, H = c.height, px = new Uint8Array(W * H * 4);
         gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px);
         for (let y = 2; y < H; y += 5) for (let x = 2; x < W; x += 5) {
-          const o = ((H - 1 - y) * W + x) * 4, drawn = Math.max(px[o], px[o + 1], px[o + 2]) > 75, picked = pick3(x + 0.5, y + 0.5) >= 0;
+          const o = ((H - 1 - y) * W + x) * 4, drawn = px[o + 1] > 50 && px[o + 1] > px[o] + 20 && px[o + 1] > px[o + 2] + 20, picked = pick3(x + 0.5, y + 0.5) === S.parts.length - 1;
           if (picked) covered++; if (drawn !== picked) disagree++; total++;
         }
       }
       return {covered, disagree, total, err: V3.err};
-    }, {ring, extra});
+    }, {ring, extra, cut});
     const rings = [
       ['round z', {a: 30, b: 8, c: 8}], ['tall z (b > c)', {a: 30, b: 14, c: 6}], ['flat z (b < c)', {a: 30, b: 5, c: 12}],
       ['x axis', {a: 25, b: 15, c: 5, axis: 'x', x: 8}], ['y axis, offset', {a: 35, b: 4, c: 20, axis: 'y', z: -6}], ['turned 30 degrees (view only)', {a: 30, b: 12, c: 6, rx: 30}]];
@@ -73,7 +74,7 @@ const fs = require('fs'), path = require('path'), assert = require('assert');
               const nw = [0, 1, 2].map(i => q.cols[0][i] * sp.n0[0] + q.cols[1][i] * sp.n0[1] + q.cols[2][i] * sp.n0[2]);
               const lam = 0.30 + 0.70 * Math.max(-(nw[0] * rd[0] + nw[1] * rd[1] + nw[2] * rd[2]), 0);
               const k = ((H - 1 - y) * W + x) * 4, L = (px[k] + px[k + 1] + px[k + 2]) / 3;
-              if (L < 60) continue;
+              if (L < 18) continue;
               xs.push(lam); ys.push(L);
             }
           }
@@ -85,11 +86,20 @@ const fs = require('fs'), path = require('path'), assert = require('assert');
         assert.ok(r.slope > 0 && r.corr > 0.995, `brightness against the true normal: correlation ${r.corr.toFixed(4)} over ${r.n} pixels`);
       });
     }
-    await check('3D: parts inside the hole and across the tube show through correctly (two spans per ray)', async () => {
-      const r = await grid3({a: 30, b: 12, c: 6}, [{shape: 'sphere', r: 8}, {shape: 'box', sx: 8, sy: 90, sz: 3}, {shape: 'sphere', r: 4, x: -30, material: 'void'}]);
+    await check('3D: parts inside the hole and across the tube show through correctly', async () => {
+      const r = await grid3({a: 30, b: 12, c: 6}, [{shape: 'sphere', r: 8}, {shape: 'box', sx: 8, sy: 90, sz: 3}]);
       assert.ok(!r.err, r.err);
       assert.ok(r.covered > 2500 && r.disagree <= 0.015 * r.covered + 5, JSON.stringify(r));
     });
+    // The cut-away plane (y = 0) removes the half facing the camera. A ray that enters the cut inside the hole has already left the first tube, so only the torus's
+    // second span is left for it: a shader that kept one span per part would draw nothing there.
+    for (const [name, ring] of [['z axis', {a: 30, b: 12, c: 6}], ['x axis', {a: 25, b: 15, c: 5, axis: 'x'}]]) {
+      await check(`3D cutaway: the second span is drawn where the first is cut off (${name})`, async () => {
+        const r = await grid3(ring, [], true);
+        assert.ok(!r.err, r.err);
+        assert.ok(r.covered > 2500 && r.disagree <= 0.015 * r.covered + 5, JSON.stringify(r));
+      });
+    }
     for (const plane of ['xy', 'xz', 'yz']) {
       await check(`2D slice (${plane}): the torus colour is exactly where inShape says inside`, async () => {
         const r = await page.evaluate(plane => {

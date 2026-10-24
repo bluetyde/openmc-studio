@@ -10,13 +10,21 @@ from pathlib import Path
 
 from . import mc_result_checks, rerun_check, run_report, variance_stats
 
-# Only limits with a source in hand are set. The MCNP manual gives a number for histories per cycle; neither it nor OpenMC's
-# documentation (not available offline when this was written) gives one for active batches or the entropy plateau, so those two
-# stay "not compared" until a source is found.
+# Only limits with a source in hand are set. The MCNP 6.3 manual (LA-UR-22-30006 Rev. 1) gives numbers for histories per cycle (bias negligible above about 200, final
+# calculations 5000 or more) and for active cycles (fewer than 30 not recommended); it gives none for the entropy plateau, which stays "not compared". MCNP cycles are OpenMC
+# batches. Whether OpenMC's own documentation says the same has not been checked.
 THRESHOLDS = {
-    "min_particles_per_batch": {
+    "bias_particles_per_batch": {
+        "value": 200,
+        "source": "MCNP 6.3 manual, section 2.8.2: the keff bias \"is negligible for all practical problems where N is greater than about 200 neutrons per cycle\"",
+    },
+    "recommended_particles_per_batch": {
         "value": 5000,
-        "source": "MCNP 6.3 manual (LA-UR-22-30006 Rev. 1), section 2.8.1: a final calculation uses histories per cycle \"of 5000 or more\"",
+        "source": "MCNP 6.3 manual, section 2.8.1.4: a final calculation uses histories per cycle \"of 5000 or more\" (trial runs about 1000)",
+    },
+    "min_active_batches": {
+        "value": 30,
+        "source": "MCNP 6.3 manual, section 2.8.3.2: \"Fewer than 30 active cycles is not recommended because trends in the average keff may not have enough cycles to develop\"",
     },
 }
 

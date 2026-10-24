@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "studio"))
 
 from openmc_studio import mc_result_checks
-from openmc_studio.mc_result_checks import check_eigenvalue, entropy_settling_batch, format_k
+from openmc_studio.mc_result_checks import check_eigenvalue, entropy_settling_batch, format_k, skipped_cycles
 
 
 class TestMCResultChecks(unittest.TestCase):
@@ -153,6 +153,74 @@ class TestMCResultChecks(unittest.TestCase):
         codes_ok = {f["code"]: f for f in findings_ok}
         self.assertEqual(codes_ok["particles-per-batch"]["level"], "info")
         self.assertIn(source_tag, codes_ok["particles-per-batch"]["message"])
+
+    def test_05b_particles_per_batch_tiers(self):
+        """5b. Bias tier (warning below), recommended tier (a note below), both named; min_particles_per_batch alone behaves as before."""
+        bias = {"value": 200, "source": "bias source"}
+        rec = {"value": 5000, "source": "recommended source"}
+        both = {"bias_particles_per_batch": bias, "recommended_particles_per_batch": rec}
+
+        def level(particles, thresholds):
+            summary = {"run_mode": "eigenvalue", "keff": [1.0, 0.001], "particles": particles, "batches": 10, "n_inactive": 2}
+            return {f["code"]: f for f in check_eigenvalue(summary, thresholds=thresholds)}["particles-per-batch"]
+        self.assertEqual(level(199, both)["level"], "warning")
+        self.assertIn("bias source", level(199, both)["message"])
+        self.assertEqual(level(199, both)["detail"]["tier"], "bias")
+        self.assertEqual(level(200, both)["level"], "info")
+        self.assertEqual(level(200, both)["detail"]["tier"], "recommended")
+        self.assertIn("below the 5000 recommended", level(4999, both)["message"])
+        self.assertEqual(level(5000, both)["level"], "info")
+        self.assertIn("meets or exceeds", level(5000, both)["message"])
+        self.assertIn("recommended source", level(5000, both)["message"])
+        # only the bias tier given: above it the recommended tier is simply absent, the old min rule still decides
+        self.assertEqual(level(1000, {"bias_particles_per_batch": bias})["level"], "not-compared")
+        # the old threshold keeps its meaning (a warning below its limit)
+        self.assertEqual(level(1000, {"min_particles_per_batch": {"value": 5000, "source": "s"}})["level"], "warning")
+        # a bias warning outranks everything else
+        self.assertEqual(level(100, {**both, "min_particles_per_batch": {"value": 5000, "source": "s"}})["detail"]["tier"], "bias")
+
+    def test_06b_skipped_cycles_function(self):
+        """6b. skipped_cycles against a plain-loop reimplementation, hand cases, and the refusals."""
+        series = [1.0 + 0.05 * 0.9 ** i + (0.0007 if i % 3 == 0 else -0.0003) for i in range(100)]
+        res = skipped_cycles(series, 20)
+        sems = [statistics.stdev(series[s:]) / (len(series) - s) ** 0.5 for s in range(len(series) // 2 + 1)]
+        best = min(range(len(sems)), key=lambda i: (sems[i], i))
+        self.assertEqual(res["best_skip"], best)
+        self.assertAlmostEqual(res["sem_best"], sems[best], places=14)
+        self.assertAlmostEqual(res["sem_at_inactive"], sems[20], places=14)
+        self.assertGreater(res["best_skip"], 20, "this series is still settling after 20 batches")
+        # a stationary alternating series: the smallest deviation of the mean comes from skipping nothing
+        flat = [1.0 + (0.001 if i % 2 else -0.001) for i in range(100)]
+        self.assertEqual(skipped_cycles(flat, 10)["best_skip"], 0)
+        # too few batches, an inactive count that leaves too few active batches, and no spread
+        self.assertIsNone(skipped_cycles(flat[:19], 2))
+        self.assertIsNone(skipped_cycles(flat, 95))
+        self.assertIsNone(skipped_cycles(flat, -1))
+        self.assertIsNone(skipped_cycles([1.0] * 50, 5))
+
+    def test_06c_skipped_cycles_finding(self):
+        """6c. The finding: warning when the best skip exceeds the inactive count, info when not, not-compared without a usable series; wording names the manual and the caveat."""
+        drift = [1.0 + 0.05 * 0.9 ** i + (0.0007 if i % 3 == 0 else -0.0003) for i in range(100)]
+        flat = [1.0 + (0.001 if i % 2 else -0.001) for i in range(100)]
+        base = {"run_mode": "eigenvalue", "keff": [1.0, 0.001], "particles": 1000, "batches": 100, "n_inactive": 10}
+
+        def finding(summary):
+            return {f["code"]: f for f in check_eigenvalue(summary)}["skipped-cycles"]
+        w = finding({**base, "k_generation": drift})
+        self.assertEqual(w["level"], "warning")
+        self.assertIn("2.8.2.8", w["message"])
+        self.assertIn("can fire by chance", w["message"])
+        self.assertGreater(w["detail"]["best_skip"], 10)
+        self.assertEqual(w["detail"]["n_inactive"], 10)
+        i = finding({**base, "k_generation": flat})
+        self.assertEqual(i["level"], "info")
+        self.assertIn("consistent with enough batches skipped", i["message"])
+        self.assertIn("when 0 batches are skipped", i["message"])
+        self.assertEqual((mc_result_checks._batches(0), mc_result_checks._batches(1), mc_result_checks._batches(2)), ("0 batches", "1 batch", "2 batches"))
+        for bad in (None, [1.0] * 99, ["x"] * 100, [float("nan")] * 100, [True] * 100):
+            self.assertEqual(finding({**base, "k_generation": bad})["level"], "not-compared", repr(bad)[:30])
+        self.assertEqual(finding(base)["level"], "not-compared", "no series at all")
+        self.assertEqual(finding({**base, "k_generation": [1.0] * 100})["level"], "not-compared", "constant series: no spread to judge")
 
     def test_06_active_batches(self):
         """6. Active batches comparisons, inactive fallback, and inactive-missing handling."""

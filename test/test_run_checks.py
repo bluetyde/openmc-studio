@@ -60,17 +60,37 @@ class RunChecksUnit(unittest.TestCase):
         by = codes(run_checks.findings(self.tmp, SUMMARY))
         self.assertEqual(by["particles-per-batch"]["level"], "info")  # 20,000 is above 5,000
         self.assertIn("MCNP 6.3 manual", by["particles-per-batch"]["message"], "the source is named in the finding")
-        # no source gives a number for these two: they must say so, never invent a default
-        self.assertEqual(by["active-batches"]["level"], "not-compared")
+        self.assertIn("section 2.8.1.4", by["particles-per-batch"]["message"])
+        # 90 active batches is above the manual's 30; the source is named
+        self.assertEqual(by["active-batches"]["level"], "info")
+        self.assertIn("section 2.8.3.2", by["active-batches"]["message"])
+        # no source gives a number for the entropy plateau: it must say so, never invent a default
         self.assertEqual(by["entropy-settled"]["level"] if "entropy-settled" in by else "not-compared", "not-compared")
+        self.assertEqual(by["skipped-cycles"]["level"], "not-compared", "this summary has no per-batch k series")
         self.assertEqual(by["lost-particles"]["level"], "info")
         self.assertIn("1 sigma", by["k-estimate"]["message"])
 
     def test_few_particles_is_a_warning_and_lost_particles_a_warning(self):
         (self.tmp / "run.log").write_text("Particle 3 was lost\n")
-        by = codes(run_checks.findings(self.tmp, dict(SUMMARY, particles=1000)))
-        self.assertEqual(by["particles-per-batch"]["level"], "warning")
+        by = codes(run_checks.findings(self.tmp, dict(SUMMARY, particles=150)))
+        self.assertEqual(by["particles-per-batch"]["level"], "warning", "below the 200 of MCNP 6.3 manual 2.8.2 the bias is not negligible")
+        self.assertIn("section 2.8.2", by["particles-per-batch"]["message"])
         self.assertEqual(by["lost-particles"]["level"], "warning")
+        trial = codes(run_checks.findings(self.tmp, dict(SUMMARY, particles=1000)))
+        self.assertEqual(trial["particles-per-batch"]["level"], "info", "1000 is a trial run in the manual's words: a note, not a warning")
+        self.assertIn("recommended for a final calculation", trial["particles-per-batch"]["message"])
+        edge = codes(run_checks.findings(self.tmp, dict(SUMMARY, particles=200)))
+        self.assertEqual(edge["particles-per-batch"]["level"], "info", "200 itself is not below 200")
+
+    def test_few_active_batches_is_a_warning_and_the_series_feeds_the_skipped_cycles_check(self):
+        (self.tmp / "run.log").write_text("")
+        few = codes(run_checks.findings(self.tmp, dict(SUMMARY, batches=50, inactive=30)))
+        self.assertEqual(few["active-batches"]["level"], "warning", "20 active batches, fewer than 30")
+        drift = [1.0 + 0.05 * 0.9 ** i + (0.0005 if i % 2 else -0.0005) for i in range(120)]
+        flagged = codes(run_checks.findings(self.tmp, dict(SUMMARY, k_generation=drift)))
+        self.assertEqual(flagged["skipped-cycles"]["level"], "warning", "a series still settling after 30 inactive batches")
+        flat = [1.0 + (0.0005 if i % 2 else -0.0005) for i in range(120)]
+        self.assertEqual(codes(run_checks.findings(self.tmp, dict(SUMMARY, k_generation=flat)))["skipped-cycles"]["level"], "info")
 
     def test_fixed_source_run_gets_one_info_line(self):
         out = run_checks.findings(self.tmp, {"run_mode": "fixed source", "batches": 10, "particles": 100})

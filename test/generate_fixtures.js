@@ -247,3 +247,12 @@ write('fission_off', {materials: [{id: 'm_heu', name: 'HEU', color: '#c8b273', d
     tallies: [{...cellTally('t_dose', ['pin_0_0', 'pin_1_0', 'pin_-2_1']), dose: 'n', doseData: 'icrp116', doseGeom: 'AP'}],
     settings: settings({worldR: 30, particles: 20000, batches: 10})}, {flatTwin: true});
 }
+
+// 7. A torus cut by a slab. The slab is a box part listed first (it wins where they overlap), so the part 'ring' is the torus outside |h| < 1.5
+//    along its axis; test_torus_openmc.py measures that volume in OpenMC and compares it with the closed form. The three fixtures use a = 10:
+//    b = 2, c = 1 (leaves 56.965 cm3 outside the slab), b = 1, c = 2 (the slab holds all of it: 0), and an x-axis torus with b = 2, c = 1.
+for (const [name, axis, b, c] of [['torus_ellip', 'z', 2, 1], ['torus_swapped', 'z', 1, 2], ['torus_x', 'x', 2, 1]]) {
+  const slab = axis === 'z' ? {sx: 40, sy: 40, sz: 3} : {sx: 3, sy: 40, sz: 40};
+  write(name, {materials: [steel], parts: [part('slab', 'box', 0, 0, 0, slab, 'm_steel'), part('ring', 'torus', 0, 0, 0, {a: 10, b, c, axis}, 'm_steel')],
+    sources: [pointSource()], tallies: [], settings: settings({worldR: 30})});
+}

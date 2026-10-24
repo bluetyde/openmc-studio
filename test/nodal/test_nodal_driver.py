@@ -597,15 +597,16 @@ class OutsideLayers(unittest.TestCase):
     def test_the_map_with_its_layers_has_the_right_shape_widths_and_corners(self):
         import openmc
         mk = lambda label, w: nodal_driver.Layer(label, openmc.Universe(cells=[openmc.Cell()]), w, label)
-        L1, L2, R1, T1 = mk("left1", 2.0), mk("left2", 3.0), mk("right1", 4.0), mk("top1", 5.0)
+        L1, L2, R1, T1, T2 = mk("left1", 2.0), mk("left2", 3.0), mk("right1", 4.0), mk("top1", 5.0), mk("top2", 7.0)
         labels = [["A", "B"], ["B", "A"]]
-        rows, wx, wy, n_top, n_left = nodal_driver.extend_layout(labels, 6.3, {"x_min": [L1, L2], "x_max": [R1], "y_max": [T1]})
-        self.assertEqual((n_top, n_left), (1, 2))
+        rows, wx, wy, n_top, n_left = nodal_driver.extend_layout(labels, 6.3, {"x_min": [L1, L2], "x_max": [R1], "y_max": [T1, T2]})
+        self.assertEqual((n_top, n_left), (2, 2))
         self.assertEqual(wx, [3.0, 2.0, 6.3, 6.3, 4.0], "left layers outermost first, then the core, then the right layers nearest first")
-        self.assertEqual(wy, [5.0, 6.3, 6.3], "top layers outermost first, no bottom layer")
-        self.assertEqual(rows[0], ["left2", "left1", "top1", "top1", "right1"], "the corners take the left or right side's label")
-        self.assertEqual(rows[1], ["left2", "left1", "A", "B", "right1"])
-        self.assertEqual(rows[2], ["left2", "left1", "B", "A", "right1"])
+        self.assertEqual(wy, [7.0, 5.0, 6.3, 6.3], "top layers outermost first, no bottom layer")
+        self.assertEqual(rows[0], ["left2", "left1", "top2", "top2", "right1"], "the corners take the left or right side's label; the outermost top layer is the first row")
+        self.assertEqual(rows[1], ["left2", "left1", "top1", "top1", "right1"])
+        self.assertEqual(rows[2], ["left2", "left1", "A", "B", "right1"])
+        self.assertEqual(rows[3], ["left2", "left1", "B", "A", "right1"])
         self.assertEqual(len(rows), len(wy))
         self.assertTrue(all(len(r) == len(wx) for r in rows))
         # no layers at all: the map as it was
@@ -660,6 +661,7 @@ class OutsideLayers(unittest.TestCase):
 
     def test_more_layers_than_the_limit_are_refused(self):
         g, lat = self.model("tank_limit", tank_text(self.kinds, fill="clad", thickness=5.0))
+        self.assertEqual(nodal_driver.MAX_LAYERS, 3, "the documented limit")
         saved = nodal_driver.MAX_LAYERS
         nodal_driver.MAX_LAYERS = 0
         try:
@@ -709,6 +711,11 @@ class TankInTheSolve(unittest.TestCase):
         kw = dict(particles=6000, batches=60, inactive=15, seed=11, threads=int(os.environ.get("OMP_NUM_THREADS", "4")), geometry=model.geometry)
         cls.on = nodal_driver.two_step(lattice, mats, workdir=cls.tmp / "on", **kw)
         cls.off = nodal_driver.two_step(lattice, mats, workdir=cls.tmp / "off", boundaries={f: "vacuum" for f in nodal_driver.FACES}, **kw)
+        thin_script = cls.tmp / "thin.py"
+        thin_script.write_text(tank_text(inner, fill="water", thickness=3.15), encoding="utf-8", newline="\n")
+        thin_model = nodal_driver.load_model(thin_script)
+        cls.thin = nodal_driver.two_step(nodal_driver.core_lattice(thin_model), __import__("openmc").Materials(thin_model.geometry.get_all_materials().values()), workdir=cls.tmp / "thin",
+                                         **{**kw, "geometry": thin_model.geometry})
         print(f"[tank] with the layers {(cls.on.nodal.k_eff - float(cls.core['k'])) * 1e5:+.0f} pcm, without {(cls.off.nodal.k_eff - float(cls.core['k'])) * 1e5:+.0f} pcm; pieces "
               + "; ".join(f"{l.split(' | ')[-1] if ' | ' in l else l} {k:.4f}" for l, _, k, _, _ in cls.on.pieces), flush=True)
 
@@ -724,6 +731,13 @@ class TankInTheSolve(unittest.TestCase):
         d_on = (self.on.nodal.k_eff - float(self.core["k"])) * 1e5
         d_off = (self.off.nodal.k_eff - float(self.core["k"])) * 1e5
         self.assertLess(d_off, d_on - 3000, f"bare {d_off:+.0f} against with the tank {d_on:+.0f}")
+
+    def test_half_the_water_is_worth_less_than_all_of_it_and_more_than_none(self):
+        """A 3.15 cm tank is a node 3.15 cm wide, not one assembly wide: k falls between the bare core and the 6.3 cm tank."""
+        d = {name: (run.nodal.k_eff - float(self.core["k"])) * 1e5 for name, run in (("bare", self.off), ("thin", self.thin), ("full", self.on))}
+        self.assertLess(d["thin"], d["full"] - 150, d)
+        self.assertGreater(d["thin"], d["bare"] + 3000, d)
+        self.assertIn("water 3.15 cm", self.thin.faces["x_min"]["detail"])
 
     def test_the_faces_say_what_was_done(self):
         for face in nodal_driver.FACES:

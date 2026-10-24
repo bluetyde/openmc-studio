@@ -503,5 +503,249 @@ class OuterFaces(unittest.TestCase):
         self.assertEqual(out["detected"]["x_min"]["type"], "reflective", "and the detection is still what the model has")
 
 
+
+# ── material outside a face as part of the solve ─────────────────────────────────────────────────────────────────────────────────────────
+def tank_text(kinds, *, fill="water", thickness=5.0, extra_cells="", end_bc="vacuum"):
+    """The Studio-style script with the core lattice in a tank of `thickness` cm of `fill` (a material variable of the script) bounded by planes with `end_bc`."""
+    open_planes = (XM_LINE.replace(', boundary_type="vacuum"', ""), YM_LINE.replace(', boundary_type="vacuum"', ""))
+    return variant(kinds, (XM_LINE, open_planes[0]), (YM_LINE, open_planes[1]),
+                   (MODEL_LINE, f'T = {thickness}\n'
+                                f'tx0, tx1 = openmc.XPlane(-nc * ASM / 2 - T, boundary_type="{end_bc}"), openmc.XPlane(nc * ASM / 2 + T, boundary_type="{end_bc}")\n'
+                                f'ty0, ty1 = openmc.YPlane(-nc * ASM / 2 - T, boundary_type="{end_bc}"), openmc.YPlane(nc * ASM / 2 + T, boundary_type="{end_bc}")\n'
+                                f'tank = openmc.Cell(name="tank", fill={fill}, region=+tx0 & -tx1 & +ty0 & -ty1 & +zm & -zp & ~(+xm & -xp & +ym & -yp))\n'
+                                f'{extra_cells}'
+                                "model = openmc.Model(geometry=openmc.Geometry([cell_core, tank" + (", extra" if extra_cells else "") + "]), materials=materials, settings=settings)"))
+
+
+class OutsideLayers(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp(prefix="nodal_outside_"))
+        cls.kinds = load("checker1")["kinds"]
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def model(self, name, text):
+        p = self.tmp / f"{name}.py"
+        p.write_text(text, encoding="utf-8", newline="\n")
+        m = nodal_driver.load_model(p)
+        return m.geometry, nodal_driver.core_lattice(m)
+
+    def test_a_tank_is_one_layer_with_its_thickness_and_the_planes_behind_it(self):
+        g, lat = self.model("tank", tank_text(self.kinds, fill="clad", thickness=5.0))
+        for face in nodal_driver.FACES:
+            pr = nodal_driver.probe_outside(g, lat, face)
+            self.assertEqual(pr["status"], "ok", (face, pr))
+            self.assertEqual(len(pr["layers"]), 1)
+            self.assertEqual(pr["layers"][0]["name"], "clad", "the material just outside, not one inside the lattice")
+            self.assertAlmostEqual(pr["layers"][0]["thickness"], 5.0, places=4)
+            self.assertEqual(pr["end_bc"], "vacuum")
+            self.assertIn("plane", pr["reason"])
+        g, lat = self.model("tank_refl", tank_text(self.kinds, fill="clad", thickness=5.0, end_bc="reflective"))
+        self.assertEqual(nodal_driver.probe_outside(g, lat, "x_min")["end_bc"], "reflective", "the plane behind the tank decides the face")
+
+    def test_two_layers_come_nearest_first(self):
+        # water 2 cm next to the core, then clad 3 cm: a second box 2 cm out, cut out of the tank cell
+        text = tank_text(self.kinds, fill="clad", thickness=5.0, extra_cells=(
+            'wx0, wx1 = openmc.XPlane(-nc * ASM / 2 - 2), openmc.XPlane(nc * ASM / 2 + 2)\n'
+            'wy0, wy1 = openmc.YPlane(-nc * ASM / 2 - 2), openmc.YPlane(nc * ASM / 2 + 2)\n'
+            'tank.region = tank.region & ~(+wx0 & -wx1 & +wy0 & -wy1)\n'
+            'extra = openmc.Cell(name="water layer", fill=water, region=+wx0 & -wx1 & +wy0 & -wy1 & +zm & -zp & ~(+xm & -xp & +ym & -yp))\n'))
+        g, lat = self.model("two", text)
+        pr = nodal_driver.probe_outside(g, lat, "y_max")
+        self.assertEqual(pr["status"], "ok", pr)
+        self.assertEqual([(l["name"], round(l["thickness"], 4)) for l in pr["layers"]], [("water", 2.0), ("clad", 3.0)], "nearest first")
+        self.assertEqual(nodal_driver.describe_layers(pr), "water 2 cm then clad 3 cm")
+
+    def test_a_void_gap_ends_the_layers(self):
+        text = tank_text(self.kinds, fill="water", thickness=5.0, extra_cells=(
+            'gx0, gx1 = openmc.XPlane(-nc * ASM / 2 - 3), openmc.XPlane(nc * ASM / 2 + 3)\n'
+            'gy0, gy1 = openmc.YPlane(-nc * ASM / 2 - 3), openmc.YPlane(nc * ASM / 2 + 3)\n'
+            'tank.region = tank.region & (+gx0 & -gx1 & +gy0 & -gy1)\n'
+            'extra = openmc.Cell(name="gap", fill=None, region=~(+gx0 & -gx1 & +gy0 & -gy1) & +tx0 & -tx1 & +ty0 & -ty1 & +zm & -zp)\n'))
+        g, lat = self.model("gap", text)
+        pr = nodal_driver.probe_outside(g, lat, "x_max")
+        self.assertEqual(pr["status"], "ok", pr)
+        self.assertEqual([(l["name"], round(l["thickness"], 4)) for l in pr["layers"]], [("water", 3.0)], "the void gap is not a layer")
+        self.assertIn("end in void", pr["reason"])
+        self.assertEqual(pr["end_bc"], "vacuum")
+
+    def test_what_cannot_be_a_slab_is_refused_with_its_reason(self):
+        # a cylindrical tank round a square core: thinner at the corners than at the middle of a face
+        cyl = variant(self.kinds, (XM_LINE, XM_LINE.replace(', boundary_type="vacuum"', "")), (YM_LINE, YM_LINE.replace(', boundary_type="vacuum"', "")),
+                      (MODEL_LINE, 'rc = openmc.ZCylinder(r=nc * ASM / 2 + 9.0, boundary_type="vacuum")\n'
+                                   'tank = openmc.Cell(name="tank", fill=water, region=-rc & +zm & -zp & ~(+xm & -xp & +ym & -yp))\n'
+                                   "model = openmc.Model(geometry=openmc.Geometry([cell_core, tank]), materials=materials, settings=settings)"))
+        g, lat = self.model("cyl", cyl)
+        pr = nodal_driver.probe_outside(g, lat, "x_max")
+        self.assertEqual(pr["status"], "nonuniform", pr)
+        self.assertIn("not the same along the face", pr["reason"])
+        # a medium that goes on past 60 cm
+        g, lat = self.model("deep", tank_text(self.kinds, fill="water", thickness=90.0))
+        self.assertEqual(nodal_driver.probe_outside(g, lat, "x_min")["status"], "deep")
+        # nothing outside but the end of the model
+        g, lat = self.model("plain", script_text(self.kinds))
+        self.assertEqual(nodal_driver.probe_outside(g, lat, "x_min")["status"], "none")
+        # a nested lattice cannot be placed
+        nested = variant(self.kinds, (MODEL_LINE, "model = openmc.Model(geometry=openmc.Geometry(openmc.Universe(cells=[openmc.Cell(fill=openmc.Universe(cells=[cell_core]), "
+                                                  "region=+xm & -xp & +ym & -yp & +zm & -zp)])), materials=materials, settings=settings)"))
+        g, lat = self.model("nested", nested)
+        self.assertEqual(nodal_driver.probe_outside(g, lat, "x_min")["status"], "unsupported")
+
+    def test_the_map_with_its_layers_has_the_right_shape_widths_and_corners(self):
+        import openmc
+        mk = lambda label, w: nodal_driver.Layer(label, openmc.Universe(cells=[openmc.Cell()]), w, label)
+        L1, L2, R1, T1 = mk("left1", 2.0), mk("left2", 3.0), mk("right1", 4.0), mk("top1", 5.0)
+        labels = [["A", "B"], ["B", "A"]]
+        rows, wx, wy, n_top, n_left = nodal_driver.extend_layout(labels, 6.3, {"x_min": [L1, L2], "x_max": [R1], "y_max": [T1]})
+        self.assertEqual((n_top, n_left), (1, 2))
+        self.assertEqual(wx, [3.0, 2.0, 6.3, 6.3, 4.0], "left layers outermost first, then the core, then the right layers nearest first")
+        self.assertEqual(wy, [5.0, 6.3, 6.3], "top layers outermost first, no bottom layer")
+        self.assertEqual(rows[0], ["left2", "left1", "top1", "top1", "right1"], "the corners take the left or right side's label")
+        self.assertEqual(rows[1], ["left2", "left1", "A", "B", "right1"])
+        self.assertEqual(rows[2], ["left2", "left1", "B", "A", "right1"])
+        self.assertEqual(len(rows), len(wy))
+        self.assertTrue(all(len(r) == len(wx) for r in rows))
+        # no layers at all: the map as it was
+        rows0, wx0, wy0, t0, l0 = nodal_driver.extend_layout(labels, 6.3, {})
+        self.assertEqual((rows0, wx0, wy0, t0, l0), (labels, [6.3, 6.3], [6.3, 6.3], 0, 0))
+
+    def test_strips_end_in_the_layers_and_a_fuel_edge_gets_a_strip(self):
+        g, lat = self.model("tank6", tank_text([r[1:-1] for r in self.kinds[1:-1]], fill="water", thickness=6.3))
+        probes = {f: nodal_driver.probe_outside(g, lat, f) for f in nodal_driver.FACES}
+        rings = nodal_driver.make_layers(probes)
+        self.assertEqual(sorted(rings), sorted(nodal_driver.FACES))
+        labels = {l.label for ls in rings.values() for l in ls}
+        self.assertEqual(len(labels), 1, "identical slabs on four sides share one label and so one set of constants")
+        pieces, kinds, _ = nodal_driver.plan_pieces(lat, rings)
+        strips = [p for p in pieces if p.role == "strip"]
+        self.assertTrue(strips, "a core whose edge is fuel gets strips because layers follow it")
+        for st in strips:
+            self.assertAlmostEqual(st.widths[-1], 6.3, places=6)
+            self.assertEqual(st.widths[:-1], [6.3] * (len(st.widths) - 1), "the lattice entries keep the pitch")
+            self.assertIn("| water 6.3 cm", st.label)
+            self.assertEqual(st.x_bcs, ("reflective", "vacuum"))
+        # without layers the same core has no strip at all (fuel to the edge)
+        pieces0, _, _ = nodal_driver.plan_pieces(lat)
+        self.assertEqual([p.role for p in pieces0], ["infinite", "infinite"])
+
+    def test_the_reading_names_the_boundary_behind_the_layers_and_leaves_overridden_faces_alone(self):
+        g, lat = self.model("tank_refl2", tank_text(self.kinds, fill="clad", thickness=5.0, end_bc="reflective"))
+        det, probes, rings = nodal_driver.read_outside(g, lat, None)
+        self.assertEqual({d["type"] for d in det.values()}, {"reflective"}, "the plane behind the tank is the boundary of the extended core")
+        self.assertEqual(sorted(rings), sorted(nodal_driver.FACES))
+        self.assertIn("clad 5 cm", det["x_min"]["detail"])
+        det, probes, rings = nodal_driver.read_outside(g, lat, {"x_min": "vacuum"})
+        self.assertNotIn("x_min", rings, "a face the caller named is not probed: the caller's word is taken")
+        self.assertEqual(det["x_min"]["type"], "material")
+        self.assertEqual(sorted(rings), ["x_max", "y_max", "y_min"])
+        self.assertEqual(nodal_driver.read_outside(None, lat, None), (None, {}, {}))
+
+    def test_a_face_that_cannot_be_a_slab_keeps_its_reason_and_stays_vacuum_with_a_warning(self):
+        cyl = variant(self.kinds, (XM_LINE, XM_LINE.replace(', boundary_type="vacuum"', "")), (YM_LINE, YM_LINE.replace(', boundary_type="vacuum"', "")),
+                      (MODEL_LINE, 'rc = openmc.ZCylinder(r=nc * ASM / 2 + 9.0, boundary_type="vacuum")\n'
+                                   'tank = openmc.Cell(name="tank", fill=water, region=-rc & +zm & -zp & ~(+xm & -xp & +ym & -yp))\n'
+                                   "model = openmc.Model(geometry=openmc.Geometry([cell_core, tank]), materials=materials, settings=settings)"))
+        g, lat = self.model("cyl2", cyl)
+        det, probes, rings = nodal_driver.read_outside(g, lat, None)
+        self.assertEqual(rings, {})
+        self.assertEqual({d["type"] for d in det.values()}, {"material"})
+        self.assertIn("not the same along the face", det["x_max"]["detail"])
+        chosen, used, warns = nodal_driver.resolve_faces(det, None)
+        self.assertEqual(set(chosen.values()), {"vacuum"})
+        self.assertEqual(len(warns), 4)
+        self.assertTrue(all("not taken into the solve" in w for w in warns))
+
+    def test_more_layers_than_the_limit_are_refused(self):
+        g, lat = self.model("tank_limit", tank_text(self.kinds, fill="clad", thickness=5.0))
+        saved = nodal_driver.MAX_LAYERS
+        nodal_driver.MAX_LAYERS = 0
+        try:
+            pr = nodal_driver.probe_outside(g, lat, "x_min")
+        finally:
+            nodal_driver.MAX_LAYERS = saved
+        self.assertEqual(pr["status"], "unsupported")
+        self.assertIn("at most 0", pr["reason"])
+        self.assertEqual(nodal_driver.probe_outside(g, lat, "x_min")["status"], "ok", "and the limit is back")
+
+    def test_the_walk_sees_the_layer_start_where_the_face_is(self):
+        # a thin layer (0.4 cm, eight steps of the probe) next to the core is found with its thickness
+        g, lat = self.model("thin", tank_text(self.kinds, fill="clad", thickness=0.4))
+        pr = nodal_driver.probe_outside(g, lat, "y_min")
+        self.assertEqual(pr["status"], "ok")
+        self.assertAlmostEqual(pr["layers"][0]["thickness"], 0.4, places=4)
+
+    def test_the_command_line_reports_the_layers_taken_into_the_solve(self):
+        p = self.tmp / "cli_tank.py"
+        p.write_text(tank_text(self.kinds, fill="clad", thickness=5.0), encoding="utf-8", newline="\n")
+        r = subprocess.run([sys.executable, "-m", "openmc_studio.nodal_driver", str(p), "--faces"], cwd=ROOT / "studio", capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = json.loads(r.stdout.strip().splitlines()[-1])
+        self.assertEqual({o["status"] for o in out["outside"].values()}, {"ok"})
+        self.assertEqual([l["name"] for l in out["outside"]["x_min"]["layers"]], ["clad"])
+        for face in nodal_driver.FACES:
+            self.assertEqual((out["used"][face]["boundary"], out["used"][face]["source"]), ("vacuum", "model"))
+            self.assertIn("clad 5 cm", out["used"][face]["detail"])
+        self.assertEqual(out["warnings"], [], "a tank taken into the solve is nothing to warn about")
+
+
+class TankInTheSolve(unittest.TestCase):
+    """The checkerboard of the saved Monte Carlo run is a 6 x 6 fuel lattice with a ring of water lattice sites round it. The same physics is the 6 x 6 lattice in a tank of 6.3 cm of water (one
+    assembly width) with vacuum behind: OpenMC's k is the saved run's (0.94469). The driver must treat the tank as part of the solve (about +1.0k, as with the ring in the lattice) and, with
+    the layers switched off by naming the faces vacuum, as a bare core (far lower)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp(prefix="nodal_tank_run_"))
+        cls.core = load("checker1")
+        inner = [row[1:-1] for row in cls.core["kinds"][1:-1]]
+        script = cls.tmp / "model.py"
+        script.write_text(tank_text(inner, fill="water", thickness=6.3), encoding="utf-8", newline="\n")
+        model = nodal_driver.load_model(script)
+        lattice = nodal_driver.core_lattice(model)
+        mats = __import__("openmc").Materials(model.geometry.get_all_materials().values())
+        kw = dict(particles=6000, batches=60, inactive=15, seed=11, threads=int(os.environ.get("OMP_NUM_THREADS", "4")), geometry=model.geometry)
+        cls.on = nodal_driver.two_step(lattice, mats, workdir=cls.tmp / "on", **kw)
+        cls.off = nodal_driver.two_step(lattice, mats, workdir=cls.tmp / "off", boundaries={f: "vacuum" for f in nodal_driver.FACES}, **kw)
+        print(f"[tank] with the layers {(cls.on.nodal.k_eff - float(cls.core['k'])) * 1e5:+.0f} pcm, without {(cls.off.nodal.k_eff - float(cls.core['k'])) * 1e5:+.0f} pcm; pieces "
+              + "; ".join(f"{l.split(' | ')[-1] if ' | ' in l else l} {k:.4f}" for l, _, k, _, _ in cls.on.pieces), flush=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_k_with_the_tank_is_the_rings_k(self):
+        d = (self.on.nodal.k_eff - float(self.core["k"])) * 1e5
+        self.assertLess(abs(d - E15["checker1"]), WINDOW, f"{d:+.0f} pcm; the same core with the ring as lattice sites gave +1,018 (E15) and +1,042 (the driver)")
+
+    def test_without_the_layers_the_core_is_bare_and_far_too_low(self):
+        d_on = (self.on.nodal.k_eff - float(self.core["k"])) * 1e5
+        d_off = (self.off.nodal.k_eff - float(self.core["k"])) * 1e5
+        self.assertLess(d_off, d_on - 3000, f"bare {d_off:+.0f} against with the tank {d_on:+.0f}")
+
+    def test_the_faces_say_what_was_done(self):
+        for face in nodal_driver.FACES:
+            u = self.on.faces[face]
+            self.assertEqual((u["source"], u["boundary"]), ("model", "vacuum"))
+            self.assertIn("water 6.3 cm", u["detail"])
+            self.assertIn("part of the solve", u["detail"])
+            self.assertEqual(self.off.faces[face]["source"], "override")
+        self.assertFalse([w for w in self.on.warnings if "treats the face as vacuum" in w], "no vacuum-assumed warning where the tank is in the solve")
+        self.assertEqual(len([w for w in self.off.warnings if "treats the face as vacuum" in w]), 0, "overridden faces warn about nothing")
+        self.assertIn("extra node layers", self.on.provenance["recipe"])
+
+    def test_the_power_map_is_the_cores_own_and_matches_the_run(self):
+        self.assertEqual(np.asarray(self.on.nodal.power).shape, (6, 6))
+        ref = self.core["power"][1:-1, 1:-1]
+        ref = ref / ref.mean()
+        p = np.asarray(self.on.nodal.power)
+        p = p / p.mean()
+        rms = 100 * np.sqrt(((p / ref - 1) ** 2).mean())
+        self.assertLess(rms, 5.0, f"assembly power rms {rms:.1f} % against the saved Monte Carlo run")
+        self.assertGreater(100 * np.sqrt(((p[::-1] / ref - 1) ** 2).mean()), 8.0, "the checkerboard read upside down must be visibly wrong")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

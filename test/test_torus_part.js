@@ -148,6 +148,18 @@ test('the explorer line and the 2D slice see the torus', () => {
   assert.strictEqual(run('cellIndexAt(10, 0, 2.5)'), -1);
 });
 
+test('picking in the 3D view: a void part in front hides the first span, the second span of the torus is still picked', () => {
+  run("S = sampleModel(); S.groups = []; S.tallies = []; S.settings.worldR = 100; S.parts = [Object.assign(newPart('p1', 'Hole', 'sphere'), {r: 3, x: -10, material: 'void'}), Object.assign(newPart('p2', 'Ring', 'torus'), {a: 10, b: 2, c: 1, material: S.materials[0].id})]; V3.bvh = null;");
+  run("V3.geom = {B: {pos: [-40, 0, 0], f: [1, 0, 0], r: [0, 1, 0], u: [0, 0, 1], W: 100, H: 100, focal: 100}}; V3.pickT = Infinity");
+  assert.strictEqual(run('pick3(50, 50)'), 1, 'the ring is picked through the void part');
+  assert.ok(Math.abs(run('V3.pickT') - 49) < 1e-6, 'at the second span: ' + run('V3.pickT'));
+  run("V3.geom.B.pos = [-40, 0, 0.5]; V3.geom.B.f = [1, 0, 0]");
+  run("S.parts[0].material = S.materials[0].id");                       // now the first part is solid: picked first, at x = -13
+  assert.strictEqual(run('pick3(50, 50)'), 0);
+  run("V3.geom.B.pos = [0, 0, 30]; V3.geom.B.f = [0, 0, -1]; V3.geom.B.r = [0, 1, 0]; V3.geom.B.u = [1, 0, 0]; S.parts[0].x = 50");
+  assert.strictEqual(run('pick3(50, 50)'), -1, 'straight down the axis goes through the hole');
+});
+
 (async () => {
   for (const [name, fn] of tests) {
     try { await fn(); console.log('PASS', name); } catch (e) { failed++; console.log('FAIL', name, '\n  ', String(e.stack || e).split('\n').slice(0, 4).join('\n   ')); }

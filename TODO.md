@@ -62,8 +62,7 @@ the package, and nothing else.
      [`time_stages.py`](docs/mcnpy-issues/time_stages.py).
 - **Flaky test to watch**: `test/test_generated_models.py` failed once in a full run (2026-09-26):
   `model.run()` returned no statepoint. It passed alone and in the next full run; find the cause if it recurs.
-- **MontePy upgrade**: 1.1.3 in the env vs 1.5.0 upstream; needs a Python 3.12 env. Not decided. **Pin `montepy==1.1.3`** in the exporter's
-  `requirements.txt` and `environment.yml` (both say just `montepy` today; 5 minutes; recommended in the 2026-10-07 investigation).
+- **MontePy upgrade**: 1.1.3 in the env vs 1.5.0 upstream; needs a Python 3.12 env. Not decided. **The pin is done** (2026-10-24, exporter `49a4425`: `montepy==1.1.3` in `requirements.txt`, `montepy=1.1.3` in `environment.yml`, `tests/test_pins.py` checks they agree with each other and with the installed version).
 - **Test thread counts**: Studio's own Python tests run OpenMC with all cores (no `OMP_NUM_THREADS`); upstream advises 2 for its own
   regression tests; only `test_headless.py` sets threads. Decide whether the physics suite should set a count (it would slow a quiet machine).
 - **MCNP lattices, remaining**:
@@ -104,11 +103,7 @@ the package, and nothing else.
 
 ### 0. Quality & workflow (from the 2026-10-07 investigation; private notes, not in the repo)
 - **Figure of merit** on tally tables: 1/(R^2 T), R the tally's relative error, T the run time (wall time on a shared machine: say so). Hours.
-- **Result-page checks for Monte Carlo good practice**, as a separate findings list on the Results page (not Problems, which is rebuilt from the
-  model on every edit). Every threshold names its source; where none gives a number it says "could not compare", never a default.
-  Particles per cycle (below 200: bias; below 5,000: info; MCNP 6.3 manual 2.8.1/2.8.2); inactive batches (MCNP's minimum-uncertainty skipped-cycle check);
-  entropy plateau (no numeric source: "could not compare"); any lost particle (read the run log); label the k uncertainty ("1 sigma, standard
-  uncertainty of the mean"). The OpenMC-documentation sources for the last two are **not confirmed** (docs were offline). About 2 days.
+- **Result-page checks for Monte Carlo good practice: done** (the findings list on the Results page and in the run report; `mc_result_checks.py`, `run_checks.py`; 2026-10-24 completed). Every finding names its source; where none gives a number it says "not compared", never a default. Particles per batch: a **warning below 200** (bias negligible above about 200 per cycle, MCNP 6.3 manual 2.8.2) and a **note below 5,000** (final calculations "5000 or more", 2.8.1.4); **active batches: a warning below 30** (2.8.3.2); **skipped cycles** (2.8.2.8: the number of leading batches skipped that gives the smallest standard deviation of the mean k, compared with the inactive count; adapted to OpenMC's per-batch k; on simulated stationary series it flagged 0 to 11 percent, on a settling one 100 percent, and the message says it can fire by chance); lost particles (read from the run log); the k uncertainty labelled "1 sigma, standard uncertainty". The **entropy plateau stays "not compared"** (no numeric source). Not confirmed: whether OpenMC's own documentation gives the same limits. The figure of merit (1/(R^2 T)) is a column on tally rows.
 - **Re-run command over `provenance.json`**: verify the stored `model.py` / `project.json` hashes, list differences from today's environment
   (the 13 GB library is one hash of `cross_sections.xml`, not its contents), then run through the headless runner. About 1 day.
 - **One shared pre-run check**: done, see the order above.

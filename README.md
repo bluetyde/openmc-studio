@@ -35,7 +35,7 @@ requires.
   largest pin, a symmetry check, and a CSV.
 - **Material from engineering inputs** (Properties of a material): UO2 from enrichment and percent of theoretical density, borated water from ppm boron.
 - **Checks before and after a run:** the same refusals run in the page and on the server before a run starts; Results lists checks on the run (particles per
-  batch, lost particles, the figure of merit of each tally), can check a run's record against today's environment, and saves a one-page run report.
+  batch in two tiers, active batches, whether enough inactive batches were skipped, lost particles, the figure of merit of each tally), can check a run's record against today's environment, and saves a one-page run report.
 
 ## What it looks like
 

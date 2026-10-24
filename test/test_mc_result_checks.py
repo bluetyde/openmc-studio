@@ -212,12 +212,16 @@ class TestMCResultChecks(unittest.TestCase):
         self.assertIn("can fire by chance", w["message"])
         self.assertGreater(w["detail"]["best_skip"], 10)
         self.assertEqual(w["detail"]["n_inactive"], 10)
+        # exactly at the best skip: not flagged (the manual says "larger than Ic")
+        at = {**base, "n_inactive": w["detail"]["best_skip"], "k_generation": drift}
+        self.assertEqual(finding(at)["level"], "info")
+        self.assertEqual(finding({**at, "n_inactive": w["detail"]["best_skip"] - 1})["level"], "warning")
         i = finding({**base, "k_generation": flat})
         self.assertEqual(i["level"], "info")
         self.assertIn("consistent with enough batches skipped", i["message"])
         self.assertIn("when 0 batches are skipped", i["message"])
         self.assertEqual((mc_result_checks._batches(0), mc_result_checks._batches(1), mc_result_checks._batches(2)), ("0 batches", "1 batch", "2 batches"))
-        for bad in (None, [1.0] * 99, ["x"] * 100, [float("nan")] * 100, [True] * 100):
+        for bad in (None, [1.0] * 99, drift[:99], drift + [1.0], ["x"] * 100, [float("nan")] * 100, [True] * 100):
             self.assertEqual(finding({**base, "k_generation": bad})["level"], "not-compared", repr(bad)[:30])
         self.assertEqual(finding(base)["level"], "not-compared", "no series at all")
         self.assertEqual(finding({**base, "k_generation": [1.0] * 100})["level"], "not-compared", "constant series: no spread to judge")

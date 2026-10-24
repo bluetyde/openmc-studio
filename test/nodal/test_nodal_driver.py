@@ -679,6 +679,48 @@ class OutsideLayers(unittest.TestCase):
         self.assertEqual(pr["status"], "ok")
         self.assertAlmostEqual(pr["layers"][0]["thickness"], 0.4, places=4)
 
+    def test_two_step_hands_the_solver_the_ring_with_its_widths_and_crops_the_power(self):
+        """No Monte Carlo: the pieces are stubbed with fixed constants, and what two_step passes to the solver is captured. A 3.15 cm tank round a 6 x 6 core: an 8 x 8 map, the outer
+        columns and rows 3.15 cm wide, the layer's label on the ring, and a 6 x 6 power map back."""
+        import types
+        inner = [r[1:-1] for r in self.kinds[1:-1]]
+        g, lat = self.model("wiring", tank_text(inner, fill="water", thickness=3.15))
+        mats = __import__("openmc").Materials(g.get_all_materials().values())
+        fuel = {"D": [1.4, 0.4], "absorption": [0.008, 0.07], "nu_fission": [0.006, 0.12], "chi": [1.0, 0.0], "scatter": [[0.0, 0.02], [0.0, 0.0]], "kappa_fission": [0.0, 0.12], "inv_velocity": [1.0, 1.0]}
+        refl = {"D": [1.3, 0.3], "absorption": [0.001, 0.02], "nu_fission": [0.0, 0.0], "chi": [1.0, 0.0], "scatter": [[0.0, 0.03], [0.0, 0.0]], "kappa_fission": [0.0, 0.0], "inv_velocity": [1.0, 1.0]}
+        seen = []
+        real_solve = nodal.solve_core
+        saved = (nodal_driver._run_piece, nodal.fine_arrays, nodal.critical_buckling_fuel, nodal.condensed_constants, nodal.solve_core)
+
+        def fake_piece(piece, *args, **kw):
+            piece.k, piece.k_std, piece.seconds = 1.0, 0.0, 0.0
+            return types.SimpleNamespace(energy_groups=types.SimpleNamespace(group_edges=[0.0, 1.0]))
+
+        def spy(*args, **kw):
+            seen.append((args, kw))
+            return real_solve(*args, **kw)
+        nodal_driver._run_piece, nodal.fine_arrays = fake_piece, lambda lib, dom: {}
+        nodal.critical_buckling_fuel = lambda fine_data, edges, **kw: {k: np.asarray(v, float) for k, v in fuel.items()}
+        nodal.condensed_constants = lambda lib, dom: {k: np.asarray(v, float) for k, v in refl.items()}
+        nodal.solve_core = spy
+        try:
+            res = nodal_driver.two_step(lat, mats, workdir=self.tmp / "wiring", geometry=g)
+        finally:
+            nodal_driver._run_piece, nodal.fine_arrays, nodal.critical_buckling_fuel, nodal.condensed_constants, nodal.solve_core = saved
+        (args, kw), = seen
+        layout = args[0]
+        self.assertEqual((len(layout), len(layout[0])), (8, 8))
+        wx, wy = kw["node_widths"]
+        self.assertEqual(len(wx), 8)
+        np.testing.assert_allclose(wx, [3.15] + [6.3] * 6 + [3.15], atol=1e-4)
+        np.testing.assert_allclose(wy, [3.15] + [6.3] * 6 + [3.15], atol=1e-4)
+        ring = {layout[0][3], layout[7][3], layout[3][0], layout[3][7]}
+        self.assertEqual(len(ring), 1)
+        self.assertIn("water#", next(iter(ring)))
+        self.assertEqual(np.asarray(res.nodal.power).shape, (6, 6))
+        self.assertEqual(len(res.nodal.kinds), 6)
+        self.assertEqual(kw["boundaries"], {"x_min": "vacuum", "x_max": "vacuum", "y_min": "vacuum", "y_max": "vacuum"})
+
     def test_the_command_line_reports_the_layers_taken_into_the_solve(self):
         p = self.tmp / "cli_tank.py"
         p.write_text(tank_text(self.kinds, fill="clad", thickness=5.0), encoding="utf-8", newline="\n")

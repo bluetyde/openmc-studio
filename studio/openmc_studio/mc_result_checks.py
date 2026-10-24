@@ -10,6 +10,8 @@ import math
 import statistics
 
 ALLOWED_THRESHOLDS = {
+    "bias_particles_per_batch",
+    "recommended_particles_per_batch",
     "min_particles_per_batch",
     "min_active_batches",
     "entropy_band_sigma",
@@ -99,6 +101,36 @@ def entropy_settling_batch(entropy: list[float], band_sigma: float) -> int | Non
         if abs(val - mean_f) > threshold:
             last_violating = j
     return last_violating + 1
+
+
+def _batches(n: int) -> str:
+    return f"{n} batch" + ("" if n == 1 else "es")
+
+
+def skipped_cycles(k_generation, n_inactive: int) -> dict | None:
+    """MCNP's check that enough inactive cycles were skipped (6.3 manual, section 2.8.2.8), on OpenMC's per-batch k.
+
+    For every number of leading batches s skipped (0 to half the run) the standard deviation of the mean of the remaining k values, std(k[s:]) / sqrt(n - s), is formed; the s that
+    gives the smallest one is the best skip. The manual: "If this number is larger than Ic, it may indicate that not enough inactive cycles were skipped." Adapted: MCNP uses its combined
+    estimator, this uses OpenMC's batch k; MCNP cycles are OpenMC batches. Returns None when the series is too short or has no spread, else
+    {"best_skip", "sem_best", "sem_at_inactive", "n_inactive"}. Measured on simulated stationary series (white noise and AR(1) with rho 0.5 and 0.8, 100 to 500 batches) it flagged 0 to 11 %
+    (the 11 % for rho 0.8 over 100 batches) and a series decaying into its mean (tau = 30 batches, 20 inactive) 100 %.
+    """
+    k = [float(x) for x in k_generation]
+    n = len(k)
+    if n < 20 or n_inactive < 0 or n_inactive >= n - 10:
+        return None
+    sems = []
+    for s in range(0, n // 2 + 1):
+        tail = k[s:]
+        m = sum(tail) / len(tail)
+        var = sum((x - m) ** 2 for x in tail) / (len(tail) - 1)
+        sems.append(math.sqrt(var / len(tail)))
+    if not all(math.isfinite(x) for x in sems) or max(sems) <= 0:
+        return None
+    best = min(range(len(sems)), key=lambda i: (sems[i], i))
+    at_ic = sems[n_inactive] if n_inactive < len(sems) else None
+    return {"best_skip": best, "sem_best": sems[best], "sem_at_inactive": at_ic, "n_inactive": n_inactive}
 
 
 def check_eigenvalue(summary: dict, lost_particles: int | None = None, thresholds: dict | None = None) -> list[dict]:
@@ -197,7 +229,31 @@ def check_eigenvalue(summary: dict, lost_particles: int | None = None, threshold
         })
     else:
         particles = summary["particles"]
-        if "min_particles_per_batch" not in thresh_map:
+        bias = thresh_map.get("bias_particles_per_batch")
+        recommended = thresh_map.get("recommended_particles_per_batch")
+        if bias is not None and particles < bias["value"]:
+            findings.append({
+                "level": "warning",
+                "code": "particles-per-batch",
+                "message": f"{particles} particles per batch is below {bias['value']:g}: the power-iteration bias in k is not negligible (limit {bias['value']:g}, source: {bias['source']})",
+                "detail": {"particles": particles, "limit": bias["value"], "tier": "bias"},
+            })
+        elif "min_particles_per_batch" not in thresh_map and recommended is not None:
+            if particles < recommended["value"]:
+                findings.append({
+                    "level": "info",
+                    "code": "particles-per-batch",
+                    "message": f"{particles} particles per batch is below the {recommended['value']:g} recommended for a final calculation; fine for a trial run (limit {recommended['value']:g}, source: {recommended['source']})",
+                    "detail": {"particles": particles, "limit": recommended["value"], "tier": "recommended"},
+                })
+            else:
+                findings.append({
+                    "level": "info",
+                    "code": "particles-per-batch",
+                    "message": f"{particles} particles per batch meets or exceeds the {recommended['value']:g} recommended for a final calculation (limit {recommended['value']:g}, source: {recommended['source']})",
+                    "detail": {"particles": particles, "limit": recommended["value"], "tier": "recommended"},
+                })
+        elif "min_particles_per_batch" not in thresh_map:
             findings.append({
                 "level": "not-compared",
                 "code": "particles-per-batch",
@@ -331,5 +387,39 @@ def check_eigenvalue(summary: dict, lost_particles: int | None = None, threshold
                 ),
                 "detail": {"index": settling_idx, "n_inactive": n_inactive},
             })
+
+    # 8. skipped-cycles check (MCNP 6.3 manual 2.8.2.8: the number of skipped cycles that gives the smallest standard deviation, compared with the inactive count)
+    kgen = summary.get("k_generation")
+    result = None
+    if isinstance(kgen, list) and len(kgen) == batches and all(isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) for x in kgen):
+        result = skipped_cycles(kgen, n_inactive)
+    if result is None:
+        findings.append({
+            "level": "not-compared",
+            "code": "skipped-cycles",
+            "message": "no usable per-batch k series (or too few batches) to judge whether enough inactive batches were skipped",
+            "detail": {},
+        })
+    elif result["best_skip"] > n_inactive:
+        findings.append({
+            "level": "warning",
+            "code": "skipped-cycles",
+            "message": (
+                f"the standard deviation of the mean k is smallest when the first {_batches(result['best_skip'])} are skipped, more than the {_batches(n_inactive)} inactive: "
+                f"it may indicate that not enough inactive batches were skipped (the check of the MCNP 6.3 manual, section 2.8.2.8; it can fire by chance in a short, strongly correlated run). "
+                f"Look at the entropy and k by batch."
+            ),
+            "detail": dict(result),
+        })
+    else:
+        findings.append({
+            "level": "info",
+            "code": "skipped-cycles",
+            "message": (
+                f"the standard deviation of the mean k is smallest when {_batches(result['best_skip'])} {'is' if result['best_skip'] == 1 else 'are'} skipped, not more than the {_batches(n_inactive)} inactive: "
+                f"consistent with enough batches skipped (MCNP 6.3 manual, section 2.8.2.8)"
+            ),
+            "detail": dict(result),
+        })
 
     return findings

@@ -18,7 +18,7 @@ Test names: `test/…` is this repository; `exporter tests/…` is
 |---|---|---|---|---|---|
 | Sphere, cylinder, box | yes | yes | yes | numbers: yes (a box's faces move together) | `test_frontend_model.js`, `test_generated_models.py`, `test_patch_import.js` |
 | Wedge, hexagonal prism, cone, ellipsoid | yes | yes | yes (GQ / planes) | numbers the code tab marks | `test_ellipsoid_primitive.py`, `test_frontend_model.js` |
-| Torus (elliptical tube: major radius, half-height along the axis, half-width across it) | yes (2D slice, 3D view, STL) | yes (`XTorus`/`YTorus`/`ZTorus`; axis from the Axis field or a 90° turn) | not tested | numbers: untested | `test_torus_part.js`, `test_torus_view_browser.cjs`, `test_torus_openmc.py` (stochastic volumes against the closed forms; the z-slab volume is the check that sees a swap of b and c) |
+| Torus (elliptical tube: major radius, half-height along the axis, half-width across it) | yes (2D slice, 3D view, STL) | yes (`XTorus`/`YTorus`/`ZTorus`; axis from the Axis field or a 90° turn) | yes (`TX`/`TY`/`TZ` card, deck compared with OpenMC point by point) | numbers: untested | `test_torus_mcnp.py`, `test_torus_part.js`, `test_torus_view_browser.cjs`, `test_torus_openmc.py` (stochastic volumes against the closed forms; the z-slab volume is the check that sees a swap of b and c) |
 | Rotations (any angle) | yes | yes (general planes, quadrics) | yes (P / GQ) | untested | exporter `check_export_mcnp.py` (rotated), `test_frontend_model.js` |
 | Groups, nested groups, pivots | yes | comments + `groups` dict | `c Group:` comments | n/a | `test_frontend_model.js` |
 | Arrays as cells | yes | yes | yes | untested | `test_generated_models.py` (flat twins) |

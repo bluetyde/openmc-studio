@@ -250,7 +250,7 @@ It needs the local server and `openmc_mcnp_adapter` (INSTRUCTIONS.md).
 ## Other options
 
 - **Parts**: sphere, cylinder, box, wedge (right triangular prism), hexagonal prism, cone
-  (truncated), ellipsoid and torus (OpenMC only so far: the MCNP translation of a torus is untested; a torus points along x, y or z).
+  (truncated), ellipsoid and torus (a torus is written to MCNP as a TX/TY/TZ card and checked against OpenMC point by point; it points along x, y or z).
 - **Sources**: energy as lines, Watt, Maxwell, uniform, tabulated (paste MCNP SI/SP cards) or a
   Muir fusion spectrum (MCNP `SP -4`). A tabulated spectrum's values are the probability of each bin, as on an
   MCNP `SP D` card; model.py divides them by the bin widths, since OpenMC's histogram takes densities.

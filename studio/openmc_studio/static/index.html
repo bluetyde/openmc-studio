@@ -4980,7 +4980,7 @@ function specFor(kind, o) {
         F('num', 'c', 'Semi-axis C (Z)', {unit:'cm', show:ell}),
         F('num', 'a', 'Major radius', {unit:'cm', show:tor, hint:'Distance from the axis of revolution to the middle of the tube.'}),
         F('num', 'b', 'Tube half-height (along the axis)', {unit:'cm', show:tor}),
-        F('num', 'c', 'Tube half-width (across the axis)', {unit:'cm', show:tor, hint:'Must be smaller than the major radius. Equal half-height and half-width make a round tube; different ones make the elliptical tube of a tokamak. Written as openmc.XTorus/YTorus/ZTorus(a, b, c). Whether the MCNP translation handles a torus has not been tested: check model.mcnp before relying on it.'}),
+        F('num', 'c', 'Tube half-width (across the axis)', {unit:'cm', show:tor, hint:'Must be smaller than the major radius. Equal half-height and half-width make a round tube; different ones make the elliptical tube of a tokamak. Written as openmc.XTorus/YTorus/ZTorus(a, b, c). model.mcnp writes it as a TX/TY/TZ card, and the exporter compares that deck with OpenMC point by point; MCNP output is not shared, so check the deck before relying on it.'}),
         F('select', 'axis', 'Axis', {options:() => [['x', 'x'], ['y', 'y'], ['z', 'z']], show:() => cyl() || tor()}),
         F('vec', null, 'Size', {keys:['sx', 'sy', 'sz'], unit:'cm', show:() => box() || wed()}),
         F('vec', null, 'Rotation', {keys:['rx', 'ry', 'rz'], unit:'°', show:() => !sph(),

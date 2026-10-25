@@ -4522,7 +4522,7 @@ const RIBBON = {
     {label:'Tools', btns:toolButtons()},
     {label:'Snap to grid', custom:snapControls},
     {label:'Group', btns:[['group', 'Group', groupSelected, () => selItems().length > 0], ['ungroup', 'Ungroup', ungroupSelected, () => sel.kind === 'group' || selItems().some(x => x.o.group)], ['array', 'Array…', e => openArrayMenu(e.currentTarget), canEditSelection], pivotButton()]},
-    {label:'Parts', btns:[['sphere', 'Sphere', () => addPart('sphere')], ['cylinder', 'Cylinder', () => addPart('cylinder')], ['box', 'Box', () => addPart('box')], ['wedge', 'Wedge', () => addPart('wedge')], ['hex_prism', 'Hex prism', () => addPart('hex_prism')], ['cone', 'Cone', () => addPart('cone')], ['ellipsoid', 'Ellipsoid', () => addPart('ellipsoid')], ['torus', 'Torus', () => addPart('torus')]]},
+    {label:'Parts', btns:[['sphere', 'Sphere', () => addPart('sphere')], ['cylinder', 'Cylinder', () => addPart('cylinder')], ['box', 'Box', () => addPart('box')], ['wedge', 'Wedge', () => addPart('wedge')], ['hex_prism', 'Hex prism', () => addPart('hex_prism')], ['cone', 'Cone', () => addPart('cone')], ['ellipsoid', 'Ellipsoid', () => addPart('ellipsoid')], ['torus', 'Torus', () => addPart('torus')], ['torus', 'D-ring…', e => openDShapeMenu(e.currentTarget)]]},
     {label:'Materials', btns:[['material', 'Material ▾', e => openMatMenu(e.currentTarget)]]},
     {label:'Boundary', btns:[['world', 'World', () => select('world')]]}
   ],
@@ -7828,6 +7828,113 @@ function openEnergyMenu(btn, onSelect = null) {
 }
 
 const ARRAYMENU = {btn:null};
+/* D-shaped ring (fusion package, F2). A polygon in (R, Z) turned about the z axis is a stack of cone slabs, so the ring is written as ordinary cone parts in one
+   group: no new part kind. The curve is the Miller shape R = R0 + a cos(t + asin(delta) sin t), Z = kappa a sin t; each wall layer is the curve pushed outwards by its
+   thickness. Per boundary k and slab, "left" is the cone from the axis out to the inner edge of the ring and "right" the cone out to its outer edge. With the first part
+   winning, the order is left of the outermost boundary (hole, void), then the left cones of the others from outside in (each takes the material of the next layer out),
+   then the right cones from inside out (each takes its own layer's material). Slab levels are cosine-spaced, close together where the curve is flat. */
+function dShapeCurve(R0, a, kappa, delta, d, M) {
+  const s = Math.asin(delta), pts = [];
+  for (let i = 0; i < M; i++) {
+    const t = 2 * Math.PI * i / M, u = t + s * Math.sin(t);
+    const R = R0 + a * Math.cos(u), Z = kappa * a * Math.sin(t);
+    const dR = -a * Math.sin(u) * (1 + s * Math.cos(t)), dZ = kappa * a * Math.cos(t), n = Math.hypot(dR, dZ);
+    pts.push([R + d * dZ / n, Z - d * dR / n]);       // outward normal of a counter-clockwise curve is (dZ, -dR)
+  }
+  return pts;
+}
+function dShapeSlabs(spec, d, N) {
+  const {R0, a, kappa, delta} = spec, M = 4000, pts = dShapeCurve(R0, a, kappa, delta, d, M);
+  let iT = 0, iB = 0;
+  pts.forEach((p, i) => { if (p[1] > pts[iT][1]) iT = i; if (p[1] < pts[iB][1]) iB = i; });
+  const walk = (from, to) => { const out = []; for (let i = from; ; i = (i + 1) % M) { out.push(pts[i]); if (i === to) break; } return out; };
+  const right = walk(iB, iT), left = walk(iT, iB).reverse();      // both run from the bottom to the top
+  const at = (chain, z) => {
+    let lo = 0, hi = chain.length - 1;
+    if (z <= chain[0][1]) return chain[0][0];
+    if (z >= chain[hi][1]) return chain[hi][0];
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (chain[m][1] <= z) lo = m; else hi = m; }
+    const f = (z - chain[lo][1]) / ((chain[hi][1] - chain[lo][1]) || 1);
+    return chain[lo][0] + f * (chain[hi][0] - chain[lo][0]);
+  };
+  const zB = pts[iB][1], zT = pts[iT][1], levels = [];
+  for (let i = 0; i <= N; i++) levels.push(zB + (zT - zB) * (1 - Math.cos(Math.PI * i / N)) / 2);
+  const slabs = [];
+  for (let i = 0; i < N; i++) {
+    const z0 = levels[i], z1 = levels[i + 1];
+    slabs.push({z0, z1, l0: at(left, z0), l1: at(left, z1), r0: at(right, z0), r1: at(right, z1)});
+  }
+  return slabs;
+}
+// spec: {R0, a, kappa, delta, N, layers:[{thickness, material}]}; layers[0] is the plasma side (its thickness is ignored). Returns cone part fields, highest priority first.
+function dShapeParts(spec) {
+  const {R0, a, kappa, delta} = spec, N = Math.round(spec.N), layers = spec.layers;
+  if (!(a > 0 && kappa > 0 && R0 > 0)) throw new Error('R0, a and kappa must be positive.');
+  if (!(Math.abs(delta) <= 0.9)) throw new Error('Triangularity must be between -0.9 and 0.9.');
+  if (!(N >= 4 && N <= 200)) throw new Error('Use 4 to 200 slabs.');
+  const dk = []; let acc = 0;
+  layers.forEach((l, k) => { if (k > 0) { if (!(l.thickness > 0)) throw new Error('A wall layer needs a thickness above zero.'); acc += l.thickness; } dk.push(acc); });
+  if (!(R0 - a - acc > 0)) throw new Error('The ring would reach the axis: R0 must exceed a plus the wall thickness.');
+  const L = layers.length - 1, bounds = dk.map(d => dShapeSlabs(spec, d, N));
+  const out = [], cone = (name, s, left, material) => {
+    const r = left ? s.l0 : s.r0, r2 = left ? s.l1 : s.r1, h = s.z1 - s.z0;
+    if (!(h > 1e-9) || !(r > 0) || !(r2 > 0)) return;
+    out.push({name, shape: 'cone', x: 0, y: 0, z: (s.z0 + s.z1) / 2, r, r2, h, material});
+  };
+  for (let k = L; k >= 0; k--) bounds[k].forEach((s, i) => cone(`D left ${k}.${i + 1}`, s, true, k === L ? 'void' : layers[k + 1].material || 'void'));
+  for (let k = 0; k <= L; k++) bounds[k].forEach((s, i) => cone(`D ${k === 0 ? 'plasma' : 'wall ' + k} ${i + 1}`, s, false, layers[k].material || 'void'));
+  return out;
+}
+function addDShape(spec) {
+  let specs;
+  try { specs = dShapeParts(spec); } catch (e) { log('error', `D-shaped ring: ${esc(e.message)}`); return null; }
+  HISTORY.boundary = true;
+  const gid = newId('g'), g = {id:gid, name:uniqueName(S.groups, 'D-shaped ring'), x:0, y:0, z:0};
+  const made = specs.map(sp => Object.assign(newPart(newId('p'), sp.name, 'cone'), sp, {group:gid}));
+  S.groups.push(g);
+  S.parts.unshift(...made);
+  S.settings.worldR = worldToFit(made);
+  log('ok', `Added ${esc(g.name)}: ${made.length} cone parts in one group, ${spec.layers.length - 1} wall layer${spec.layers.length === 2 ? '' : 's'}. The wall parts are Void until you give them a material.`);
+  renderAll();
+  select('group', gid);
+  return {group: g, parts: made};
+}
+function openDShapeMenu(btn) {
+  const menu = $('#arrayMenu');
+  if (!menu.hidden && ARRAYMENU.btn === btn) { menu.hidden = true; return; }
+  const r = btn.getBoundingClientRect(), u = lenUnit(), sh = v => tidy(imperial() ? toShown(v, 'len') : v);
+  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 308)) + 'px';
+  menu.style.top = (r.bottom + 4) + 'px';
+  menu.innerHTML = `
+    <div class="atitle">D-shaped ring (revolved about z)</div>
+    <div class="agrid">
+      <span class="ax">R0</span><input type="number" id="ds-R0" step="any" value="${sh(300)}"><span style="font-size:11px;color:#8f9ba8">${u}, major radius</span>
+      <span class="ax">a</span><input type="number" id="ds-a" step="any" value="${sh(100)}"><span style="font-size:11px;color:#8f9ba8">${u}, minor radius</span>
+      <span class="ax">κ</span><input type="number" id="ds-k" step="any" value="1.7"><span style="font-size:11px;color:#8f9ba8">elongation</span>
+      <span class="ax">δ</span><input type="number" id="ds-d" step="any" value="0.33"><span style="font-size:11px;color:#8f9ba8">triangularity</span>
+      <span class="ax">Slabs</span><input type="number" id="ds-n" min="4" max="200" step="1" value="24"><span style="font-size:11px;color:#8f9ba8">cones per edge</span>
+      <span class="ax">Wall</span><input type="number" id="ds-t" min="0" step="any" value="${sh(5)}"><span style="font-size:11px;color:#8f9ba8">${u}, 0 = none</span>
+    </div>
+    <div class="abottom" style="display:flex;gap:6px;align-items:center"><span style="font-size:11px;color:#8f9ba8">A polygon of cones, not a smooth D.</span>
+      <button type="button" class="tbtn" id="ds-ok" style="font-weight:600;margin-left:auto">Create</button></div>`;
+  menu.hidden = false;
+  ARRAYMENU.btn = btn;
+  $('#ds-R0').focus(); $('#ds-R0').select();
+  const apply = () => {
+    const num = id => parseFloat($(id).value), len = id => (imperial() ? fromShown(num(id), 'len') : num(id));
+    const t = len('#ds-t') || 0;
+    const spec = {R0:len('#ds-R0'), a:len('#ds-a'), kappa:num('#ds-k'), delta:num('#ds-d'), N:num('#ds-n'),
+                  layers:[{material:'void'}, ...(t > 0 ? [{thickness:t, material:'void'}] : [])]};
+    menu.hidden = true;
+    addDShape(spec);
+  };
+  $('#ds-ok').onclick = apply;
+  menu.onkeydown = e => {
+    if (e.key === 'Enter') { e.preventDefault(); apply(); }
+    else if (e.key === 'Escape') { e.preventDefault(); menu.hidden = true; btn.focus(); }
+  };
+}
+
 function openArrayMenu(btn) {
   const menu = $('#arrayMenu');
   if (!menu.hidden && ARRAYMENU.btn === btn) { menu.hidden = true; return; }

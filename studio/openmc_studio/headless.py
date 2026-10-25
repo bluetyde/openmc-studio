@@ -8,7 +8,8 @@
 
 Every verb prints exactly one JSON line. The caller (SEED) has already checked that MODEL.py is what Studio's generator makes of
 PROJECT.json; this runner trusts nothing else about the script beyond that and runs it as a child process in a new session.
-First slice, refused explicitly outside it: fixed-source runs, no track output, bounded particles and batches.
+Refused explicitly outside the supported runs: fixed-source and steady eigenvalue runs, no track output, bounded particles and batches. An eigenvalue run is
+refused too when it is too noisy to judge convergence (fewer than MIN_ACTIVE_BATCHES active batches or MIN_PARTICLES_EIGENVALUE particles per batch).
 
 A run folder DIR/ID holds model.py, project.json, run.log, statepoint.N.h5, results.json (tallies, deterministic), provenance.json,
 child.json (the child's identity, for cancel) and manifest.json. The manifest is written LAST and atomically: while it says
@@ -30,6 +31,11 @@ VERSION = 1
 MAX_PARTICLES = 1_000_000  # per batch
 MAX_BATCHES = 1000
 DEFAULT_TIMEOUT = 3600
+RUN_MODES = ("fixed source", "eigenvalue")
+# Minimums for an eigenvalue run, so that a run SEED's loop gets back can say something about convergence. Active batches: MCNP 6.3 manual 2.8.3.2, "fewer than 30
+# active cycles is not recommended" (the same number Studio's result checks use, run_checks.THRESHOLDS). Particles per batch: MCNP 6.3 manual 2.8.1.4, trial runs use
+# about 1000 histories per cycle and a final calculation 5000 or more; below 1000 the run is refused, between 1000 and 5000 it runs (Studio's result checks still note it).
+MIN_PARTICLES_EIGENVALUE = 1000
 
 
 def _sha256(path):
@@ -88,18 +94,26 @@ def describe():
     env = provenance.environment()
     data = env.get("nuclear_data") or {}
     return _reply(True, format=FORMAT, version=VERSION, openmc=_openmc_version(), nuclearData=data, transfers=[transfer.DESCRIPTION],
-                  runModes=["fixed source"], limits={"maxParticles": MAX_PARTICLES, "maxBatches": MAX_BATCHES, "maxTimeoutSeconds": DEFAULT_TIMEOUT * 24},
+                  runModes=list(RUN_MODES),
+                  limits={"maxParticles": MAX_PARTICLES, "maxBatches": MAX_BATCHES, "maxTimeoutSeconds": DEFAULT_TIMEOUT * 24,
+                          "eigenvalue": {"minActiveBatches": _min_active_batches(), "minParticlesPerBatch": MIN_PARTICLES_EIGENVALUE}},
                   platform=env.get("platform"), python=env.get("python"))
 
 
+def _min_active_batches():
+    from . import run_checks
+    return run_checks.THRESHOLDS["min_active_batches"]["value"]
+
+
 def check_project(project):
-    """First-slice refusals from the project's own settings. Nothing is executed."""
+    """Refusals from the project's own settings. Nothing is executed."""
     problems = []
     st = (project or {}).get("settings")
     if not isinstance(st, dict):
         return [_problem("E_SCHEMA_INVALID", "/settings", "the project has no settings")]
-    if st.get("runMode") != "fixed source":
-        problems.append(_problem("E_UNSUPPORTED", "/settings/runMode", f"only fixed-source runs are supported, not {st.get('runMode')!r}"))
+    mode = st.get("runMode")
+    if mode not in RUN_MODES:
+        problems.append(_problem("E_UNSUPPORTED", "/settings/runMode", f"only fixed-source and eigenvalue runs are supported, not {mode!r}"))
     for key, cap in (("particles", MAX_PARTICLES), ("batches", MAX_BATCHES)):
         v = st.get(key)
         if not isinstance(v, int) or isinstance(v, bool) or v < 1:
@@ -110,11 +124,27 @@ def check_project(project):
         problems.append(_problem("E_SCHEMA_INVALID", "/settings/seed", "a whole-number seed is required so the run can be repeated"))
     if (st.get("maxTracks") or 0) > 0:
         problems.append(_problem("E_UNSUPPORTED", "/settings/maxTracks", "track output is not supported"))
-    if not (project.get("tallies") or []):
+    if mode == "eigenvalue":
+        # k-eff is the result, so a tally is not required; a depletion run is a different kind of run
+        if st.get("depletion") is True:
+            problems.append(_problem("E_UNSUPPORTED", "/settings/depletion", "a depletion run is not a steady eigenvalue run and is not supported here"))
+        batches, inactive, particles = st.get("batches"), st.get("inactive"), st.get("particles")
+        whole = lambda v: isinstance(v, int) and not isinstance(v, bool)  # noqa: E731
+        if not (whole(inactive) and inactive >= 0 and whole(batches) and inactive < batches):
+            problems.append(_problem("E_SCHEMA_INVALID", "/settings/inactive", "inactive batches must be a whole number from 0 up to below the batch count"))
+        else:
+            need = _min_active_batches()
+            if batches - inactive < need:
+                problems.append(_problem("E_LIMIT", "/settings/batches", f"{batches - inactive} active batches ({batches} batches, {inactive} inactive) is below the minimum of {need}: "
+                                                                          "too few for a k-eff whose convergence can be judged"))
+        if whole(particles) and 1 <= particles < MIN_PARTICLES_EIGENVALUE:
+            problems.append(_problem("E_LIMIT", "/settings/particles", f"{particles} particles per batch is below the minimum of {MIN_PARTICLES_EIGENVALUE} for an eigenvalue run: "
+                                                                        "too noisy for a k-eff whose convergence can be judged"))
+    elif not (project.get("tallies") or []):
         problems.append(_problem("E_SCHEMA_INVALID", "/tallies", "the project has no tally, so the run would produce no result"))
     # then the errors the page and /api/run refuse too (prerun_check.py), after the capability checks above so their codes come first
     from . import prerun_check
-    said = {"settings-particles": "/settings/particles", "settings-batches": "/settings/batches", "settings-seed": "/settings/seed"}
+    said = {"settings-particles": "/settings/particles", "settings-batches": "/settings/batches", "settings-seed": "/settings/seed", "settings-inactive": "/settings/inactive"}
     for f in prerun_check.check(project):
         if f["code"] in said and any(x["path"] == said[f["code"]] for x in problems):
             continue  # already reported above with its own path
@@ -246,12 +276,21 @@ def _extract(folder, project):
     if not summary:
         raise ValueError("no statepoint file")
     st = project["settings"]
+    if summary.get("run_mode") != st.get("runMode"):
+        raise ValueError(f"the statepoint is a {summary.get('run_mode')} run, the project asked for {st.get('runMode')}")
     for key, have in (("particles", "particles"), ("batches", "batches"), ("seed", "seed")):
         if summary.get(have) != st.get(key):
             raise ValueError(f"the statepoint says {have}={summary.get(have)}, the project asked for {st.get(key)}")
-    if summary.get("run_mode") != "fixed source":
-        raise ValueError(f"the statepoint is a {summary.get('run_mode')} run")
-    if not out.get("tallies"):
+    if st.get("runMode") == "eigenvalue":
+        if summary.get("inactive") != st.get("inactive"):
+            raise ValueError(f"the statepoint says inactive={summary.get('inactive')}, the project asked for {st.get('inactive')}")
+        k = summary.get("keff")
+        if not (isinstance(k, list) and len(k) == 2 and all(isinstance(x, (int, float)) and x == x and abs(x) != float("inf") for x in k) and k[1] >= 0):
+            raise ValueError("the statepoint has no finite k-eff with a standard deviation")
+        gen = summary.get("k_generation")
+        if not (isinstance(gen, list) and len(gen) == summary["batches"]):
+            raise ValueError("the statepoint has no k-eff for every batch")
+    elif not out.get("tallies"):
         raise ValueError("the statepoint has no tallies")
     summary.pop("runtime_s", None)
     return {"summary": summary, "tallies": out["tallies"]}

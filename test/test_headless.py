@@ -296,5 +296,60 @@ class Headless(unittest.TestCase):
         self.assertEqual((out / "d" / "manifest.json").read_bytes(), before)
 
 
+class Extract(unittest.TestCase):
+    """headless._extract against crafted results.load answers: the guards a real run never trips (no OpenMC needed)."""
+
+    def extract(self, project_settings, summary, tallies=None):
+        from unittest import mock
+        sys.path.insert(0, str(PKG))
+        from openmc_studio import headless
+        fake = {"summary": dict(summary), "tallies": tallies if tallies is not None else []}
+        with mock.patch("openmc_studio.results.load", return_value=fake):
+            return headless._extract(Path("."), {"settings": project_settings})
+
+    EIG_SET = {"runMode": "eigenvalue", "particles": 1000, "batches": 4, "inactive": 1, "seed": 7}
+    EIG_SUM = {"run_mode": "eigenvalue", "particles": 1000, "batches": 4, "inactive": 1, "n_inactive": 1, "seed": 7, "statepoint": "statepoint.4.h5",
+               "keff": [1.3, 0.005], "k_combined": [1.3, 0.005], "k_generation": [1.31, 1.29, 1.3, 1.3], "runtime_s": 3.0}
+
+    def test_a_good_eigenvalue_answer_is_passed_through_without_the_runtime(self):
+        out = self.extract(self.EIG_SET, self.EIG_SUM)
+        self.assertEqual(out["summary"]["keff"], [1.3, 0.005])
+        self.assertNotIn("runtime_s", out["summary"])
+        self.assertEqual(out["tallies"], [])
+
+    def test_every_eigenvalue_guard_refuses_with_its_good_twin_above(self):
+        bad = [
+            ({"inactive": 2}, "inactive"),
+            ({"run_mode": "fixed source"}, "fixed source"),
+            ({"keff": None}, "k-eff"), ({"keff": [1.3]}, "k-eff"), ({"keff": [1.3, 0.005, 1]}, "k-eff"), ({"keff": [float("nan"), 0.005]}, "k-eff"),
+            ({"keff": [1.3, float("inf")]}, "k-eff"), ({"keff": [float("inf"), 0.005]}, "k-eff"), ({"keff": [1.3, -0.005]}, "k-eff"), ({"keff": ["1.3", 0.005]}, "k-eff"),
+            ({"k_generation": None}, "every batch"), ({"k_generation": [1.3, 1.3, 1.3]}, "every batch"), ({"k_generation": [1.3] * 5}, "every batch"),
+            ({"batches": 5}, "batches"), ({"particles": 999}, "particles"), ({"seed": 8}, "seed"),
+        ]
+        for change, word in bad:
+            with self.assertRaises(ValueError, msg=str(change)) as cm:
+                self.extract(self.EIG_SET, {**self.EIG_SUM, **change})
+            self.assertIn(word, str(cm.exception), change)
+
+    def test_a_fixed_source_answer_needs_tallies_and_the_right_mode(self):
+        fs_set = {"runMode": "fixed source", "particles": 1000, "batches": 10, "seed": 7}
+        fs_sum = {"run_mode": "fixed source", "particles": 1000, "batches": 10, "seed": 7, "statepoint": "statepoint.10.h5", "runtime_s": 1.0}
+        self.assertEqual(self.extract(fs_set, fs_sum, [{"name": "t"}])["tallies"], [{"name": "t"}])
+        with self.assertRaises(ValueError) as cm:
+            self.extract(fs_set, fs_sum, [])
+        self.assertIn("no tallies", str(cm.exception))
+        with self.assertRaises(ValueError) as cm:
+            self.extract(fs_set, {**fs_sum, "run_mode": "eigenvalue"}, [{"name": "t"}])
+        self.assertIn("eigenvalue", str(cm.exception))
+
+    def test_nothing_without_a_summary_is_a_result(self):
+        from unittest import mock
+        sys.path.insert(0, str(PKG))
+        from openmc_studio import headless
+        with mock.patch("openmc_studio.results.load", return_value={"summary": None, "tallies": []}):
+            with self.assertRaises(ValueError):
+                headless._extract(Path("."), {"settings": self.EIG_SET})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

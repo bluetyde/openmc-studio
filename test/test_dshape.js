@@ -161,7 +161,7 @@ test('the dialog numbers: blank, infinite or negative input is refused, zero wal
   }
 });
 test('one undo step removes the ring and redo brings it back', () => {
-  run("S.parts.length = 0; S.groups = []; S.parts.push(newPart('pold', 'Old', 'sphere')); HISTORY.undo.length = 0; HISTORY.redo.length = 0; HISTORY.current = JSON.stringify(S); HISTORY.boundary = true;");
+  run("S.parts.length = 0; S.groups = []; S.parts.push(newPart('pold', 'Old', 'sphere')); HISTORY.undo.length = 0; HISTORY.redo.length = 0; HISTORY.current = JSON.stringify(S); HISTORY.boundary = false; HISTORY.last = Date.now();");   // as in the middle of an edit burst: only addDShape's own boundary makes this a step
   run('addDShape(' + JSON.stringify(spec({N: 8})) + ')');
   const n = run('S.parts.length');
   run('historyTrack(JSON.stringify(S))');                         // the page does this on every render; the test sandbox has no render loop

@@ -1494,7 +1494,7 @@ function partHalfExtents(p) { // half-widths of the world-axis bounding box
 function itemBounds(kind, o) {
   if (kind === 'part') { const h = partHalfExtents(o); return [[o.x - h[0], o.y - h[1], o.z - h[2]], [o.x + h[0], o.y + h[1], o.z + h[2]]]; }
   if (o.space === 'box') return [[o.x0, o.y0, o.z0], [o.x1, o.y1, o.z1]];
-  const r = o.space === 'sphere' || o.space === 'cylinder' ? o.r : 0, hz = o.space === 'cylinder' ? o.h / 2 : r;
+  const r = o.space === 'sphere' || o.space === 'cylinder' || o.space === 'ring' ? o.r : 0, hz = o.space === 'cylinder' ? o.h / 2 : (o.space === 'ring' ? 0 : r);
   return [[o.x - r, o.y - r, o.z - hz], [o.x + r, o.y + r, o.z + hz]];
 }
 function itemsCenter(items) { // center of the bounding box around every item
@@ -1512,7 +1512,7 @@ function rotateItems(items, before, Rg, pivot, eachInPlace) {
     const {kind} = items[i], s = before[i];
     if (kind !== 'source') continue;
     if (s.space === 'box' && !perm) return `${s.name} is a box source, which can only turn in 90° steps`;
-    if (s.space === 'cylinder' && Math.abs(Math.abs(Rg[2][2]) - 1) > 1e-9) return `${s.name} is a cylinder source along z, which can only turn about z`;
+    if ((s.space === 'cylinder' || s.space === 'ring') && Math.abs(Math.abs(Rg[2][2]) - 1) > 1e-9) return `${s.name} is a ${s.space} source about the z axis, which can only turn about z`;
   }
   const mv = (M, v) => M.map(r => r[0] * v[0] + r[1] * v[1] + r[2] * v[2]);
   // Turns in steps (45° then 45°) carry rounding from step to step; land back on round numbers (1e-6 cm grid).
@@ -1619,6 +1619,10 @@ function problems() {
       else if (!inWorld(s.x, s.y, s.z)) add('error', `${T} starts outside the world boundary, so no particle would be born.`, 'source', s.id);
       if (s.space === 'sphere' && !(pos(s.r) && fin(s.rin) && s.rin >= 0 && s.rin < s.r)) add('error', `${T}: outer radius must be above 0 and above the inner radius.`, 'source', s.id);
       if (s.space === 'cylinder' && !(pos(s.r) && pos(s.h) && fin(s.rin) && s.rin >= 0 && s.rin < s.r)) add('error', `${T}: radius and height must be above 0, with inner radius below outer.`, 'source', s.id);
+      if (s.space === 'ring') {
+        if (!pos(s.r)) add('error', `${T}: the ring radius must be above 0.`, 'source', s.id);
+        else if (fin(s.x) && fin(s.y) && fin(s.z) && ![[s.r, 0], [-s.r, 0], [0, s.r], [0, -s.r]].every(([dx, dy]) => inWorld(s.x + dx, s.y + dy, s.z))) add('error', `${T}: the ring reaches past the world boundary, so particles born there would be lost.`, 'source', s.id);
+      }
     }
     if (s.angle === 'mono' && !(fin(s.u) && fin(s.v) && fin(s.w) && Math.hypot(s.u, s.v, s.w) > 0)) add('error', `${T}: beam direction can't be 0, 0, 0.`, 'source', s.id);
     if (s.energy === 'lines') {
@@ -2268,6 +2272,7 @@ function buildScript(probs, mark, opts = {}) {
   push(`geometry = openmc.Geometry([${geomCells.join(', ')}])`, '');
 
   push('# ── Sources ────────────────────────────────────────────────');
+  S.groups.filter(g => g.sourceRate_n_s > 0 && S.sources.some(s => s.group === g.id)).forEach(g => push(`# ${g.name}: ${g.sourceRate_n_s.toPrecision(5)} neutrons per second in total. The strengths below are relative weights, so a tally is per source particle: multiply it by that rate for a result per second.`));
   // A tabulated spectrum is typed as bin probabilities (as MCNP's SI H / SP D cards give it); OpenMC's histogram
   // Tabular takes densities per eV, so each probability is divided by its bin width here. Passing them straight
   // through would weight each bin by its width: 50/50 over 0-1-3 MeV would sample about 33/67.
@@ -2282,6 +2287,11 @@ function buildScript(probs, mark, opts = {}) {
     if (s.space === 'point') push(`${v}.space = openmc.stats.Point(${vecF(s, 'x', 'y', 'z')})`);
     else if (s.space === 'box') push(`${v}.space = openmc.stats.Box(${vecF(s, 'x0', 'y0', 'z0')}, ${vecF(s, 'x1', 'y1', 'z1')})`);
     else if (s.space === 'sphere') push(`${v}.space = openmc.stats.spherical_uniform(r_outer=${F(s, 'r', num(s.r))}, r_inner=${F(s, 'rin', num(s.rin))}, origin=${vecF(s, 'x', 'y', 'z')})`);
+    else if (s.space === 'ring') push(`${v}.space = openmc.stats.CylindricalIndependent(`,
+      `    r=openmc.stats.Discrete([${F(s, 'r', num(s.r))}], [1.0]),  # a ring: zero thickness`,
+      `    phi=openmc.stats.Uniform(0.0, 6.283185307179586),`,
+      `    z=openmc.stats.Discrete([0.0], [1.0]),`,
+      `    origin=${vecF(s, 'x', 'y', 'z')})`);
     else push(`${v}.space = openmc.stats.CylindricalIndependent(`,
       `    r=openmc.stats.PowerLaw(${F(s, 'rin', num(s.rin))}, ${F(s, 'r', num(s.r))}, 1),  # uniform in volume`,
       `    phi=openmc.stats.Uniform(0.0, 6.283185307179586),`,
@@ -2916,6 +2926,7 @@ function mcnpSource(s) {
   if (s.space === 'point') parts.push(`POS=${[s.x, s.y, s.z].map(mcnpNum).join(' ')}`);
   else if (s.space === 'box') parts.push(`X=${dist(`H ${mcnpNum(s.x0)} ${mcnpNum(s.x1)}`, '0 1')}`, `Y=${dist(`H ${mcnpNum(s.y0)} ${mcnpNum(s.y1)}`, '0 1')}`, `Z=${dist(`H ${mcnpNum(s.z0)} ${mcnpNum(s.z1)}`, '0 1')}`);
   else if (s.space === 'sphere') parts.push(`POS=${[s.x, s.y, s.z].map(mcnpNum).join(' ')}`, `RAD=${dist(`${mcnpNum(s.rin)} ${mcnpNum(s.r)}`, '-21 2')}`);
+  else if (s.space === 'ring') parts.push(`POS=${[s.x, s.y, s.z].map(mcnpNum).join(' ')}`, 'AXS=0 0 1', `RAD=${dist(`L ${mcnpNum(s.r)}`, 'D 1')}`, 'EXT=0');
   else parts.push(`POS=${[s.x, s.y, s.z].map(mcnpNum).join(' ')}`, 'AXS=0 0 1', `RAD=${dist(`${mcnpNum(s.rin)} ${mcnpNum(s.r)}`, '-21 1')}`, `EXT=${dist(`${mcnpNum(-s.h/2)} ${mcnpNum(s.h/2)}`, '-21 0')}`);
   if (s.angle === 'mono') parts.push(`VEC=${[s.u, s.v, s.w].map(mcnpNum).join(' ')} DIR=1`);
   if (s.energy === 'lines') {
@@ -4528,7 +4539,7 @@ const RIBBON = {
     {label:'Boundary', btns:[['world', 'World', () => select('world')]]}
   ],
   Physics:[
-    {label:'Sources', btns:[['source', 'Neutron', () => addSource('neutron')], ['source', 'Photon', () => addSource('photon')], ['source', 'Preset ▾', e => openSourceMenu(e.currentTarget)]]},
+    {label:'Sources', btns:[['source', 'Neutron', () => addSource('neutron')], ['source', 'Photon', () => addSource('photon')], ['source', 'Preset ▾', e => openSourceMenu(e.currentTarget)], ['source', 'Plasma from PLOW…', e => openFusionSourceMenu(e.currentTarget)]]},
     {label:'Tallies', btns:[['cellTally', 'Cell', () => addTally('cell')], ['meshTally', 'Mesh', () => addTally('mesh')], ['surfaceTally', 'Surface', () => addTally('surface')], ['cellTally', 'Detector ▾', e => openDetectorMenu(e.currentTarget)]]},
     {label:'Run', btns:[
       ['dice', 'Eigenvalue', () => toggleSetting('runMode'), null, () => S.settings.runMode === 'eigenvalue'],
@@ -4995,10 +5006,11 @@ function specFor(kind, o) {
         F('select', 'particle', 'Particle', {options:() => [['neutron', 'Neutron (PAR=1)'], ['photon', 'Photon (PAR=2)']]}),
         F('num', 'strength', 'Strength', {hint:'Relative weight when there is more than one source.'})]},
       {title:'Position', fields:[
-        F('select', 'space', 'Shape', {options:() => [['point', 'Point'], ['box', 'Box volume'], ['sphere', 'Sphere volume'], ['cylinder', 'Cylinder volume (z axis)']]}),
+        F('select', 'space', 'Shape', {options:() => [['point', 'Point'], ['box', 'Box volume'], ['sphere', 'Sphere volume'], ['cylinder', 'Cylinder volume (z axis)'], ['ring', 'Ring (zero thickness, z axis)']]}),
         F('vec', null, 'Center', {keys:['x', 'y', 'z'], unit:'cm', show:() => o.space !== 'box'}),
         F('num', 'rin', 'Inner radius', {unit:'cm', show:() => o.space === 'sphere' || o.space === 'cylinder'}),
         F('num', 'r', 'Outer radius', {unit:'cm', show:() => o.space === 'sphere' || o.space === 'cylinder'}),
+        F('num', 'r', 'Ring radius', {unit:'cm', show:sp('ring'), hint:'Particles are born on a circle of this radius about the z axis through the center, uniformly in azimuth.'}),
         F('num', 'h', 'Height', {unit:'cm', show:sp('cylinder')}),
         F('vec', null, 'Lower corner', {keys:['x0', 'y0', 'z0'], unit:'cm', show:sp('box')}),
         F('vec', null, 'Upper corner', {keys:['x1', 'y1', 'z1'], unit:'cm', show:sp('box')})
@@ -8100,6 +8112,114 @@ function openFirstWallMenu(btn) {
   menu.onkeydown = e => { if (e.key === 'Escape') { e.preventDefault(); menu.hidden = true; btn.focus(); } };
 }
 
+/* Fusion source reader (fusion package, F3). PLOW writes the plasma as a neutron source record: schema plow.fusion-source/0.1 (SEED record kind fusion-source, version 1), the plasma cut into
+   poloidal cells that are rings of revolution about the machine axis. Each cell has its rate-weighted centroid (r_m, z_m), a rate in neutrons per second and a Gaussian energy spread; the
+   neutrons are D-T, isotropic, with a mean energy in the record. It is read as one ring source per cell (zero thickness, uniform in azimuth, strength = the cell's share of the total rate,
+   isotropic, a Muir spectrum whose width is the record's sigma for that cell), in one group. The strengths are relative weights, so tallies come out per source particle: multiply by the
+   total rate (kept on the group) for a result per second. This is PLOW's own reading of its record (examples/read_fusion_source.py) written as OpenMC sources. */
+const FUSION_SOURCE_SCHEMA = 'plow.fusion-source/0.1';
+const FUSION_SOURCE_HOW = 'PLOW writes this record: python -m plow records <point.json> --out-dir <folder>. By hand: a JSON file with "schema": "' + FUSION_SOURCE_SCHEMA + '", "neutron": {"energy_mean_mev": 14.07}, "total_rate_n_per_s" and "cells": [{"r_m", "z_m", "rate_n_s", "energy_std_mev"}, ...].';
+const MUIR_M_RAT = 5.0;      // Studio's default; the width below is set through kt, so the spectrum is the record's Gaussian whatever the ratio
+const MAX_FUSION_CELLS = 5000;
+// text of a record -> {ok: true, cells: [{rCm, zCm, rate, share, sigmaMev}], meanMev, totalRate, info} or {ok: false, errors: [...]}.
+function parseFusionSourceRecord(text) {
+  const fail = m => ({ok: false, errors: [m]}), num = x => typeof x === 'number' && Number.isFinite(x);
+  let rec;
+  try { rec = JSON.parse(text); } catch (e) { return fail('This is not JSON (' + e.message + '). ' + FUSION_SOURCE_HOW); }
+  if (!rec || typeof rec !== 'object' || Array.isArray(rec)) return fail('This JSON is not a record (an object with a "schema"). ' + FUSION_SOURCE_HOW);
+  if (rec.schema !== FUSION_SOURCE_SCHEMA) return fail('The record says its schema is ' + JSON.stringify(rec.schema) + '; this reader knows ' + FUSION_SOURCE_SCHEMA + ' only. ' + FUSION_SOURCE_HOW);
+  if (rec.reaction !== undefined && rec.reaction !== 'D-T') return fail('The record is for the reaction ' + JSON.stringify(rec.reaction) + '; this reader takes D-T neutrons only.');
+  const nu = rec.neutron;
+  if (!nu || typeof nu !== 'object' || !(num(nu.energy_mean_mev) && nu.energy_mean_mev > 0 && nu.energy_mean_mev < 30)) return fail('The record has no "neutron.energy_mean_mev" between 0 and 30 MeV.');
+  if (nu.direction !== undefined && nu.direction !== 'isotropic') return fail('The record says the neutrons are ' + JSON.stringify(nu.direction) + '; this reader takes isotropic emission only.');
+  if (nu.spread !== undefined && nu.spread !== 'gaussian') return fail('The record says the energy spread is ' + JSON.stringify(nu.spread) + '; this reader takes a Gaussian only.');
+  if (!(num(rec.total_rate_n_per_s) && rec.total_rate_n_per_s > 0)) return fail('The record has no "total_rate_n_per_s" above zero.');
+  if (!Array.isArray(rec.cells) || !rec.cells.length) return fail('The record has no "cells". ' + FUSION_SOURCE_HOW);
+  if (rec.cells.length > MAX_FUSION_CELLS) return fail('The record has ' + rec.cells.length + ' cells; this reader takes at most ' + MAX_FUSION_CELLS + '.');
+  let sum = 0, zero = 0;
+  const cells = [];
+  for (let i = 0; i < rec.cells.length; i++) {
+    const c = rec.cells[i];
+    if (!c || typeof c !== 'object' || ![c.r_m, c.z_m, c.rate_n_s, c.energy_std_mev].every(num)) return fail('Cell ' + i + ' needs numbers for r_m, z_m, rate_n_s and energy_std_mev.');
+    if (!(c.r_m > 0)) return fail('Cell ' + i + ' has r_m at or below zero: a ring needs a radius above the axis.');
+    if (c.rate_n_s < 0) return fail('Cell ' + i + ' has a negative rate.');
+    if (!(c.energy_std_mev > 0)) return fail('Cell ' + i + ' has energy_std_mev at or below zero.');
+    sum += c.rate_n_s;
+    if (c.rate_n_s === 0) { zero++; continue; }
+    cells.push({rCm: c.r_m * 100, zCm: c.z_m * 100, rate: c.rate_n_s, sigmaMev: c.energy_std_mev});
+  }
+  if (!cells.length) return fail('Every cell has a rate of zero.');
+  if (Math.abs(sum / rec.total_rate_n_per_s - 1) > 0.001) return fail('The cell rates add up to ' + sum.toPrecision(5) + ' n/s but the record says the total is ' + rec.total_rate_n_per_s.toPrecision(5) + ' n/s (' + (100 * (sum / rec.total_rate_n_per_s - 1)).toFixed(2) + ' % apart): the record disagrees with itself.');
+  let powerCheck = null;
+  if (rec.power_neutron_mw !== undefined) {
+    if (!(num(rec.power_neutron_mw) && rec.power_neutron_mw > 0)) return fail('"power_neutron_mw" must be a number above zero.');
+    powerCheck = rec.total_rate_n_per_s * nu.energy_mean_mev * 1.602176634e-13 * 1e-6 / rec.power_neutron_mw - 1;     // MeV to J, W to MW
+    if (Math.abs(powerCheck) > 0.01) return fail('The record says the neutron power is ' + rec.power_neutron_mw.toPrecision(5) + ' MW but ' + rec.total_rate_n_per_s.toPrecision(5) + ' n/s at ' + nu.energy_mean_mev + ' MeV is ' + (rec.total_rate_n_per_s * nu.energy_mean_mev * 1.602176634e-13 * 1e-6).toPrecision(5) + ' MW (' + (100 * powerCheck).toFixed(2) + ' % apart).');
+  }
+  cells.forEach(c => { c.share = c.rate / sum; });
+  return {ok: true, cells, meanMev: nu.energy_mean_mev, totalRate: rec.total_rate_n_per_s,
+          info: {name: typeof rec.name === 'string' ? rec.name : '', cells: cells.length, zeroCells: zero, rMin: Math.min(...cells.map(c => c.rCm)) / 100, rMax: Math.max(...cells.map(c => c.rCm)) / 100,
+                 zMin: Math.min(...cells.map(c => c.zCm)) / 100, zMax: Math.max(...cells.map(c => c.zCm)) / 100, powerMw: rec.power_neutron_mw, powerCheck, tiMax: Math.max(...rec.cells.filter(c => c.rate_n_s > 0).map(c => Number.isFinite(c.ti_kev) ? c.ti_kev : 0))}};
+}
+// The sources of a parsed record as plain objects (no ids, nothing added to the model): one ring per cell.
+function fusionSourcesOf(parsed) {
+  const e0 = parsed.meanMev;
+  return parsed.cells.map((c, i) => ({name: 'Plasma ' + (i + 1), particle: 'neutron', strength: c.share, space: 'ring', x: 0, y: 0, z: tidy(c.zCm), r: tidy(c.rCm),
+    angle: 'isotropic', energy: 'muir', muir_e0: e0, muir_mrat: MUIR_M_RAT, muir_kt: (c.sigmaMev * 1e6) ** 2 * MUIR_M_RAT / (2 * e0 * 1e6)}));    // sigma^2 = 2 E0 kT / m_rat (eV)
+}
+// opts: {replace: remove the model's other sources}. Adds the group "Plasma source (PLOW)" with one ring source per cell; the total rate stays on the group.
+function addFusionSource(parsed, opts) {
+  const o = opts || {};
+  HISTORY.boundary = true;
+  const removed = o.replace ? S.sources.length : 0;
+  if (o.replace) S.sources = [];
+  const gid = newId('g'), g = {id: gid, name: uniqueName(S.groups, 'Plasma source (PLOW)'), x: 0, y: 0, z: 0, sourceRate_n_s: parsed.totalRate};
+  const made = fusionSourcesOf(parsed).map(sp => Object.assign(newSource(newId('s'), sp.name, 'neutron'), sp, {group: gid}));
+  S.groups.push(g);
+  S.sources.push(...made);
+  S.settings.worldR = Math.max(S.settings.worldR || 0, ...made.map(s => Math.ceil(s.r * 1.1)));
+  log('ok', `Added ${esc(g.name)}: ${made.length} ring sources (a zero-thickness ring per poloidal cell, isotropic, Gaussian energy about ${parsed.meanMev.toFixed(2)} MeV), ${parsed.totalRate.toPrecision(4)} n/s in total. ` +
+    `Tallies are per source particle: multiply a result by ${parsed.totalRate.toPrecision(4)} for a result per second.${removed ? ` ${removed} earlier source${removed === 1 ? '' : 's'} removed.` : (S.sources.length > made.length ? ` ${S.sources.length - made.length} other source(s) remain; strengths are relative weights.` : '')}`);
+  renderAll();
+  select('group', gid);
+  return {group: g, sources: made};
+}
+function openFusionSourceMenu(btn) {
+  const menu = $('#arrayMenu');
+  if (!menu.hidden && ARRAYMENU.btn === btn) { menu.hidden = true; return; }
+  const r = btn.getBoundingClientRect();
+  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 328)) + 'px';
+  menu.style.top = (r.bottom + 4) + 'px';
+  menu.innerHTML = `
+    <div class="atitle">Plasma source from a PLOW record</div>
+    <div style="font-size:11px;color:#8f9ba8;margin-bottom:6px">${esc(FUSION_SOURCE_SCHEMA)}: D-T neutrons from poloidal cells, one ring source per cell.</div>
+    <input type="file" id="fs-file" accept=".json,application/json" style="font-size:11px;margin-bottom:6px">
+    <div id="fs-info" style="font-size:11px;margin-bottom:6px;white-space:normal"></div>
+    <div class="abottom" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <label class="chk" style="font-size:11.5px" title="Take the model's other sources out; otherwise they stay and the strengths are relative weights"><input type="checkbox" id="fs-replace"> Replace the other sources</label>
+      <button type="button" class="tbtn" id="fs-ok" style="font-weight:600;margin-left:auto" disabled>Create</button>
+    </div>`;
+  menu.hidden = false;
+  ARRAYMENU.btn = btn;
+  let parsed = null;
+  const info = $('#fs-info'), ok = $('#fs-ok');
+  $('#fs-file').onchange = async e => {
+    parsed = null; ok.disabled = true; info.textContent = '';
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const res = parseFusionSourceRecord(await file.text());
+    if (!res.ok) { info.innerHTML = res.errors.map(m => `<div style="color:#e07a7a">${esc(m)}</div>`).join(''); log('error', `Plasma source: ${esc(res.errors[0])}`); return; }
+    parsed = res;
+    const i = res.info;
+    info.innerHTML = `<div>${i.name ? esc(i.name) + '<br>' : ''}${i.cells} cells${i.zeroCells ? ` (${i.zeroCells} with a rate of zero left out)` : ''}, R ${i.rMin.toFixed(3)} to ${i.rMax.toFixed(3)} m, Z ${i.zMin.toFixed(3)} to ${i.zMax.toFixed(3)} m.<br>` +
+      `${res.totalRate.toPrecision(4)} n/s at ${res.meanMev.toFixed(3)} MeV` +
+      `${i.powerCheck !== null ? ' = ' + i.powerMw.toFixed(1) + ' MW (the record says so too, ' + (100 * i.powerCheck).toFixed(2) + ' % apart)' : ''}.</div>`;
+    ok.disabled = false;
+  };
+  ok.onclick = () => { if (parsed) { addFusionSource(parsed, {replace: $('#fs-replace').checked}); menu.hidden = true; } };
+  menu.onkeydown = e => { if (e.key === 'Escape') { e.preventDefault(); menu.hidden = true; btn.focus(); } };
+}
+
 function openArrayMenu(btn) {
   const menu = $('#arrayMenu');
   if (!menu.hidden && ARRAYMENU.btn === btn) { menu.hidden = true; return; }
@@ -10613,6 +10733,9 @@ function drawViewport() {
       ctx.strokeRect(U(Math.min(a0, a1)), V(Math.max(b0, b1)), Math.abs(a1 - a0) * scale, Math.abs(b1 - b0) * scale);
     } else if (s.space === 'sphere') {
       ctx.beginPath(); ctx.arc(X, Y, s.r * scale, 0, 2 * Math.PI); ctx.stroke();
+    } else if (s.space === 'ring') {
+      if (view.plane === 'xy') { ctx.beginPath(); ctx.arc(X, Y, s.r * scale, 0, 2 * Math.PI); ctx.stroke(); }
+      else [-1, 1].forEach(sg => { ctx.beginPath(); ctx.arc(X + sg * s.r * scale, Y, 3, 0, 2 * Math.PI); ctx.stroke(); });
     } else if (s.space === 'cylinder') {
       if (view.plane === 'xy') { ctx.beginPath(); ctx.arc(X, Y, s.r * scale, 0, 2 * Math.PI); ctx.stroke(); }
       else ctx.strokeRect(X - s.r * scale, Y - s.h / 2 * scale, 2 * s.r * scale, s.h * scale);
@@ -10636,7 +10759,7 @@ function drawViewport() {
         ctx.moveTo(ex, ey); ctx.lineTo(ex - 7 * Math.cos(ang + .45), ey - 7 * Math.sin(ang + .45)); ctx.stroke();
       }
     }
-    if (on || S.sources.length > 1) { ctx.fillStyle = '#e8edf2'; ctx.fillText(s.name, X + 11, Y - 9); }
+    if (on || (S.sources.length > 1 && S.sources.length <= 12)) { ctx.fillStyle = '#e8edf2'; ctx.fillText(s.name, X + 11, Y - 9); }
     vpGeom.sources.push({id:s.id, X, Y});
   });
 

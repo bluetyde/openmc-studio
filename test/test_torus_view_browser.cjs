@@ -91,6 +91,13 @@ const fs = require('fs'), path = require('path'), assert = require('assert');
       assert.ok(!r.err, r.err);
       assert.ok(r.covered > 2500 && r.disagree <= 0.015 * r.covered + 5, JSON.stringify(r));
     });
+    // The thinnest tube Problems does not warn about (c / a = 0.01): the single-precision quartic must still find it, a pixel for a pixel against the picker.
+    await check('3D shader keeps a thin tube (c / a = 0.01) that the picker finds', async () => {
+      const r = await grid3({a: 30, b: 0.6, c: 0.3});
+      assert.ok(!r.err, r.err);
+      assert.ok(r.covered > 150, `only ${r.covered} pixels covered`);
+      assert.ok(r.disagree <= 0.08 * r.covered + 5, `${r.disagree} of ${r.covered} covered pixels disagree`);
+    });
     // The cut-away plane (y = 0) removes the half facing the camera. A ray that enters the cut inside the hole has already left the first tube, so only the torus's
     // second span is left for it: a shader that kept one span per part would draw nothing there.
     for (const [name, ring] of [['z axis', {a: 30, b: 12, c: 6}], ['x axis', {a: 25, b: 15, c: 5, axis: 'x'}]]) {

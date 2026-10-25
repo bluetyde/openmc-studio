@@ -4523,7 +4523,7 @@ const RIBBON = {
     {label:'Tools', btns:toolButtons()},
     {label:'Snap to grid', custom:snapControls},
     {label:'Group', btns:[['group', 'Group', groupSelected, () => selItems().length > 0], ['ungroup', 'Ungroup', ungroupSelected, () => sel.kind === 'group' || selItems().some(x => x.o.group)], ['array', 'Array…', e => openArrayMenu(e.currentTarget), canEditSelection], pivotButton()]},
-    {label:'Parts', btns:[['sphere', 'Sphere', () => addPart('sphere')], ['cylinder', 'Cylinder', () => addPart('cylinder')], ['box', 'Box', () => addPart('box')], ['wedge', 'Wedge', () => addPart('wedge')], ['hex_prism', 'Hex prism', () => addPart('hex_prism')], ['cone', 'Cone', () => addPart('cone')], ['ellipsoid', 'Ellipsoid', () => addPart('ellipsoid')], ['torus', 'Torus', () => addPart('torus')], ['torus', 'D-ring…', e => openDShapeMenu(e.currentTarget)]]},
+    {label:'Parts', btns:[['sphere', 'Sphere', () => addPart('sphere')], ['cylinder', 'Cylinder', () => addPart('cylinder')], ['box', 'Box', () => addPart('box')], ['wedge', 'Wedge', () => addPart('wedge')], ['hex_prism', 'Hex prism', () => addPart('hex_prism')], ['cone', 'Cone', () => addPart('cone')], ['ellipsoid', 'Ellipsoid', () => addPart('ellipsoid')], ['torus', 'Torus', () => addPart('torus')], ['torus', 'D-ring…', e => openDShapeMenu(e.currentTarget)], ['torus', 'Wall from PLOW…', e => openFirstWallMenu(e.currentTarget)]]},
     {label:'Materials', btns:[['material', 'Material ▾', e => openMatMenu(e.currentTarget)]]},
     {label:'Boundary', btns:[['world', 'World', () => select('world')]]}
   ],
@@ -7844,43 +7844,78 @@ function dShapeCurve(R0, a, kappa, delta, d, M) {
   }
   return pts;
 }
+// The edges of a closed polyline that the horizontal line at height z crosses (half-open rule: an edge counts when exactly one end is at or below z). Returns [left, right] as
+// {R, edge} sorted by R, or null unless there are exactly two crossings (a contour that folds back in height has four or more).
+function crossEdges(pts, z) {
+  const xs = [];
+  for (let i = 0, n = pts.length; i < n; i++) {
+    const a = pts[i], b = pts[(i + 1) % n];
+    if ((a[1] <= z) !== (b[1] <= z)) xs.push({R: a[0] + (z - a[1]) / (b[1] - a[1]) * (b[0] - a[0]), edge: i});
+  }
+  if (xs.length !== 2) return null;
+  return xs[0].R <= xs[1].R ? xs : [xs[1], xs[0]];
+}
+// The radius of edge i of the closed polyline at height z (the edge's own line, also outside the edge).
+function edgeRadius(pts, i, z) {
+  const a = pts[i], b = pts[(i + 1) % pts.length];
+  return a[0] + (z - a[1]) / (b[1] - a[1]) * (b[0] - a[0]);
+}
+// A closed counter-clockwise polygon pushed outwards by d: every edge moves d along its outward normal and neighbouring edges meet at their intersection (a mitre).
+function offsetPolygon(pts, d) {
+  if (!d) return pts;
+  const n = pts.length, nrm = pts.map((a, i) => { const b = pts[(i + 1) % n], dR = b[0] - a[0], dZ = b[1] - a[1], len = Math.hypot(dR, dZ); return [dZ / len, -dR / len]; });
+  return pts.map((p, i) => {
+    const m = nrm[(i + n - 1) % n], q = nrm[i], k = 1 + m[0] * q[0] + m[1] * q[1];
+    return [p[0] + d * (m[0] + q[0]) / k, p[1] + d * (m[1] + q[1]) / k];
+  });
+}
+// The slabs of one boundary: {z0, z1, l0, l1, r0, r1}, the inner and outer radius of the ring at the bottom and top of each slab. The boundary is the Miller curve of the spec
+// pushed out by d, or the spec's polygon pushed out by d. With N = 'exact' (polygons only) the slab levels are the polygon's own vertex heights and each slab takes its radii from
+// the two edges that span it, so the cones are the polygon exactly; otherwise N cosine-spaced slabs read the radii by height (an inscribed polygon).
 function dShapeSlabs(spec, d, N) {
-  const {R0, a, kappa, delta} = spec, M = 4000, pts = dShapeCurve(R0, a, kappa, delta, d, M);
-  let iT = 0, iB = 0;
-  pts.forEach((p, i) => { if (p[1] > pts[iT][1]) iT = i; if (p[1] < pts[iB][1]) iB = i; });
-  const walk = (from, to) => { const out = []; for (let i = from; ; i = (i + 1) % M) { out.push(pts[i]); if (i === to) break; } return out; };
-  const right = walk(iB, iT), left = walk(iT, iB).reverse();      // both run from the bottom to the top
-  // The slab radii are read off each chain by height, so a chain must rise all the way. A wall thicker than the curve's radius of curvature folds the pushed-out edge over itself.
-  const rises = ch => ch.every((q, i) => i === 0 || q[1] >= ch[i - 1][1] - 1e-9);
-  if (!rises(right) || !rises(left)) throw new Error('The edge folds over itself, so it cannot be cut into slabs: use a thinner wall or a rounder shape (smaller kappa or delta).');
-  const at = (chain, z) => {
-    let lo = 0, hi = chain.length - 1;
-    if (z <= chain[0][1]) return chain[0][0];
-    if (z >= chain[hi][1]) return chain[hi][0];
-    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (chain[m][1] <= z) lo = m; else hi = m; }
-    const f = (z - chain[lo][1]) / ((chain[hi][1] - chain[lo][1]) || 1);
-    return chain[lo][0] + f * (chain[hi][0] - chain[lo][0]);
-  };
-  const zB = pts[iB][1], zT = pts[iT][1], levels = [];
-  for (let i = 0; i <= N; i++) levels.push(zB + (zT - zB) * (1 - Math.cos(Math.PI * i / N)) / 2);
+  const pts = spec.polygon ? offsetPolygon(spec.polygon, d) : dShapeCurve(spec.R0, spec.a, spec.kappa, spec.delta, d, 4000);
+  let zB = Infinity, zT = -Infinity;
+  pts.forEach(p => { zB = Math.min(zB, p[1]); zT = Math.max(zT, p[1]); });
+  const span = zT - zB, eps = 1e-9 * span;
+  // Every height must cross the boundary twice, or the ring cannot be cut into slabs: a wall thicker than the curve's radius of curvature folds the pushed-out edge over itself.
+  for (let i = 1; i < 400; i++) {
+    if (!crossEdges(pts, zB + span * i / 400)) throw new Error('The edge folds over itself, so it cannot be cut into slabs: use a thinner wall or a rounder shape' + (spec.polygon ? '.' : ' (smaller kappa or delta).'));
+  }
   const slabs = [];
+  if (N === 'exact') {
+    const zs = [...new Set(pts.map(p => p[1]))].sort((a, b) => a - b), levels = [];
+    zs.forEach(z => { if (!levels.length || z - levels[levels.length - 1] > eps) levels.push(z); });
+    for (let i = 0; i + 1 < levels.length; i++) {
+      const z0 = levels[i], z1 = levels[i + 1], e = crossEdges(pts, (z0 + z1) / 2);
+      slabs.push({z0, z1, l0: edgeRadius(pts, e[0].edge, z0), l1: edgeRadius(pts, e[0].edge, z1), r0: edgeRadius(pts, e[1].edge, z0), r1: edgeRadius(pts, e[1].edge, z1)});
+    }
+    return slabs;
+  }
+  const at = z => crossEdges(pts, Math.min(Math.max(z, zB + eps), zT - eps));
   for (let i = 0; i < N; i++) {
-    const z0 = levels[i], z1 = levels[i + 1];
-    slabs.push({z0, z1, l0: at(left, z0), l1: at(left, z1), r0: at(right, z0), r1: at(right, z1)});
+    const z0 = zB + span * (1 - Math.cos(Math.PI * i / N)) / 2, z1 = zB + span * (1 - Math.cos(Math.PI * (i + 1) / N)) / 2, a = at(z0), b = at(z1);
+    slabs.push({z0, z1, l0: a[0].R, l1: b[0].R, r0: a[1].R, r1: b[1].R});
   }
   return slabs;
 }
-// spec: {R0, a, kappa, delta, N, layers:[{thickness, material}]}; layers[0] is the plasma side (its thickness is ignored). Returns cone part fields, highest priority first.
+// spec: {R0, a, kappa, delta, N, layers:[{thickness, material}]} for the Miller D, or {polygon: [[R, Z] ...] in cm, N: slabs or 'exact', layers} for a given contour (counter-clockwise,
+// first point not repeated); layers[0] is the plasma side (its thickness is ignored). Returns cone part fields, highest priority first.
 function dShapeParts(spec) {
-  const {R0, a, kappa, delta} = spec, N = Math.round(spec.N), layers = spec.layers;
-  if (![R0, a, kappa, delta, N].every(Number.isFinite)) throw new Error('R0, a, kappa, delta and the slab count must be numbers.');
+  const layers = spec.layers, poly = spec.polygon, exact = poly && spec.N === 'exact', N = exact ? 'exact' : Math.round(spec.N);
   if (!Array.isArray(layers) || !layers.length) throw new Error('The ring needs at least the plasma layer.');
-  if (!(a > 0 && kappa > 0 && R0 > 0)) throw new Error('R0, a and kappa must be positive.');
-  if (!(Math.abs(delta) <= 0.9)) throw new Error('Triangularity must be between -0.9 and 0.9.');
-  if (!(N >= 4 && N <= 200)) throw new Error('Use 4 to 200 slabs.');
+  if (poly) {
+    if (!Array.isArray(poly) || poly.length < 3 || !poly.every(p => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite))) throw new Error('The contour needs at least three points, each a pair of numbers.');
+    if (!(Math.min(...poly.map(p => p[0])) > 0)) throw new Error('The contour reaches the axis or crosses it: every R must be above zero.');
+  } else {
+    const {R0, a, kappa, delta} = spec;
+    if (![R0, a, kappa, delta, N].every(Number.isFinite)) throw new Error('R0, a, kappa, delta and the slab count must be numbers.');
+    if (!(a > 0 && kappa > 0 && R0 > 0)) throw new Error('R0, a and kappa must be positive.');
+    if (!(Math.abs(delta) <= 0.9)) throw new Error('Triangularity must be between -0.9 and 0.9.');
+  }
+  if (!exact && !(N >= 4 && N <= 200)) throw new Error('Use 4 to 200 slabs.');
   const dk = []; let acc = 0;
   layers.forEach((l, k) => { if (k > 0) { if (!(l.thickness > 0 && Number.isFinite(l.thickness))) throw new Error('A wall layer needs a thickness above zero.'); acc += l.thickness; } dk.push(acc); });
-  if (!(R0 - a - acc > 0)) throw new Error('The ring would reach the axis: R0 must exceed a plus the wall thickness.');
+  if (poly ? !(Math.min(...poly.map(p => p[0])) - acc > 0) : !(spec.R0 - spec.a - acc > 0)) throw new Error('The ring would reach the axis' + (poly ? ': the wall is thicker than the contour is far from the axis.' : ': R0 must exceed a plus the wall thickness.'));
   const L = layers.length - 1, bounds = dk.map(d => dShapeSlabs(spec, d, N));
   const out = [], cone = (name, s, left, material) => {
     const r = left ? s.l0 : s.r0, r2 = left ? s.l1 : s.r1, h = s.z1 - s.z0;
@@ -7889,14 +7924,14 @@ function dShapeParts(spec) {
   };
   for (let k = L; k >= 0; k--) bounds[k].forEach((s, i) => cone(`D left ${k}.${i + 1}`, s, true, k === L ? 'void' : layers[k + 1].material || 'void'));
   for (let k = 0; k <= L; k++) bounds[k].forEach((s, i) => cone(`D ${k === 0 ? 'plasma' : 'wall ' + k} ${i + 1}`, s, false, layers[k].material || 'void'));
-  if (out.length !== 2 * layers.length * N) throw new Error('The ring is too flat to cut into slabs: some slab would be thinner than a nanometre. Raise kappa or use fewer slabs.');
+  if (out.length !== 2 * bounds.reduce((n, b) => n + b.length, 0)) throw new Error('The ring is too flat to cut into slabs: some slab would be thinner than a nanometre. Raise kappa or use fewer slabs.');
   return out;
 }
 function addDShape(spec) {
   let specs;
   try { specs = dShapeParts(spec); } catch (e) { log('error', `D-shaped ring: ${esc(e.message)}`); return null; }
   HISTORY.boundary = true;
-  const gid = newId('g'), g = {id:gid, name:uniqueName(S.groups, 'D-shaped ring'), x:0, y:0, z:0};
+  const gid = newId('g'), g = {id:gid, name:uniqueName(S.groups, spec.groupName || 'D-shaped ring'), x:0, y:0, z:0};
   const made = specs.map(sp => Object.assign(newPart(newId('p'), sp.name, 'cone'), sp, {group:gid}));
   S.groups.push(g);
   S.parts.unshift(...made);
@@ -7946,6 +7981,123 @@ function openDShapeMenu(btn) {
     if (e.key === 'Enter') { e.preventDefault(); apply(); }
     else if (e.key === 'Escape') { e.preventDefault(); menu.hidden = true; btn.focus(); }
   };
+}
+
+/* First-wall record reader (fusion package, F7). PLOW writes the plasma-facing wall as a record: schema plow.first-wall-geometry/0.1 (SEED record kind first-wall-geometry, version 1), a closed
+   counter-clockwise polygon in (R, Z) in metres, the first point not repeated, with per-segment lengths and areas. It is read as the contour of the plasma region: a ring of cone slabs
+   (dShapeParts with a polygon), void inside, with an optional wall layer pushed outwards from the contour. Everything the reader cannot trust is refused with the reason; the record's own
+   total area is compared with the area of revolution of its polygon. */
+const FIRST_WALL_SCHEMA = 'plow.first-wall-geometry/0.1';
+const FIRST_WALL_HOW = 'PLOW writes this record: python -m plow records <point.json> --out-dir <folder>. By hand: a JSON file with "schema": "' + FIRST_WALL_SCHEMA + '" and "polygon": [[R, Z], ...] in metres, counter-clockwise, first point not repeated.';
+function segmentsCross(p, q, r, s) {
+  const cr = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const d1 = cr(p, q, r), d2 = cr(p, q, s), d3 = cr(r, s, p), d4 = cr(r, s, q);
+  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0)) && d1 !== 0 && d2 !== 0 && d3 !== 0 && d4 !== 0;
+}
+// The volume a closed counter-clockwise polygon in (R, Z) turns through about the z axis: pi * closed integral of R^2 dZ.
+function polygonRevolveVolume(pts) {
+  let v = 0;
+  for (let i = 0, n = pts.length; i < n; i++) { const a = pts[i], b = pts[(i + 1) % n]; v += (a[0] * a[0] + a[0] * b[0] + b[0] * b[0]) / 3 * (b[1] - a[1]); }
+  return Math.PI * v;
+}
+// text of a record -> {ok: true, polygonCm, info} or {ok: false, errors: [...]}.
+function parseFirstWallRecord(text) {
+  const fail = m => ({ok: false, errors: [m]});
+  let rec;
+  try { rec = JSON.parse(text); } catch (e) { return fail('This is not JSON (' + e.message + '). ' + FIRST_WALL_HOW); }
+  if (!rec || typeof rec !== 'object' || Array.isArray(rec)) return fail('This JSON is not a record (an object with a "schema"). ' + FIRST_WALL_HOW);
+  if (rec.schema !== FIRST_WALL_SCHEMA) return fail('The record says its schema is ' + JSON.stringify(rec.schema) + '; this reader knows ' + FIRST_WALL_SCHEMA + ' only. ' + FIRST_WALL_HOW);
+  const poly = rec.polygon;
+  if (!Array.isArray(poly) || poly.length < 8) return fail('The record has no "polygon" with at least 8 points. ' + FIRST_WALL_HOW);
+  if (!poly.every(p => Array.isArray(p) && p.length === 2 && p.every(x => typeof x === 'number' && Number.isFinite(x)))) return fail('Every polygon point must be a pair of finite numbers [R, Z] in metres.');
+  if (rec.orientation !== undefined && !String(rec.orientation).toLowerCase().startsWith('counter-clockwise')) return fail('The record says its orientation is ' + JSON.stringify(rec.orientation) + '; this reader needs counter-clockwise in (R, Z).');
+  const n = poly.length;
+  if (Math.hypot(poly[0][0] - poly[n - 1][0], poly[0][1] - poly[n - 1][1]) < 1e-12) return fail('The last polygon point repeats the first: the record must not close the polygon itself.');
+  for (let i = 0; i < n; i++) if (Math.hypot(poly[(i + 1) % n][0] - poly[i][0], poly[(i + 1) % n][1] - poly[i][1]) < 1e-9) return fail('Polygon points ' + i + ' and ' + ((i + 1) % n) + ' coincide.');
+  if (Math.min(...poly.map(p => p[0])) <= 0) return fail('The polygon reaches the axis or crosses it (R at or below zero).');
+  let area2 = 0;
+  for (let i = 0; i < n; i++) { const a = poly[i], b = poly[(i + 1) % n]; area2 += a[0] * b[1] - b[0] * a[1]; }
+  if (!(area2 > 0)) return fail('The polygon runs clockwise (signed area ' + (area2 / 2).toPrecision(4) + ' m2), against the record\'s own "counter-clockwise".');
+  for (let i = 0; i < n; i++) for (let j = i + 2; j < n; j++) {
+    if (i === 0 && j === n - 1) continue;
+    if (segmentsCross(poly[i], poly[(i + 1) % n], poly[j], poly[(j + 1) % n])) return fail('The polygon crosses itself (edges ' + i + ' and ' + j + ').');
+  }
+  const zs = poly.map(p => p[1]), span = Math.max(...zs) - Math.min(...zs);
+  for (let i = 1; i < 400; i++) if (!crossEdges(poly, Math.min(...zs) + span * i / 400)) return fail('The contour is not single-valued in height (it folds back in Z), so it cannot be cut into cone slabs.');
+  let revolved = 0, perimeter = 0;
+  for (let i = 0; i < n; i++) { const a = poly[i], b = poly[(i + 1) % n], len = Math.hypot(b[0] - a[0], b[1] - a[1]); revolved += 2 * Math.PI * (a[0] + b[0]) / 2 * len; perimeter += len; }
+  let areaCheck = null;
+  if (rec.total_area_m2 !== undefined) {
+    if (!(typeof rec.total_area_m2 === 'number' && rec.total_area_m2 > 0)) return fail('"total_area_m2" must be a positive number.');
+    areaCheck = revolved / rec.total_area_m2 - 1;
+    if (Math.abs(areaCheck) > 0.005) return fail('The record says the wall area is ' + rec.total_area_m2.toPrecision(5) + ' m2 but its polygon turns through ' + revolved.toPrecision(5) + ' m2 (' + (100 * areaCheck).toFixed(2) + ' % apart): the record disagrees with itself.');
+  }
+  if (rec.segments !== undefined && !(Array.isArray(rec.segments) && rec.segments.length === n)) return fail('The record has ' + n + ' polygon points but ' + (Array.isArray(rec.segments) ? rec.segments.length : 'no list of') + ' segments.');
+  const R = poly.map(p => p[0]);
+  return {ok: true, polygonCm: poly.map(p => [p[0] * 100, p[1] * 100]),
+          info: {name: typeof rec.name === 'string' ? rec.name : '', points: n, rMin: Math.min(...R), rMax: Math.max(...R), zMin: Math.min(...zs), zMax: Math.max(...zs), gap_m: rec.gap_m,
+                 areaM2: revolved, recordAreaM2: rec.total_area_m2, areaCheck, volumeM3: polygonRevolveVolume(poly), perimeterM: perimeter}};
+}
+// opts: {thickness (cm, 0 = none), material, exact, N}. Adds the ring and says how far the cone stack is from the record's polygon.
+function addFirstWall(parsed, opts) {
+  const spec = {polygon: parsed.polygonCm, N: opts.exact ? 'exact' : opts.N, groupName: 'First wall (PLOW)',
+                layers: [{material: 'void'}, ...(opts.thickness > 0 ? [{thickness: opts.thickness, material: opts.material || 'void'}] : [])]};
+  const r = addDShape(spec);
+  if (r) {
+    const plasma = r.parts.filter(p => p.name.startsWith('D plasma'));
+    const frusta = ps => ps.reduce((v, p) => v + Math.PI * p.h / 3 * (p.r * p.r + p.r * p.r2 + p.r2 * p.r2), 0);
+    const want = parsed.info.volumeM3 * 1e6, got = frusta(plasma) - frusta(r.parts.filter(p => p.name.startsWith('D left 0.')));
+    log('info', `The plasma region of the cones is ${(got / want * 100).toFixed(3)} % of the record polygon's volume of revolution${opts.exact ? ' (one slab per polygon height, so exact)' : ' (an inscribed polygon: more slabs come closer)'}.`);
+  }
+  return r;
+}
+function openFirstWallMenu(btn) {
+  const menu = $('#arrayMenu');
+  if (!menu.hidden && ARRAYMENU.btn === btn) { menu.hidden = true; return; }
+  const r = btn.getBoundingClientRect(), u = lenUnit(), sh = v => tidy(imperial() ? toShown(v, 'len') : v);
+  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 328)) + 'px';
+  menu.style.top = (r.bottom + 4) + 'px';
+  menu.innerHTML = `
+    <div class="atitle">First wall from a PLOW record</div>
+    <div style="font-size:11px;color:#8f9ba8;margin-bottom:6px">${esc(FIRST_WALL_SCHEMA)}: a counter-clockwise (R, Z) polygon in metres, turned about the z axis.</div>
+    <input type="file" id="fw-file" accept=".json,application/json" style="font-size:11px;margin-bottom:6px">
+    <div id="fw-info" style="font-size:11px;margin-bottom:6px;white-space:normal"></div>
+    <div class="agrid">
+      <span class="ax">Wall</span><input type="number" id="fw-t" min="0" step="any" value="${sh(5)}"><span style="font-size:11px;color:#8f9ba8">${u}, 0 = none</span>
+      <span class="ax">Wall of</span><select id="fw-m" style="font-size:11px">${[...S.materials.map(m => [m.id, m.name]), ['void', 'Void']].map(([id, n]) => `<option value="${esc(id)}">${esc(n)}</option>`).join('')}</select><span></span>
+      <span class="ax">Slabs</span><input type="number" id="fw-n" min="4" max="200" step="1" value="48"><span style="font-size:11px;color:#8f9ba8">per edge</span>
+    </div>
+    <div class="abottom" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <label class="chk" style="font-size:11.5px" title="One cone per polygon height: the cones are the polygon exactly, and there are more of them"><input type="checkbox" id="fw-exact"> Exact (one slab per polygon height)</label>
+      <button type="button" class="tbtn" id="fw-ok" style="font-weight:600;margin-left:auto" disabled>Create</button>
+    </div>`;
+  menu.hidden = false;
+  ARRAYMENU.btn = btn;
+  let parsed = null;
+  const info = $('#fw-info'), ok = $('#fw-ok');
+  $('#fw-file').onchange = async e => {
+    parsed = null; ok.disabled = true; info.textContent = '';
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const res = parseFirstWallRecord(await file.text());
+    if (!res.ok) { info.innerHTML = res.errors.map(m => `<div style="color:#e07a7a">${esc(m)}</div>`).join(''); log('error', `First wall: ${esc(res.errors[0])}`); return; }
+    parsed = res;
+    const i = res.info;
+    info.innerHTML = `<div>${i.name ? esc(i.name) + '<br>' : ''}${i.points} points, R ${i.rMin.toFixed(3)} to ${i.rMax.toFixed(3)} m, Z ${i.zMin.toFixed(3)} to ${i.zMax.toFixed(3)} m` +
+      `${i.gap_m !== undefined ? ', gap ' + esc(String(i.gap_m)) + ' m' : ''}.<br>Wall area ${i.areaM2.toFixed(2)} m2` +
+      `${i.areaCheck !== null ? ' (the record says ' + i.recordAreaM2.toFixed(2) + ' m2, ' + (100 * i.areaCheck).toFixed(2) + ' % apart)' : ' (the record gives no total to compare)'}.</div>`;
+    ok.disabled = false;
+  };
+  const apply = () => {
+    if (!parsed) return;
+    const num = id => parseFloat($(id).value), len = id => (imperial() ? fromShown(num(id), 'len') : num(id));
+    const t = len('#fw-t'), n = num('#fw-n');
+    if (!Number.isFinite(t) || t < 0) { log('error', 'First wall: the wall thickness must be a number, 0 or more.'); return; }
+    if (!$('#fw-exact').checked && !(Number.isFinite(n) && n >= 4 && n <= 200)) { log('error', 'First wall: use 4 to 200 slabs.'); return; }
+    if (addFirstWall(parsed, {thickness: t, material: $('#fw-m').value, exact: $('#fw-exact').checked, N: n})) menu.hidden = true;
+  };
+  ok.onclick = apply;
+  menu.onkeydown = e => { if (e.key === 'Escape') { e.preventDefault(); menu.hidden = true; btn.focus(); } };
 }
 
 function openArrayMenu(btn) {

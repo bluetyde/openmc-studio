@@ -276,6 +276,17 @@ for (const [name, axis, b, c] of [['torus_ellip', 'z', 2, 1], ['torus_swapped', 
   write('cone_cylinder', {materials: [steel], parts: [part('tube', 'cone', 0, 0, 0, {r: 3, r2: 3, h: 10}, 'm_steel')], sources: [pointSource()], tallies: [], settings: settings({worldR: 30})});
 }
 
+// 11. A first wall as PLOW writes it (a 120-point Miller D, R0 2 m, a 0.6 m, kappa 1.7, delta 0.33; here in cm), read in exact mode with a 5 cm wall: the cone parts the reader writes.
+//     test_first_wall_openmc.py measures the plasma cells and the wall cells in OpenMC against the polygon's volume of revolution and its mitre offset.
+{
+  sandbox.__m = [200, 60, 1.7, 0.33, 0, 120];
+  sandbox.__poly = JSON.parse(vm.runInContext('JSON.stringify(dShapeCurve(__m[0], __m[1], __m[2], __m[3], __m[4], __m[5]))', sandbox));
+  sandbox.__s = {polygon: sandbox.__poly, N: 'exact', layers: [{material: 'm_water'}, {thickness: 5, material: 'm_steel'}]};
+  const cones = JSON.parse(vm.runInContext('JSON.stringify(dShapeParts(__s))', sandbox));
+  const parts = cones.map(c => part(c.name.replace(/ /g, '_'), 'cone', 0, 0, c.z, {r: c.r, r2: c.r2, h: c.h}, c.material));
+  write('firstwall_ring', {materials: [water, steel], parts, sources: [pointSource(200, 0, 0)], tallies: [], settings: settings({worldR: 400})});
+}
+
 // 9. A small steady eigenvalue case for the headless runner (test_headless.py): a UO2 pin cell in a reflective water box, 1000 x 40 with 10 inactive (30 active batches,
 //    the runner's minimum), no tally (k-eff is the result).
 {

@@ -38,5 +38,5 @@ differs, or that has no finite k-eff with a standard deviation and a k per batch
 k-eff has no analytic oracle, so SEED reports it `unverified`: the only entries are the two refusals (`openmc-bad-eigenvalue`, entry version 2, 25 active batches, and
 `openmc-bad-eigenvalue-particles`, 500 particles per batch), both expecting `E_BOUNDS_EXCEEDED`. Version 1 of `openmc-bad-eigenvalue` expected `E_UNSUPPORTED`.
 
-Measured on the fixture (UO2 pin cell, 1000 x 40, 10 inactive, one thread): about 6 s per run, k-eff near 1.3 with a standard deviation of several hundred pcm. That is the
+Measured on the fixture (UO2 pin cell, 1000 x 40, 10 inactive, one thread, WSL, 2026-10-25): 8.4 s per run, k-eff 1.3831 +/- 0.0053 (534 pcm). That is the
 noise floor of the loop at the minimum size; a tolerance below it cannot be met (SEED's `stalled`).

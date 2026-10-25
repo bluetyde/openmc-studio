@@ -4,6 +4,7 @@
     python -m openmc_studio.headless validate PROJECT.json
     python -m openmc_studio.headless run MODEL.py PROJECT.json --out DIR --run-id ID [--timeout S] [--threads N]
     python -m openmc_studio.headless cancel DIR/ID
+    python -m openmc_studio.headless transfer          (a SEED transfer request on stdin; see transfer.py)
 
 Every verb prints exactly one JSON line. The caller (SEED) has already checked that MODEL.py is what Studio's generator makes of
 PROJECT.json; this runner trusts nothing else about the script beyond that and runs it as a child process in a new session.
@@ -83,10 +84,10 @@ def _openmc_version():
 
 
 def describe():
-    from . import provenance
+    from . import provenance, transfer
     env = provenance.environment()
     data = env.get("nuclear_data") or {}
-    return _reply(True, format=FORMAT, version=VERSION, openmc=_openmc_version(), nuclearData=data,
+    return _reply(True, format=FORMAT, version=VERSION, openmc=_openmc_version(), nuclearData=data, transfers=[transfer.DESCRIPTION],
                   runModes=["fixed source"], limits={"maxParticles": MAX_PARTICLES, "maxBatches": MAX_BATCHES, "maxTimeoutSeconds": DEFAULT_TIMEOUT * 24},
                   platform=env.get("platform"), python=env.get("python"))
 
@@ -291,6 +292,22 @@ def cancel(run_dir):
     return _reply(True, status="cancelled", cancelled=True, stopped=True)
 
 
+def transfer_verb():
+    """A SEED transfer request on stdin, one reply line on stdout; exit 0 for every answer, accepted or refused (SEED turns anything else into E_APP_FAILED)."""
+    from . import transfer
+    try:
+        request = transfer._loads(sys.stdin.buffer.read().decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        _reply(False, errors=[_problem("E_SCHEMA_INVALID", "", "stdin is not a JSON transfer request")])
+        return 0
+    reply = transfer.transfer(request)
+    if reply["ok"]:
+        _reply(True, output=reply["output"], checks=reply["checks"])
+    else:
+        _reply(False, errors=reply["errors"][:20])
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="openmc_studio.headless")
     sub = ap.add_subparsers(dest="verb", required=True)
@@ -306,6 +323,7 @@ def main(argv=None):
     r.add_argument("--threads", type=int, default=1)
     c = sub.add_parser("cancel")
     c.add_argument("run_dir")
+    sub.add_parser("transfer")
     try:
         a = ap.parse_args(argv)
     except SystemExit:
@@ -314,6 +332,8 @@ def main(argv=None):
         return describe()
     if a.verb == "validate":
         return validate(a.project)
+    if a.verb == "transfer":
+        return transfer_verb()
     if a.verb == "run":
         if a.timeout < 1 or a.threads < 1 or a.threads > 256:
             return _reply(False, errors=[_problem("E_SCHEMA_INVALID", "", "timeout and threads must be positive (threads at most 256)")])

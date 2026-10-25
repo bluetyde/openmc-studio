@@ -148,6 +148,20 @@ test('the explorer line and the 2D slice see the torus', () => {
   assert.strictEqual(run('cellIndexAt(10, 0, 2.5)'), -1);
 });
 
+test('an array of tori is one lattice only when the tori are identical (a, b, c and the axis are compared)', () => {
+  const plan = (second) => {
+    sb.__second = second;
+    run("S = sampleModel(); S.tallies = []; S.parts = [Object.assign(newPart('p1', 'R1', 'torus'), {a: 10, b: 2, c: 1, x: 0, group: 'g1', material: S.materials[0].id}), Object.assign(newPart('p2', 'R2', 'torus'), {a: 10, b: 2, c: 1, x: 40, group: 'g1', material: S.materials[0].id}, __second)];" +
+        "S.groups = [{id: 'g1', name: 'Rings', parent: null, x: 0, y: 0, z: 0, lattice: {nx: 2, ny: 1, nz: 1, dx: 40, dy: 40, dz: 4, fill: 'void', asLattice: true}}];");
+    return J(run('latticePlan(S.groups[0])'));
+  };
+  assert.strictEqual(plan({}).ok, true, JSON.stringify(plan({})));
+  for (const diff of [{a: 11}, {b: 3}, {c: 1.5}, {axis: 'x'}]) {
+    const r = plan(diff);
+    assert.strictEqual(r.ok, false, JSON.stringify(diff));
+    assert.ok(/differ/.test(r.reason), r.reason);
+  }
+});
 test('picking in the 3D view: a void part in front hides the first span, the second span of the torus is still picked', () => {
   run("S = sampleModel(); S.groups = []; S.tallies = []; S.settings.worldR = 100; S.parts = [Object.assign(newPart('p1', 'Hole', 'sphere'), {r: 3, x: -10, material: 'void'}), Object.assign(newPart('p2', 'Ring', 'torus'), {a: 10, b: 2, c: 1, material: S.materials[0].id})]; V3.bvh = null;");
   run("V3.geom = {B: {pos: [-40, 0, 0], f: [1, 0, 0], r: [0, 1, 0], u: [0, 0, 1], W: 100, H: 100, focal: 100}}; V3.pickT = Infinity");

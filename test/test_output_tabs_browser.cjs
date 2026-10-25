@@ -59,8 +59,8 @@ const RESULTS = {tallies:[], tracks:[], summary:null};
     await page.waitForFunction(() => document.querySelectorAll('#runs .runrow').length === 2);
     assert.ok(await page.evaluate(() => window.runsFetches) > before, 'opening Runs should refresh the list');
     assert.equal(await page.locator('#runs .runrow').count(), 2);
-    // Results is offered for the finished run only.
-    assert.equal(await page.locator('#runs [data-results]:not([disabled])').count(), 1);
+    // Results is offered for every run that is not still running (a failed or stopped run can be opened since cad6db2); none of these two is running.
+    assert.equal(await page.locator('#runs [data-results]:not([disabled])').count(), 2);
     assert.equal(await page.locator('#runs [data-load]').count(), 2);
 
     assert.deepEqual(errors, [], 'no page errors');

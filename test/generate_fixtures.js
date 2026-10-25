@@ -256,3 +256,12 @@ for (const [name, axis, b, c] of [['torus_ellip', 'z', 2, 1], ['torus_swapped', 
   write(name, {materials: [steel], parts: [part('slab', 'box', 0, 0, 0, slab, 'm_steel'), part('ring', 'torus', 0, 0, 0, {a: 10, b, c, axis}, 'm_steel')],
     sources: [pointSource()], tallies: [], settings: settings({worldR: 30})});
 }
+
+// 8. Three identical tori in a row written as a RectLattice (the lattice check compares a, b, c and the axis); the Python test looks up the material in tubes and holes.
+{
+  const parts = [-1, 0, 1].map(i => part(`ring_${i + 1}`, 'torus', 30 * i, 0, 0, {a: 10, b: 2, c: 1}, 'm_steel', 'g_rings'));
+  write('torus_lattice', {materials: [steel], parts, sources: [pointSource()], tallies: [],
+    groups: [{id: 'g_rings', name: 'Rings', parent: null, x: 0, y: 0, z: 0, lattice: {nx: 3, ny: 1, nz: 1, dx: 30, dy: 30, dz: 6, fill: 'auto', asLattice: true}}],
+    settings: settings({worldR: 60})}, {flatTwin: true});
+}
+

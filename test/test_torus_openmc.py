@@ -73,5 +73,28 @@ class TestTorusVolumes(unittest.TestCase):
         self.assertEqual((swapped.a, swapped.b, swapped.c), (10.0, 1.0, 2.0))
 
 
+class TestTorusLattice(unittest.TestCase):
+    def test_lattice_and_flat_twin_agree_at_tubes_and_holes(self):
+        """Three tori (a = 10, b = 2, c = 1) every 30 cm along x, as a RectLattice and as separate cells."""
+        points = [(30 * i + dx, dy, dz) for i in (-1, 0, 1) for dx, dy, dz in
+                  ((10, 0, 0), (-10, 0, 0), (0, 10, 1.5), (0, 0, 0), (10, 0, 2.5), (11.5, 0, 0), (5, 5, 0), (7.07, 7.07, 0))]
+        for name in ("torus_lattice", "torus_lattice_flat"):
+            openmc.reset_auto_ids()
+            with contextlib.redirect_stdout(io.StringIO()):
+                ns = runpy.run_path(os.path.join(HERE, "generated", name + ".py"), run_name="studio_test")
+            geom = ns["model"].geometry
+            got = []
+            for pt in points:
+                found = geom.find(pt)
+                fill = found[-1].fill if found else None
+                got.append(fill.name if isinstance(fill, openmc.Material) else None)
+            if name == "torus_lattice":
+                lattice_answer = got
+            else:
+                self.assertEqual(got, lattice_answer, "lattice and flat twin differ")
+        inside = [a is not None for a in lattice_answer]
+        self.assertEqual(inside, [True, True, True, False, False, False, False, True] * 3)
+
+
 if __name__ == "__main__":
     unittest.main()

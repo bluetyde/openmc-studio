@@ -287,6 +287,15 @@ for (const [name, axis, b, c] of [['torus_ellip', 'z', 2, 1], ['torus_swapped', 
   write('firstwall_ring', {materials: [water, steel], parts, sources: [pointSource(200, 0, 0)], tallies: [], settings: settings({worldR: 400})});
 }
 
+// 12. The ring sources the PLOW fusion-source reader writes (a synthetic 10 x 32 cell record, test/fusion_records.js), in an empty world: test_fusion_source_openmc.py has OpenMC sample the
+//     birth sites and compares them with the record (radius, azimuth, share per cell, energy mean and width).
+{
+  sandbox.__t = JSON.stringify(require('./fusion_records.js').fusionRecord());
+  const specs = JSON.parse(vm.runInContext('JSON.stringify(fusionSourcesOf(parseFusionSourceRecord(__t)))', sandbox));
+  const sources = specs.map((sp, i) => ({...pointSource(), ...sp, id: 's' + i, particle: 'neutron'}));
+  write('fusion_ring_source', {materials: [], parts: [], sources, tallies: [], settings: settings({worldR: 400, particles: 1000, batches: 1})});
+}
+
 // 9. A small steady eigenvalue case for the headless runner (test_headless.py): a UO2 pin cell in a reflective water box, 1000 x 40 with 10 inactive (30 active batches,
 //    the runner's minimum), no tally (k-eff is the result).
 {

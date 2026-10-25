@@ -1409,6 +1409,15 @@ function inShape(p, x, y, z) {
 }
 // Torus about the local z axis: major radius a, semi-axis b along the axis, c across it (openmc.ZTorus(a, b, c)):
 // (sqrt(x² + y²) - a)² / c² + z² / b² < 1.
+// The world axis ('x', 'y' or 'z') the torus's axis of revolution lies along, or null when it is tilted. Only the direction of the axis matters: a turn about the
+// axis itself leaves the shape unchanged.
+function torusAxis(p) {
+  const M = partFrame(p).M, col = [M[0][2], M[1][2], M[2][2]];
+  const k = [0, 1, 2].find(i => Math.abs(Math.abs(col[i]) - 1) < 1e-9);
+  return k === undefined ? null : 'xyz'[k];
+}
+// Below this ratio of tube half-width to major radius the 3D view's single-precision quartic can lose the tube (a^2 - c^2 rounds to a^2).
+const TORUS_THIN = 0.01;
 function torusInside(p, lx, ly, lz) {
   const q = Math.hypot(lx, ly) - p.a;
   return (q * q) / (p.c * p.c) + (lz * lz) / (p.b * p.b) < 1;
@@ -1577,7 +1586,8 @@ function problems() {
     if (![p.rx || 0, p.ry || 0, p.rz || 0].every(fin)) add('error', `${p.name}: rotation angles must be numbers (degrees).`, 'part', p.id);
     if (!dims.every(pos)) add('error', `${p.name}: sizes must be above 0 cm.`, 'part', p.id);
     else if (p.shape === 'torus' && !(p.c < p.a)) add('error', `${p.name}: the radial tube radius (${p.c} cm) must be smaller than the major radius (${p.a} cm), or the ring closes on itself.`, 'part', p.id);
-    if (p.shape === 'torus' && !partFrame(p).aligned) add('error', `${p.name}: a torus can only point along x, y or z (rotate in 90° steps). OpenMC has no tilted torus.`, 'part', p.id);
+    if (p.shape === 'torus' && !torusAxis(p)) add('error', `${p.name}: a torus can only point along x, y or z (turning it about its own axis is fine). OpenMC has no tilted torus.`, 'part', p.id);
+    if (p.shape === 'torus' && p.c < p.a && p.c / p.a < TORUS_THIN) add('warn', `${p.name}: the tube is very thin next to the ring (half-width ${p.c} cm on a ${p.a} cm radius). The slice, the export and the run are exact, but the 3D view can lose it.`, 'part', p.id);
     else if (partLeavesWorld(p)) add('warn', `${p.name} extends past the world boundary. Particles leave at the boundary, so the outer part is cut off.`, 'part', p.id);
     if (p.material !== 'void' && !matById(p.material)) add('error', `${p.name}: its material was deleted. Pick a material or Void.`, 'part', p.id);
     if (p.materialPending) add('error', `${p.name} needs a material. It came from a CAD file, which carries none: pick one, or Void if it really is empty space.`, 'part', p.id);
@@ -2045,9 +2055,11 @@ function buildScript(probs, mark, opts = {}) {
       expr = `-${qv} & ${gslab(u, ctr, p.h / 2)}`;
     }
     else if (p.shape === 'torus') {
-      const ax = fr.aligned ? fr.axis : 'z'; // a tilted torus is a Problems error, so the export is never run with it
-      const T = surface('T', [p.x, p.y, p.z, p.a, p.b, p.c, ax === 'x' ? 1 : ax === 'y' ? 2 : 3], 'torus', `a${tag(p.a)}`,
-        () => `openmc.${ax.toUpperCase()}Torus(x0=${num(p.x)}, y0=${num(p.y)}, z0=${num(p.z)}, a=${num(p.a)}, b=${num(p.b)}, c=${num(p.c)})`, {kind:'torus', ax});
+      const ax = torusAxis(p);
+      // OpenMC has no tilted torus. Problems blocks runs, but a script can still be copied or saved, so it must not quietly hold another shape: it stops with the reason.
+      const T = surface('T', [p.x, p.y, p.z, p.a, p.b, p.c, ax === 'x' ? 1 : ax === 'y' ? 2 : ax === 'z' ? 3 : 4], 'torus', `a${tag(p.a)}`,
+        () => ax ? `openmc.${ax.toUpperCase()}Torus(x0=${num(p.x)}, y0=${num(p.y)}, z0=${num(p.z)}, a=${num(p.a)}, b=${num(p.b)}, c=${num(p.c)})`
+          : `(_ for _ in ()).throw(ValueError(${pyStr(`Torus ${p.name} is tilted and OpenMC has no tilted torus. Fix its rotation in OpenMC Studio.`)}))`, {kind:'torus', ax});
       expr = `-${T}`;
     }
     else if (p.shape === 'ellipsoid') {

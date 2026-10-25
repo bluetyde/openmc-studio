@@ -140,6 +140,29 @@ test('a 90 degree turn moves the axis; a tilted torus and a ring that closes on 
   withParts([{a: 10, b: 0, c: 1}]);
   p = problemsNow(); assert.ok(p.some(q => q.sev === 'error' && /sizes must be above 0/.test(q.text)));
 });
+test('a tilted torus cannot be exported as another shape: the script stops with the reason', () => {
+  withParts([{name: 'Tilted', a: 10, b: 2, c: 1, rx: 30}]);
+  const py = script();
+  assert.ok(!/ZTorus|XTorus|YTorus/.test(py), 'no torus class is written for a tilted torus');
+  assert.ok(/throw\(ValueError\("Torus Tilted is tilted/.test(py), py.split('\n').filter(l => /Tilted/.test(l)).join('\n'));
+});
+test('a turn about the torus own axis is fine and gives the same export; axis x with a turn about x too', () => {
+  withParts([{a: 10, b: 2, c: 1}]); const plain = script();
+  withParts([{a: 10, b: 2, c: 1, rz: 30}]);
+  assert.deepStrictEqual(problemsNow(), []);
+  assert.strictEqual(script().match(/openmc\.\wTorus\([^)]*\)/)[0], plain.match(/openmc\.\wTorus\([^)]*\)/)[0]);
+  withParts([{a: 10, b: 2, c: 1, axis: 'x', rx: 45}]);
+  assert.deepStrictEqual(problemsNow(), []);
+  assert.ok(/openmc\.XTorus\(/.test(script()));
+  withParts([{a: 10, b: 2, c: 1, rz: 30}]);       // and the inside test follows the same shape either way
+  assert.ok(inShape(J(run('S.parts[0]')), 10, 0, 1.9) && !inShape(J(run('S.parts[0]')), 10, 0, 2.1));
+});
+test('a very thin tube is a warning (the 3D view can lose it), not an error', () => {
+  withParts([{a: 30, b: 0.5, c: 0.2}]);                   // c / a = 0.0067
+  let p = problemsNow(); assert.strictEqual(p.length, 1); assert.strictEqual(p[0].sev, 'warn'); assert.ok(/very thin/.test(p[0].text), p[0].text);
+  withParts([{a: 30, b: 0.5, c: 0.3}]);                   // c / a = 0.01: not flagged
+  assert.deepStrictEqual(problemsNow(), []);
+});
 test('the explorer line and the 2D slice see the torus', () => {
   withParts([{a: 10, b: 2, c: 1}]);
   assert.ok(run('shapeMeta(S.parts[0])').includes('R 10') && run('shapeMeta(S.parts[0])').includes('b 2') && run('shapeMeta(S.parts[0])').includes('c 1'));

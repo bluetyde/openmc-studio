@@ -103,6 +103,14 @@ class Good(unittest.TestCase):
         # the example round-trips through the writer byte for byte
         self.assertEqual(transfer.studio_json(json.loads(TEXT)) + "\n", TEXT)
 
+    def test_a_final_newline_is_kept_if_the_input_had_one_and_not_added_if_it_had_none(self):
+        self.assertTrue(TEXT.endswith("\n"))
+        self.assertTrue(good()["output"]["content"].endswith("\n"))
+        bare = TEXT.rstrip("\n")
+        out = good(content=bare)["output"]["content"]
+        self.assertFalse(out.endswith("\n"))
+        self.assertFalse(good(content=bare)["checks"]["reformatted"])
+
     def test_a_previous_temperature_is_replaced_and_reported(self):
         p = json.loads(TEXT)
         p["materials"][0]["temperature"] = 600
@@ -220,6 +228,41 @@ class Refusals(unittest.TestCase):
         self.refused("E_NUMERIC", data=table([["kernel", 900.0, float("nan")]], extra_cols=[{"name": "s", "unit": "K", "role": "std", "of": "T"}]))
         good(data=table([["kernel", 900.0]]))
 
+    # --- table and source details ---
+    def test_table_details_are_refused_with_their_good_twins(self):
+        std = {"name": "T_std", "unit": "K", "role": "std", "of": "T"}
+        # a column name twice (the table must say which column is meant)
+        dup = table([["kernel", 900.0, 5.0]], extra_cols=[{"name": "T", "unit": "K", "role": "value"}])
+        self.refused("E_SCHEMA_INVALID", data=dup, field="/name")
+        # two std columns for one value
+        two = table([["kernel", 900.0, 5.0, 6.0]], extra_cols=[std, {**std, "name": "T_std2"}])
+        self.refused("E_SCHEMA_INVALID", data=two, field="/source/data/columns")
+        good(data=table([["kernel", 900.0, 5.0]], extra_cols=[std]))
+        # a std in another unit than its value
+        self.refused("E_UNITS", data=table([["kernel", 900.0, 5.0]], extra_cols=[{**std, "unit": "degC"}]), field="/unit")
+
+    def test_a_scalar_names_exactly_one_material_and_the_quantity_must_match(self):
+        two = recipe(mapping={"spatial": {"meaning": "volume-mean", "materials": [{"material": "triso_m0"}, {"material": "triso_m3"}]}, "time": {"kind": "steady"}, "extrapolation": "refused"})
+        self.refused("E_RECIPE_INVALID", two, scalar(900.0), field="/materials")
+        with_region = recipe(mapping={"spatial": {"meaning": "volume-mean", "materials": [{"material": "triso_m0", "region": "kernel"}]}, "time": {"kind": "steady"}, "extrapolation": "refused"})
+        self.refused("E_RECIPE_INVALID", with_region, scalar(900.0), field="/materials")
+        one = recipe(mapping={"spatial": {"meaning": "volume-mean", "materials": [{"material": "triso_m0"}]}, "time": {"kind": "steady"}, "extrapolation": "refused"})
+        good(one, scalar(900.0))
+        wrong = scalar(900.0); wrong["quantity"] = "something_else"
+        self.refused("E_RECIPE_INVALID", one, wrong, field="/quantity")
+
+    def test_every_problem_is_reported_not_just_the_first(self):
+        rec = recipe(mapping={"spatial": {"meaning": "volume-mean", "materials": [{"material": "triso_m0", "region": "a"}, {"material": "triso_m3", "region": "b"}, {"material": "triso_m1", "region": "c"}]},
+                              "time": {"kind": "steady"}, "extrapolation": "refused"})
+        r = transfer.transfer(request(rec, table([["a", 100.0], ["b", 5000.0]])))
+        self.assertEqual([e["code"] for e in r["errors"]], ["E_TEMPERATURE_RANGE", "E_TEMPERATURE_RANGE", "E_COVERAGE"])
+
+    def test_the_recipe_range_never_widens_below_either(self):
+        wide = recipe(applicability={"range": {"min": 0, "max": 9000}})
+        self.refused("E_TEMPERATURE_RANGE", wide, table([["kernel", 100.0]]))
+        self.refused("E_TEMPERATURE_RANGE", wide, table([["kernel", 3000.0]]))
+        good(wide, table([["kernel", 300.0]]))
+
     # --- the rest of the contract ---
     def test_only_the_volume_mean_meaning_is_taken(self):
         for meaning in ("effective-doppler", None, "centerline"):
@@ -248,6 +291,19 @@ class Refusals(unittest.TestCase):
     def test_a_refusal_never_returns_a_project(self):
         r = transfer.transfer(request(data=table([["kernel", 5.0]])))
         self.assertNotIn("output", r)
+
+
+class Describe(unittest.TestCase):
+    def test_describe_lists_the_field_with_what_the_sender_must_provide(self):
+        env = dict(os.environ, PYTHONPATH=os.path.join(ROOT, "studio"))
+        p = subprocess.run([sys.executable, "-m", "openmc_studio.headless", "describe"], capture_output=True, env=env, timeout=120)
+        d = json.loads(p.stdout.decode().strip().splitlines()[-1])
+        self.assertEqual([t["field"] for t in d["transfers"]], ["fuel-temperature"])
+        t = d["transfers"][0]
+        self.assertEqual(t["accepts"], [{"dimension": "temperature", "normalization": "none"}])
+        self.assertIn("volume-mean", t["parameters"]["means"])
+        self.assertEqual(t["parameters"]["range"]["neutronDataK"], [250.0, 2500.0])
+        self.assertIn("Material.temperature", t["parameters"]["sets"])
 
 
 class Writer(unittest.TestCase):

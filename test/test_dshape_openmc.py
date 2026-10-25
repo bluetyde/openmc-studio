@@ -82,5 +82,22 @@ class TestDShapeRing(unittest.TestCase):
         self.assertTrue(kinds & {"ZCone", "Quadric"}, kinds)
 
 
+class TestEqualRadiusCone(unittest.TestCase):
+    def test_a_cone_with_equal_radii_is_a_cylinder_of_the_right_volume(self):
+        openmc.reset_auto_ids()
+        with contextlib.redirect_stdout(io.StringIO()):
+            ns = runpy.run_path(os.path.join(HERE, "generated", "cone_cylinder.py"), run_name="studio_test")
+        model = ns["model"]
+        tube = next(c for c in model.geometry.get_all_cells().values() if c.name == "tube")
+        calc = openmc.VolumeCalculation([tube], 2_000_000, (-4, -4, -6), (4, 4, 6))
+        model.settings.volume_calculations = [calc]
+        with tempfile.TemporaryDirectory(prefix="studio_cone_") as d:
+            model.calculate_volumes(cwd=d, output=False)
+            calc.load_results(os.path.join(d, "volume_1.h5"))
+        v = calc.volumes[tube.id]
+        want = math.pi * 9 * 10
+        self.assertLess(abs(v.nominal_value - want), max(4 * v.std_dev, 0.005 * want), f"OpenMC {v.nominal_value:.2f} +/- {v.std_dev:.2f}, pi r^2 h {want:.2f}")
+
+
 if __name__ == "__main__":
     unittest.main()

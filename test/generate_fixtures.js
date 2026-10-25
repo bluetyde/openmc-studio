@@ -272,6 +272,8 @@ for (const [name, axis, b, c] of [['torus_ellip', 'z', 2, 1], ['torus_swapped', 
   const cones = JSON.parse(vm.runInContext('JSON.stringify(dShapeParts(__s))', sandbox));
   const parts = cones.map(c => part(c.name.replace(/ /g, '_'), 'cone', 0, 0, c.z, {r: c.r, r2: c.r2, h: c.h}, c.material));
   write('dshape_ring', {materials: [water, steel], parts, sources: [pointSource(30, 0, 0)], tallies: [], settings: settings({worldR: 60})});
+  // A cone whose two radii are equal (the middle slab of an odd count at delta 0): it must come out as the cylinder it is, pi r^2 h = 282.743 cm3 for r = 3, h = 10.
+  write('cone_cylinder', {materials: [steel], parts: [part('tube', 'cone', 0, 0, 0, {r: 3, r2: 3, h: 10}, 'm_steel')], sources: [pointSource()], tallies: [], settings: settings({worldR: 30})});
 }
 
 // 9. A small steady eigenvalue case for the headless runner (test_headless.py): a UO2 pin cell in a reflective water box, 1000 x 40 with 10 inactive (30 active batches,

@@ -2044,11 +2044,12 @@ function buildScript(probs, mark, opts = {}) {
       expr = `${gslab(u0, ctr, p.r)} & ${gslab(u1, ctr, p.r)} & ${gslab(u2, ctr, p.r)} & ${gslab(col(2), ctr, p.h / 2)}`;
     }
     else if (p.shape === 'cone') {
-      const r2 = p.r2 ?? p.r, k = (r2 - p.r) / p.h, rmid = (p.r + r2) / 2, lz_apex = -rmid / k, u = col(2);
+      // With the apex at lz_apex = -rmid / k: k^2 lz_apex = -k rmid and k^2 lz_apex^2 = rmid^2. Written that way, a cone with r = r2 (k = 0) comes out as the cylinder it is, not as NaN.
+      const r2 = p.r2 ?? p.r, k = (r2 - p.r) / p.h, rmid = (p.r + r2) / 2, u = col(2);
       const P = [0, 1, 2].map(i => [0, 1, 2].map(j => (i === j ? 1 : 0) - (1 + k * k) * u[i] * u[j]));
-      const w = u.map(ui => k * k * lz_apex * ui);
+      const w = u.map(ui => -k * rmid * ui);
       const Pc = P.map(row => dot3(row, ctr)), Pc_minus_w = Pc.map((v, i) => v - w[i]);
-      const const_term = dot3(ctr, Pc) - 2 * dot3(w, ctr) - k * k * lz_apex * lz_apex;
+      const const_term = dot3(ctr, Pc) - 2 * dot3(w, ctr) - rmid * rmid;
       const co = [P[0][0], P[1][1], P[2][2], 2 * P[0][1], 2 * P[1][2], 2 * P[0][2], -2 * Pc_minus_w[0], -2 * Pc_minus_w[1], -2 * Pc_minus_w[2], const_term];
       const names = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'j', 'k'];
       const qv = surface('Q', co, 'quadric', 'cone', () => `openmc.Quadric(${co.map((v, i) => `${names[i]}=${num(v)}`).join(', ')})`, {kind:'quadric'});
@@ -7849,6 +7850,9 @@ function dShapeSlabs(spec, d, N) {
   pts.forEach((p, i) => { if (p[1] > pts[iT][1]) iT = i; if (p[1] < pts[iB][1]) iB = i; });
   const walk = (from, to) => { const out = []; for (let i = from; ; i = (i + 1) % M) { out.push(pts[i]); if (i === to) break; } return out; };
   const right = walk(iB, iT), left = walk(iT, iB).reverse();      // both run from the bottom to the top
+  // The slab radii are read off each chain by height, so a chain must rise all the way. A wall thicker than the curve's radius of curvature folds the pushed-out edge over itself.
+  const rises = ch => ch.every((q, i) => i === 0 || q[1] >= ch[i - 1][1] - 1e-9);
+  if (!rises(right) || !rises(left)) throw new Error('The edge folds over itself, so it cannot be cut into slabs: use a thinner wall or a rounder shape (smaller kappa or delta).');
   const at = (chain, z) => {
     let lo = 0, hi = chain.length - 1;
     if (z <= chain[0][1]) return chain[0][0];
@@ -7869,11 +7873,13 @@ function dShapeSlabs(spec, d, N) {
 // spec: {R0, a, kappa, delta, N, layers:[{thickness, material}]}; layers[0] is the plasma side (its thickness is ignored). Returns cone part fields, highest priority first.
 function dShapeParts(spec) {
   const {R0, a, kappa, delta} = spec, N = Math.round(spec.N), layers = spec.layers;
+  if (![R0, a, kappa, delta, N].every(Number.isFinite)) throw new Error('R0, a, kappa, delta and the slab count must be numbers.');
+  if (!Array.isArray(layers) || !layers.length) throw new Error('The ring needs at least the plasma layer.');
   if (!(a > 0 && kappa > 0 && R0 > 0)) throw new Error('R0, a and kappa must be positive.');
   if (!(Math.abs(delta) <= 0.9)) throw new Error('Triangularity must be between -0.9 and 0.9.');
   if (!(N >= 4 && N <= 200)) throw new Error('Use 4 to 200 slabs.');
   const dk = []; let acc = 0;
-  layers.forEach((l, k) => { if (k > 0) { if (!(l.thickness > 0)) throw new Error('A wall layer needs a thickness above zero.'); acc += l.thickness; } dk.push(acc); });
+  layers.forEach((l, k) => { if (k > 0) { if (!(l.thickness > 0 && Number.isFinite(l.thickness))) throw new Error('A wall layer needs a thickness above zero.'); acc += l.thickness; } dk.push(acc); });
   if (!(R0 - a - acc > 0)) throw new Error('The ring would reach the axis: R0 must exceed a plus the wall thickness.');
   const L = layers.length - 1, bounds = dk.map(d => dShapeSlabs(spec, d, N));
   const out = [], cone = (name, s, left, material) => {
@@ -7883,6 +7889,7 @@ function dShapeParts(spec) {
   };
   for (let k = L; k >= 0; k--) bounds[k].forEach((s, i) => cone(`D left ${k}.${i + 1}`, s, true, k === L ? 'void' : layers[k + 1].material || 'void'));
   for (let k = 0; k <= L; k++) bounds[k].forEach((s, i) => cone(`D ${k === 0 ? 'plasma' : 'wall ' + k} ${i + 1}`, s, false, layers[k].material || 'void'));
+  if (out.length !== 2 * layers.length * N) throw new Error('The ring is too flat to cut into slabs: some slab would be thinner than a nanometre. Raise kappa or use fewer slabs.');
   return out;
 }
 function addDShape(spec) {
@@ -7894,10 +7901,16 @@ function addDShape(spec) {
   S.groups.push(g);
   S.parts.unshift(...made);
   S.settings.worldR = worldToFit(made);
-  log('ok', `Added ${esc(g.name)}: ${made.length} cone parts in one group, ${spec.layers.length - 1} wall layer${spec.layers.length === 2 ? '' : 's'}. The wall parts are Void until you give them a material.`);
+  log('ok', `Added ${esc(g.name)}: ${made.length} cone parts in one group, ${spec.layers.length - 1} wall layer${spec.layers.length === 2 ? '' : 's'}. To change a material later, select the wall parts, not the whole group: one material for the group would fill the hole round the axis too. The ring sits on top of the part list, so it wins where it overlaps older parts.`);
   renderAll();
   select('group', gid);
   return {group: g, parts: made};
+}
+// The dialog's numbers (lengths already in cm) to a generator spec; refuses what it cannot read instead of quietly leaving a wall out.
+function dShapeSpecFromInputs(v) {
+  if (![v.R0, v.a, v.kappa, v.delta, v.N, v.t].every(Number.isFinite)) throw new Error('Fill in every number.');
+  if (v.t < 0) throw new Error('The wall thickness cannot be negative: use 0 for no wall.');
+  return {R0:v.R0, a:v.a, kappa:v.kappa, delta:v.delta, N:v.N, layers:[{material:'void'}, ...(v.t > 0 ? [{thickness:v.t, material:v.material || 'void'}] : [])]};
 }
 function openDShapeMenu(btn) {
   const menu = $('#arrayMenu');
@@ -7914,6 +7927,7 @@ function openDShapeMenu(btn) {
       <span class="ax">δ</span><input type="number" id="ds-d" step="any" value="0.33"><span style="font-size:11px;color:#8f9ba8">triangularity</span>
       <span class="ax">Slabs</span><input type="number" id="ds-n" min="4" max="200" step="1" value="24"><span style="font-size:11px;color:#8f9ba8">cones per edge</span>
       <span class="ax">Wall</span><input type="number" id="ds-t" min="0" step="any" value="${sh(5)}"><span style="font-size:11px;color:#8f9ba8">${u}, 0 = none</span>
+      <span class="ax">Wall of</span><select id="ds-m" style="font-size:11px">${[...S.materials.map(m => [m.id, m.name]), ['void', 'Void']].map(([id, n]) => `<option value="${esc(id)}">${esc(n)}</option>`).join('')}</select><span style="font-size:11px;color:#8f9ba8">plasma side is void</span>
     </div>
     <div class="abottom" style="display:flex;gap:6px;align-items:center"><span style="font-size:11px;color:#8f9ba8">A polygon of cones, not a smooth D.</span>
       <button type="button" class="tbtn" id="ds-ok" style="font-weight:600;margin-left:auto">Create</button></div>`;
@@ -7922,11 +7936,10 @@ function openDShapeMenu(btn) {
   $('#ds-R0').focus(); $('#ds-R0').select();
   const apply = () => {
     const num = id => parseFloat($(id).value), len = id => (imperial() ? fromShown(num(id), 'len') : num(id));
-    const t = len('#ds-t') || 0;
-    const spec = {R0:len('#ds-R0'), a:len('#ds-a'), kappa:num('#ds-k'), delta:num('#ds-d'), N:num('#ds-n'),
-                  layers:[{material:'void'}, ...(t > 0 ? [{thickness:t, material:'void'}] : [])]};
-    menu.hidden = true;
-    addDShape(spec);
+    let spec;
+    try { spec = dShapeSpecFromInputs({R0:len('#ds-R0'), a:len('#ds-a'), kappa:num('#ds-k'), delta:num('#ds-d'), N:num('#ds-n'), t:len('#ds-t'), material:$('#ds-m').value}); }
+    catch (e) { log('error', `D-shaped ring: ${esc(e.message)}`); return; }
+    if (addDShape(spec)) menu.hidden = true;
   };
   $('#ds-ok').onclick = apply;
   menu.onkeydown = e => {

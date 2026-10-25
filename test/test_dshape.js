@@ -136,6 +136,50 @@ test('addDShape puts the cones in one group at the top of the part list and refu
   assert.strictEqual(run('S.groups.length'), 1);
 });
 
+test('refusals from the review: a folded wall, a ring too flat to cut, infinite numbers, no layers, a bad wall thickness', () => {
+  const bad = o => { sb.__s = spec(o); return assert.throws(() => run('dShapeParts(__s)')); };
+  bad({R0: 300, a: 100, kappa: 0.1, delta: 0.9, layers: [{material: 'void'}, {thickness: 50, material: 'm'}]});   // the pushed-out edge folds over itself
+  bad({kappa: 1e-12});                                                                                            // every slab would be dropped
+  bad({R0: Infinity}); bad({kappa: Infinity}); bad({layers: []});
+  bad({layers: [{material: 'void'}, {thickness: NaN, material: 'm'}]});
+  bad({layers: [{material: 'void'}, {thickness: Infinity, material: 'm'}]});
+  sb.__s = spec({R0: 300, a: 100, kappa: 0.1, delta: 0.9, layers: [{material: 'void'}]});
+  assert.strictEqual(J(run('dShapeParts(__s)')).length, 48, 'the same flat shape without the wall is fine: 2 cones per slab');
+});
+test('every spec that is accepted gives exactly 2 cones per layer and slab', () => {
+  for (const o of [{}, {delta: 0}, {delta: -0.5, N: 7}, {kappa: 0.5, N: 9}, {N: 200}, {layers: [{material: 'a'}, {thickness: 1, material: 'b'}, {thickness: 2, material: 'c'}], N: 11}])
+    assert.strictEqual(build(o).length, 2 * spec(o).layers.length * Math.round(spec(o).N), JSON.stringify(o));
+});
+test('the dialog numbers: blank, infinite or negative input is refused, zero wall means none, the wall material is kept', () => {
+  const from = v => { sb.__v = v; return J(run('dShapeSpecFromInputs(__v)')); };
+  const ok = {R0: 300, a: 100, kappa: 1.7, delta: 0.33, N: 24, t: 5, material: 'm9'};
+  assert.deepStrictEqual(from(ok).layers, [{material: 'void'}, {thickness: 5, material: 'm9'}]);
+  assert.deepStrictEqual(from({...ok, t: 0}).layers, [{material: 'void'}]);
+  for (const bad of [{t: NaN}, {t: -5}, {R0: NaN}, {a: NaN}, {kappa: NaN}, {delta: NaN}, {N: NaN}, {t: Infinity}]) {
+    sb.__v = {...ok, ...bad};
+    assert.throws(() => run('dShapeSpecFromInputs(__v)'), undefined, JSON.stringify(bad));
+  }
+});
+test('one undo step removes the ring and redo brings it back', () => {
+  run("S.parts.length = 0; S.groups = []; S.parts.push(newPart('pold', 'Old', 'sphere')); HISTORY.undo.length = 0; HISTORY.redo.length = 0; HISTORY.current = JSON.stringify(S); HISTORY.boundary = true;");
+  run('addDShape(' + JSON.stringify(spec({N: 8})) + ')');
+  const n = run('S.parts.length');
+  run('historyTrack(JSON.stringify(S))');                         // the page does this on every render; the test sandbox has no render loop
+  assert.strictEqual(run('HISTORY.undo.length'), 1, 'creating the ring is one history step');
+  run('undo()');
+  assert.strictEqual(run('S.parts.length'), 1);
+  assert.strictEqual(run('S.groups.length'), 0);
+  run('redo()');
+  assert.strictEqual(run('S.parts.length'), n);
+});
+test('a cone with equal radii exports as a cylinder, not NaN (the middle slabs of an odd count at delta 0 are such cones)', () => {
+  run('S = sampleModel(); S.parts.unshift(Object.assign(newPart("pc", "Tube", "cone"), {r: 3, r2: 3, h: 10, x: 100}));');
+  const text = run('buildScript(problems(), false).text');
+  assert.ok(!/nan|infinity/i.test(text.replace(/"[^"\n]*"/g, '')), 'no NaN in model.py');
+  const line = text.split('\n').find(l => l.includes('openmc.Quadric') && l.includes('k=9991'));
+  assert.ok(line, 'the cylinder (x - 100)^2 + y^2 - 9: constant 100^2 - 9 = 9991');
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try { fn(); console.log('ok   ' + name); } catch (e) { failed++; console.log('FAIL ' + name + '\n     ' + String(e.stack || e).split('\n').slice(0, 4).join('\n     ')); }

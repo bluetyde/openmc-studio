@@ -145,6 +145,22 @@ test('addFirstWall writes one group, the wall material is the chosen one, and on
   assert.strictEqual(run('S.parts.length'), 1);
   assert.strictEqual(run('S.groups.length'), 0);
 });
+test('addFirstWall in exact mode writes one cone pair per polygon height, with the wall layer', () => {
+  run("S.parts.length = 0; S.groups = [];");
+  sb.__parsed = parse(record(miller()));
+  const want = parts(sb.__parsed.polygonCm, 'exact', [{material: 'p'}, {thickness: 5, material: 'w'}]).length;
+  assert.ok(run("addFirstWall(__parsed, {thickness: 5, material: 'w', exact: true, N: 24})"));
+  assert.strictEqual(run('S.parts.length'), want);
+  assert.ok(want > 96, 'more cones than the 24-slab version: ' + want);
+  assert.strictEqual(run("addFirstWall(__parsed, {thickness: 0, material: 'w', exact: true, N: 24})").parts.length, parts(sb.__parsed.polygonCm, 'exact').length, 'no wall: plasma layer only');
+});
+test('the generator itself refuses a polygon that reaches the axis, has too few points or a bad coordinate', () => {
+  const bad = (poly, re) => { sb.__s = {polygon: poly, N: 'exact', layers: [{material: 'p'}]}; assert.throws(() => run('dShapeParts(__s)'), re); };
+  bad([[0, -1], [3, -1], [3, 1], [0, 1]], /reaches the axis or crosses it/);
+  bad([[-1, -1], [3, -1], [3, 1], [-1, 1]], /reaches the axis or crosses it/);
+  bad([[2, 0], [3, 1]], /at least three points/);
+  bad([[2, -1], [3, -1], [3, NaN], [2, 1]], /pair of numbers/);
+});
 test('a record the reader refuses adds nothing to the model', () => {
   run("S.parts.length = 0; S.groups = [];");
   sb.__t = JSON.stringify(record(miller(), {schema: 'something/1'}));

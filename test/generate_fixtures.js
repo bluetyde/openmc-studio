@@ -265,3 +265,17 @@ for (const [name, axis, b, c] of [['torus_ellip', 'z', 2, 1], ['torus_swapped', 
     settings: settings({worldR: 60})}, {flatTwin: true});
 }
 
+// 9. A small steady eigenvalue case for the headless runner (test_headless.py): a UO2 pin cell in a reflective water box, 1000 x 40 with 10 inactive (30 active batches,
+//    the runner's minimum), no tally (k-eff is the result).
+{
+  const uo2 = {id: 'm_uo2', name: 'UO2 3.5%', color: '#999999', density: 10.4, frac: 'ao', comps: 'U235:0.035, U238:0.965, O16:2', sab: '', burnable: false};
+  const zirc = {id: 'm_zirc', name: 'Zircaloy', color: '#999999', density: 6.55, frac: 'ao', comps: 'Zr:1', sab: ''};
+  const hot = {id: 'm_h2o', name: 'Water', color: '#999999', density: 0.74, frac: 'ao', comps: 'H:2, O:1', sab: 'c_H_in_H2O'};
+  const source = {...pointSource(), id: 's_fission', name: 'Fission source', space: 'box', x0: -0.4, x1: 0.4, y0: -0.4, y1: 0.4, z0: -0.6, z1: 0.6, energy: 'watt'};
+  const pin = {materials: [uo2, zirc, hot], sources: [source], tallies: [], groups: [],
+    parts: [part('fuel', 'cylinder', 0, 0, 0, {r: 0.4096, h: 1.26}, 'm_uo2'), part('clad', 'cylinder', 0, 0, 0, {r: 0.475, h: 1.26}, 'm_zirc')],   // the first part wins where they overlap
+    settings: settings({name: 'Eigenvalue pin', runMode: 'eigenvalue', particles: 1000, batches: 40, inactive: 10, seed: 12345, worldShape: 'box', worldR: 0.63, worldBC: 'reflective', worldFill: 'm_h2o', fissionNeutrons: true})};
+  write('eigenvalue_pin', pin);
+  fs.writeFileSync(path.join(out, 'eigenvalue_pin.project.json'), JSON.stringify(pin, null, 2) + '\n');   // the normalized project the script was made from
+}
+

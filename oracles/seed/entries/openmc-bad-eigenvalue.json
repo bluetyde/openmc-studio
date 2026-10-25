@@ -9,14 +9,14 @@
    "model-validation"
   ]
  },
- "entryVersion": 1,
+ "entryVersion": 2,
  "expected": {
-  "refusalCode": "E_UNSUPPORTED"
+  "refusalCode": "E_BOUNDS_EXCEEDED"
  },
  "inputs": [
   {
    "path": "models/bad-eigenvalue.openmc-studio.json",
-   "sha256": "b79a0f15ccdaa402eeae9f4ba8ac1c538f357af285efa9872f52cf40cbad7dbf"
+   "sha256": "04dc74e6e97ce1b5c3ce4f834a153e018f8228a2fb4cc804ffd824e0778a78b2"
   }
  ],
  "oracleId": "openmc-bad-eigenvalue",
@@ -24,8 +24,8 @@
  "source": {
   "check": "The runner's own first-slice checks (studio/openmc_studio/headless.py, test/test_headless.py) refuse the same faults.",
   "kind": "hand",
-  "text": "An eigenvalue project. The first slice runs fixed-source cases only, so the runner must refuse it before anything is reserved."
+  "text": "An eigenvalue project with 25 active batches (25 batches, none inactive). The runner runs eigenvalue cases but refuses fewer than 30 active batches (MCNP 6.3 manual 2.8.3.2): the k-eff of such a run is too noisy to judge convergence by. Before 2026-10-25 this entry expected E_UNSUPPORTED (the runner took fixed-source cases only)."
  },
  "tag": "bad-input",
- "toleranceHash": "be0cd25da730942e7f9784bcfc09d2f79454f857d7c497d9037ce42ff2ab7c7e"
+ "toleranceHash": "4212da47d6c1bddedf051442f8f0c7469eaff8fed70426617bd19d08c554b1f5"
 }

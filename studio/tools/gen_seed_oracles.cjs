@@ -165,8 +165,20 @@ for (const [id, t, label] of [["b10-slab-thin", 4, "thin"], ["b10-slab-thick", 1
   });
 }
 
+// A real eigenvalue project (a UO2 sphere with a fission source and no tally: k-eff is the result), so that the only thing wrong with it is the one setting under test.
+const eigenvalueSphere = (settings) =>
+  project("Eigenvalue sphere", {
+    materials: [{ id: "fuel", name: "UO2 3.5%", color: "#999999", density: 10.4, frac: "ao", comps: "U235:0.035, U238:0.965, O16:2", sab: "", ref: "A fuel material for the SEED oracle refusal cases" }],
+    parts: [part({ id: "core", name: "Fuel sphere", shape: "sphere", r: 8, material: "fuel" })],
+    source: { space: "point", energy: "watt" },
+    tally: null,
+    settings: { runMode: "eigenvalue", particles: 1000, batches: 40, inactive: 10, fissionNeutrons: true, ...settings },
+  });
+
+// [id, project, expected refusal code, text, entryVersion]
 const BAD = [
-  ["bad-eigenvalue", voidSphere({ runMode: "eigenvalue" }), "E_UNSUPPORTED", "An eigenvalue project. The first slice runs fixed-source cases only, so the runner must refuse it before anything is reserved."],
+  ["bad-eigenvalue", eigenvalueSphere({ batches: 25, inactive: 0 }), "E_BOUNDS_EXCEEDED", "An eigenvalue project with 25 active batches (25 batches, none inactive). The runner runs eigenvalue cases but refuses fewer than 30 active batches (MCNP 6.3 manual 2.8.3.2): the k-eff of such a run is too noisy to judge convergence by. Before 2026-10-25 this entry expected E_UNSUPPORTED (the runner took fixed-source cases only).", 2],
+  ["bad-eigenvalue-particles", eigenvalueSphere({ particles: 500 }), "E_BOUNDS_EXCEEDED", "An eigenvalue project with 500 particles per batch (40 batches, 10 inactive). The runner refuses fewer than 1000 particles per batch for an eigenvalue run (MCNP 6.3 manual 2.8.1.4: trial runs use about 1000): too noisy to judge convergence by.", 1],
   ["bad-too-many-particles", voidSphere({ particles: 2000000 }), "E_BOUNDS_EXCEEDED", "Two million particles per batch: over the runner's limit of one million. It must be refused as out of bounds."],
   ["bad-no-tally", voidSphere({}, false), "E_SCHEMA_INVALID", "A project with no tally: a run would produce no result, so the runner refuses it."],
 ];
@@ -210,12 +222,12 @@ try {
       }))));
     }
   }
-  for (const [id, model, code, text] of BAD) {
+  for (const [id, model, code, text, version] of BAD) {
     const projectRel = `models/${id}.openmc-studio.json`;
     const projectText = dump(model);
     files.set(projectRel, projectText);
     files.set(`entries/openmc-${id}.json`, dump(withHash(entryOf({
-      oracleId: `openmc-${id}`, tag: "bad-input", inputs: [{ path: projectRel, sha256: sha256(projectText) }],
+      entryVersion: version ?? 1, oracleId: `openmc-${id}`, tag: "bad-input", inputs: [{ path: projectRel, sha256: sha256(projectText) }],
       expected: { refusalCode: code }, source: { kind: "hand", text, check: "The runner's own first-slice checks (studio/openmc_studio/headless.py, test/test_headless.py) refuse the same faults." },
       coverage: { quantities: ["model-validation"], domain: "project validation and first-slice capability gate" },
     }))));

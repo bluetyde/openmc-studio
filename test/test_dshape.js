@@ -91,6 +91,20 @@ test('triangularity has a sign: with delta 0.33 the plasma reaches further out a
   const up = (parts, z) => matAt(parts, 300 + 0.25 * 100, z), down = (parts, z) => matAt(parts, 300 + 0.25 * 100, z);
   assert.strictEqual(up(a, 150), down(a, -150), 'the D is symmetric about the midplane');
 });
+test('each outboard cone follows the curve: its radius at a given height is the curve radius there (a swapped taper would not)', () => {
+  const parts = build({N: 96, layers: [{material: 'p'}]}).filter(p => p.name.startsWith('D plasma'));
+  sb.__c = [300, 100, 1.7, 0.33, 0, 4000];
+  const pts = J(run('dShapeCurve(__c[0], __c[1], __c[2], __c[3], __c[4], __c[5])'));
+  let worst = 0, n = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const t = 2 * Math.PI * i / pts.length, tt = t > Math.PI ? t - 2 * Math.PI : t;
+    if (Math.abs(tt) > 1.3) continue;                                           // outboard side only
+    const [R, Z] = pts[i], c = parts.find(p => Z >= p.z - p.h / 2 && Z <= p.z + p.h / 2);
+    const f = (Z - (c.z - c.h / 2)) / c.h;
+    worst = Math.max(worst, Math.abs(c.r + f * (c.r2 - c.r) - R)); n++;
+  }
+  assert.ok(n > 500 && worst < 0.5, `worst gap ${worst} cm over ${n} points`);
+});
 test('the stack is ordered: left cones of the outer boundary first, plasma cones before wall cones', () => {
   const parts = build({N: 8});
   const names = parts.map(p => p.name);
@@ -110,11 +124,11 @@ test('refusals: bad numbers, a ring that reaches the axis, a wall without thickn
   bad({a: NaN}); bad({N: NaN});
 });
 test('addDShape puts the cones in one group at the top of the part list and refuses without touching the model', () => {
-  run('S.parts.length = 0; S.groups = [];');
+  run("S.parts.length = 0; S.groups = []; S.parts.push(newPart('pold', 'Old', 'sphere'));");
   const r = run('addDShape(' + JSON.stringify(spec({N: 8})) + ')');
   assert.ok(r, 'created');
   const n = run('S.parts.length');
-  assert.ok(n > 8 && run('S.parts.every(p => p.group === S.groups[0].id)') && run('S.groups.length') === 1);
+  assert.ok(n > 8 && run('S.parts.slice(0, -1).every(p => p.group === S.groups[0].id)') && run('S.parts[S.parts.length - 1].id') === 'pold' && run('S.groups.length') === 1);
   assert.ok(run('S.settings.worldR') > 400, 'the world grew to hold the ring');
   const bad = run('addDShape(' + JSON.stringify(spec({a: -1})) + ')');
   assert.strictEqual(bad, null);

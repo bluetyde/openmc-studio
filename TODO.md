@@ -303,6 +303,7 @@ Today: one five-layer particle example (`examples/triso-particle`), no packing. 
 ### 4. Package: Fusion Neutronics
 - **Torus & Tokamak Geometry**:
   - Torus primitive (`openmc.ZTorus`, `openmc.XTorus`, `openmc.YTorus` and MCNP `TX`/`TY`/`TZ`) with major radius $R$, minor radius $r$, and analytical 3D raymarching.
+    **Built 2026-10-24 on `claude/fusion-torus` (plan F1):** a Torus part with major radius, tube half-height along the axis (b) and half-width across it (c), axis x/y/z (or a 90° turn); inside test, bounds, 2D slice, STL mesh, `XTorus/YTorus/ZTorus` export, exact 3D ray-march (quartic roots isolated through the derivatives, two spans per ray, in the shader and the picker) and Problems (tilted torus, ring that closes on itself). Checked by sampled volumes against 2π²abc and the z-slab closed form, a shader-against-picker pixel comparison, break tests. **Not done:** the MCNP translation of a torus (needs a gateway test and a CLAIM on port 25333), a tilted torus (OpenMC has none), round trip of a torus from model.py.
   - Parametric elongated D-shaped cross-sections for tokamak first walls, vacuum vessels, and magnetic field coils.
   - Annular / ring plasma sources (`openmc.stats.CylindricalIndependent`).
 - **Tritium Breeding Ratio (TBR) Tally**:

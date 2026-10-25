@@ -1747,7 +1747,7 @@ const MT = {total:'-1', absorption:'-2', fission:'-6', 'nu-fission':'-6 -7', ela
 
 // Can an array group be written as an OpenMC lattice? Only when every member is the same single part (shape, size,
 // rotation, material) sitting on the array's grid, at most one per site. Returns {ok, reason} plus the layout.
-const LAT_DIMS = {sphere:['r'], cylinder:['r', 'h', 'axis'], box:['sx', 'sy', 'sz'], wedge:['sx', 'sy', 'sz'], hex_prism:['r', 'h'], cone:['r', 'r2', 'h'], ellipsoid:['a', 'b', 'c', 'r']};
+const LAT_DIMS = {sphere:['r'], cylinder:['r', 'h', 'axis'], box:['sx', 'sy', 'sz'], wedge:['sx', 'sy', 'sz'], hex_prism:['r', 'h'], cone:['r', 'r2', 'h'], ellipsoid:['a', 'b', 'c', 'r'], torus:['a', 'b', 'c', 'axis']};
 function latticePlan(g) {
   const lat = g && g.lattice;
   if (!lat || !lat.asLattice) return {ok:false, reason:'it isn\'t marked as a lattice'};

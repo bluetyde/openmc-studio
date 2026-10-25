@@ -265,6 +265,15 @@ for (const [name, axis, b, c] of [['torus_ellip', 'z', 2, 1], ['torus_swapped', 
     settings: settings({worldR: 60})}, {flatTwin: true});
 }
 
+// 10. A D-shaped ring (R0 = 30, a = 10, kappa = 1.7, delta = 0.33, 48 slabs, a 2 cm wall) as the cone parts the generator writes; test_dshape_openmc.py measures the
+//     volume of the plasma cells and of the wall cells in OpenMC and compares them with the Miller curve (the plasma side is water, the wall iron).
+{
+  sandbox.__s = {R0: 30, a: 10, kappa: 1.7, delta: 0.33, N: 48, layers: [{material: 'm_water'}, {thickness: 2, material: 'm_steel'}]};
+  const cones = JSON.parse(vm.runInContext('JSON.stringify(dShapeParts(__s))', sandbox));
+  const parts = cones.map(c => part(c.name.replace(/ /g, '_'), 'cone', 0, 0, c.z, {r: c.r, r2: c.r2, h: c.h}, c.material));
+  write('dshape_ring', {materials: [water, steel], parts, sources: [pointSource(30, 0, 0)], tallies: [], settings: settings({worldR: 60})});
+}
+
 // 9. A small steady eigenvalue case for the headless runner (test_headless.py): a UO2 pin cell in a reflective water box, 1000 x 40 with 10 inactive (30 active batches,
 //    the runner's minimum), no tally (k-eff is the result).
 {

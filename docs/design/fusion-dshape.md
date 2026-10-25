@@ -1,6 +1,6 @@
 # F2: D-shaped (revolved) profile
 
-Status: design only, 2026-10-25, branch `claude/fusion-dshape`. Nothing built.
+Status: built 2026-10-25 on branch `claude/fusion-dshape` (one-shot generator, no re-generate). Code: `dShapeParts` and `openDShapeMenu` in index.html; tests `test/test_dshape.js`, `test/test_dshape_openmc.py`.
 
 ## Approach
 

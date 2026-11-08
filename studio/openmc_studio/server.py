@@ -25,6 +25,8 @@ from . import __version__
 from . import depletion_run, nodal_run, provenance
 
 STATIC = Path(__file__).parent / "static"
+# The MCNP exporter, bundled with Studio (it was the separate openmc-mcnp-project repository until 2026-11-08).
+BUNDLED_EXPORTER = Path(__file__).resolve().parents[2] / "mcnp-exporter"
 MAX_BODY = 25 * 1024 * 1024
 RUN_ID = re.compile(r"^[0-9]{8}-[0-9]{6}-[a-z0-9-]{1,40}$")
 
@@ -471,41 +473,13 @@ class McnpWorker:
         self.progress = None
         self.validator = Validator(self._project)
 
-    def _remembered_path_file(self):
-        return self.runs_root / "mcnp_project_path.txt"
-
-    def _candidates(self):
-        """Places to look for the openmc-mcnp-project repo, in order. Never hardcodes
-        a username or a specific machine's layout -- Path.home() resolves per-user
-        on macOS, Linux and Windows alike."""
-        home = Path.home()
-        yield home / "openmc-mcnp-project"
-        for base in ("Developer", "Projects", "Documents", "code", "git", "repos"):
-            yield home / base / "openmc-mcnp-project"
-
     def _project(self):
-        """Explicit override, then a path remembered from a previous successful
-        start (works across users/machines without re-exporting anything), then
-        a short list of conventional locations."""
+        """The MCNP exporter: OPENMC_MCNP_PROJECT if set (a different checkout, for development),
+        else the copy bundled with Studio in mcnp-exporter/."""
         env = os.environ.get("OPENMC_MCNP_PROJECT")
         if env:
             return Path(env).expanduser()
-        remembered = self._remembered_path_file()
-        if remembered.exists():
-            p = Path(remembered.read_text().strip())
-            if (p / "src" / "export_mcnp.py").exists():
-                return p
-        for c in self._candidates():
-            if (c / "src" / "export_mcnp.py").exists():
-                return c
-        return next(self._candidates())  # default guess, just so callers have a path to report
-
-    def _remember(self, project):
-        try:
-            self.runs_root.mkdir(parents=True, exist_ok=True)
-            self._remembered_path_file().write_text(str(project), encoding="utf-8")
-        except OSError:
-            pass  # remembering is a convenience, not required for this run to work
+        return BUNDLED_EXPORTER
 
     def _reader(self, proc, results):
         for line in proc.stdout:
@@ -525,11 +499,8 @@ class McnpWorker:
     def _start(self):
         project = self._project()
         if not (project / "src" / "export_mcnp.py").exists():
-            checked = "\n  ".join(str(c) for c in self._candidates())
-            return (f"Can't find openmc-mcnp-project. Checked:\n  {checked}\n"
-                    f"Set OPENMC_MCNP_PROJECT to its folder -- Studio will remember that path "
-                    f"(in {self._remembered_path_file()}) so you only need to set it once.")
-        self._remember(project)
+            return (f"Can't find the MCNP exporter at {project} (no src/export_mcnp.py). It ships with Studio in "
+                    f"mcnp-exporter/; if OPENMC_MCNP_PROJECT is set, check that it points at a copy of that folder.")
         env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONDONTWRITEBYTECODE="1")
         log = open(self.runs_root / "mcnp-worker.log", "a", encoding="utf-8")
         self.proc = subprocess.Popen([sys.executable, "-W", "ignore", "-m", "openmc_studio.mcnp_worker", str(project)],

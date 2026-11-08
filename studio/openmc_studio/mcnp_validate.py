@@ -4,7 +4,7 @@ The live model.mcnp tab shows a deck as soon as it is translated and remediated;
 the deck and model.xml while the user keeps working, and a newer deck kills it. It does what the worker's last stage
 does when a job asks for validation: validate_deck(deck, model=model, geometry_samples=N).
 
-    python mcnp_validate.py /path/to/openmc-mcnp-project <deck file name> <samples>
+    python mcnp_validate.py /path/to/mcnp-exporter <deck file name> <samples>
 
 Run in the folder holding the deck and model.xml. Writes result.json there: {"ok", "validation", "seconds"}, or
 {"ok": false, "error", ...} if validation itself could not run (so the page can say so instead of waiting).

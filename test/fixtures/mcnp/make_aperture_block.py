@@ -5,7 +5,7 @@ once imported, a box source with a tabulated spectrum and mesh tallies. The geom
 
 In WSL, with the MCNPy gateway claimed (port 25333):
     node test/generate_fixtures.js
-    OPENMC_MCNP_PROJECT=/path/to/openmc-mcnp-project python test/fixtures/mcnp/make_aperture_block.py
+    python test/fixtures/mcnp/make_aperture_block.py   (OPENMC_MCNP_PROJECT overrides the bundled mcnp-exporter/)
 """
 import contextlib
 import io
@@ -16,7 +16,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
-sys.path.insert(0, str(Path(os.environ["OPENMC_MCNP_PROJECT"]) / "src"))
+sys.path.insert(0, str(Path(os.environ.get("OPENMC_MCNP_PROJECT") or str(Path(__file__).resolve().parents[3] / "mcnp-exporter")) / "src"))
 import openmc  # noqa: E402
 from export_mcnp import translate  # noqa: E402
 from remediate_deck import remediate  # noqa: E402

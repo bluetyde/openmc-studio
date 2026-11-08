@@ -2,7 +2,7 @@
 //   quick    Node suites (page logic, generators, importers): no dependencies beyond Node, about a minute.
 //   browser  + headless-browser suites (playwright on NODE_PATH, Edge or BROWSER_CHANNEL).
 //   physics  + the Python suites that run OpenMC and the MCNP export (fixtures regenerated first), and the
-//            companion exporter's own tests. Needs OPENMC_PYTHON, OPENMC_CROSS_SECTIONS, OPENMC_MCNP_PROJECT;
+//            bundled exporter's own tests (mcnp-exporter/tests). Needs OPENMC_PYTHON, OPENMC_CROSS_SECTIONS;
 //            starts the machine-wide MCNPy bridge (port 25333), so claim it where agents share a machine.
 //   full     + the CAD integration job (setup/cad/run_integration.cjs; needs OPENMC_CAD_PYTHON too).
 //   nodal    (separate, not part of the chain above) the nodal-package checks, test/nodal/: OpenMC plus openndm, which the physics environment does not have.
@@ -33,6 +33,8 @@ const want = SEPARATE.includes(profile) ? [profile] : PROFILES.slice(0, PROFILES
 
 const q = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
 const hostPath = p => WIN ? execFileSync('wsl.exe', ['wslpath', '-a', p.split(path.sep).join('/')]).toString().trim() : p;
+// The MCNP exporter ships in mcnp-exporter/; OPENMC_MCNP_PROJECT overrides it (path as the Python host sees it).
+if (!env.OPENMC_MCNP_PROJECT) env.OPENMC_MCNP_PROJECT = hostPath(path.join(REPO, 'mcnp-exporter'));
 const listDir = (dir, re) => fs.readdirSync(path.join(REPO, dir)).filter(f => re.test(f)).sort().map(f => `${dir}/${f}`);
 
 // What each profile needs before it can run, and its suites.
@@ -43,7 +45,7 @@ function missingFor(p) {
     else try { require.resolve('playwright', {paths:env.NODE_PATH.split(path.delimiter)}); } catch (e) { miss.push('playwright on NODE_PATH'); }
   }
   if (p === 'nodal') ['OPENNDM_PYTHON', 'OPENMC_PYTHON', 'OPENMC_CROSS_SECTIONS'].forEach(k => { if (!env[k]) miss.push(k); });
-  if (p === 'physics' || p === 'full') ['OPENMC_PYTHON', 'OPENMC_CROSS_SECTIONS', 'OPENMC_MCNP_PROJECT'].forEach(k => { if (!env[k]) miss.push(k); });
+  if (p === 'physics' || p === 'full') ['OPENMC_PYTHON', 'OPENMC_CROSS_SECTIONS'].forEach(k => { if (!env[k]) miss.push(k); });
   if (p === 'full' && !env.OPENMC_CAD_PYTHON) miss.push('OPENMC_CAD_PYTHON');
   return miss;
 }

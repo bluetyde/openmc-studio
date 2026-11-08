@@ -118,7 +118,7 @@ write('detectors', {materials: [water, he3, bf3],
     cellTally('t_bf3_macro', ['slab'], {detector: 'custom', responseMat: 'm_bf3', responseNuc: 'all', responseScore: '(n,a)', responseScale: 'macro'})],
   settings: settings({worldR: 40})});
 
-// 5. Current leaving a sphere through its surface (MCNP: F1 + C + FS per surface, see openmc-mcnp-project)
+// 5. Current leaving a sphere through its surface (MCNP: F1 + C + FS per surface, see mcnp-exporter/)
 write('surface_current', {materials: [water],
   parts: [part('ball', 'sphere', 0, 0, 0, {r: 8}, 'm_water'), part('shell', 'box', 0, 0, 0, {sx: 30, sy: 30, sz: 30}, 'm_water')],
   sources: [pointSource()], groups: [],

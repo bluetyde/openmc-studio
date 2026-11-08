@@ -9,8 +9,8 @@ a message rather than writing something wrong; *untested* = written, but no test
 MCNP decks are checked by the exporter's validator (MontePy parse, cards read back against the OpenMC model,
 sampled geometry comparison). This project makes no statement about whether any exported deck has been run in MCNP. MCNP is export-controlled and its output is not shared here. Decks are checked by the exporter's validator (MontePy parse, cards read back against the OpenMC model, sampled geometry comparison) and compared with OpenMC. Check a deck yourself before relying on it. Plans for what's missing are in [TODO.md](../TODO.md).
 
-Test names: `test/…` is this repository; `exporter tests/…` is
-[openmc-mcnp-project](https://github.com/bluetyde/openmc-mcnp-project). `node test/run_all.cjs full` runs them all.
+Test names: `test/…` is Studio's own tests; `exporter tests/…` is `mcnp-exporter/tests/…`
+(the exporter, bundled with Studio since 2026-11-08). `node test/run_all.cjs full` runs them all.
 
 ## Geometry
 

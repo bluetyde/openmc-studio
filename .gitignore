@@ -91,3 +91,4 @@ FreeCAD/
 !test/fixtures/cad/**/*.iges
 !test/fixtures/cad/**/*.igs
 !test/fixtures/cad/expected/**/*.xml
+mcnp-exporter/sweep_decks/

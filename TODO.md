@@ -91,8 +91,8 @@ the package, and nothing else.
 - **Artifact comments**: the 7 threads on the published copy are addressed but still open; resolve them
   in the artifact view.
 - **Name**: "OpenMabc" was floated; not decided.
-- **Mac copy**: pull both repos (openmc-studio and openmc-mcnp-project) on the Mac; the exporter changes for
-  detector tallies and lattices are on GitHub `main` now.
+- **Mac copy**: re-clone openmc-studio on the Mac (history rewritten 2026-11-08); the exporter is bundled in
+  `mcnp-exporter/` now, so the separate openmc-mcnp-project checkout is no longer needed.
 - **CAD import**: done (all five stages of [the implementation plan](docs/design/cad-import-plan.md); see
   section 5 and `docs/cad-conversion.md`). Still later: IGES and more native shapes.
 

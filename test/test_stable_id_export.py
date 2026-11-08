@@ -1,4 +1,4 @@
-"""Generate fixtures first; set OPENMC_MCNP_PROJECT. Requires exclusive MCNPy use."""
+"""Generate fixtures first. Uses the bundled mcnp-exporter/. Requires exclusive MCNPy use."""
 import contextlib
 import io
 import json
@@ -10,7 +10,7 @@ import sys
 import tempfile
 from urllib.parse import unquote
 
-sys.path.insert(0, str(Path(os.environ['OPENMC_MCNP_PROJECT']) / 'src'))
+sys.path.insert(0, str(Path(os.environ.get("OPENMC_MCNP_PROJECT") or str(Path(__file__).resolve().parents[1] / "mcnp-exporter")) / 'src'))
 import openmc
 from export_mcnp import translate
 from remediate_deck import remediate

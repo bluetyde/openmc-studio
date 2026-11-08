@@ -12,7 +12,7 @@
 //
 //   OPENMC_CAD_PYTHON    the pinned CAD interpreter (required)
 //   OPENMC_MCNP_PYTHON   a Python with openmc, MontePy and MCNPy (required)
-//   OPENMC_MCNP_PROJECT  the companion exporter checkout, as that Python sees it (required)
+//   OPENMC_MCNP_PROJECT  optional: another exporter checkout, as that Python sees it (default: mcnp-exporter/)
 //   E2E_PORT             port for the Studio server of step 6 (default 8766)
 // On Windows these run inside WSL. The MCNPy bridge (port 25333) is machine-wide: claim it
 // first where agents share a machine. Fails, never skips, without the tools.
@@ -21,7 +21,7 @@ const {chromium} = require('playwright');
 const {spawn, execFileSync} = require('child_process');
 const fs = require('fs'), os = require('os'), path = require('path'), assert = require('assert'), crypto = require('crypto');
 
-const CAD = process.env.OPENMC_CAD_PYTHON, MPY = process.env.OPENMC_MCNP_PYTHON, EXP = process.env.OPENMC_MCNP_PROJECT;
+const CAD = process.env.OPENMC_CAD_PYTHON, MPY = process.env.OPENMC_MCNP_PYTHON;
 const PORT = Number(process.env.E2E_PORT || 8766);
 const WIN = process.platform === 'win32';
 const REPO = path.resolve(__dirname, '..');
@@ -29,11 +29,12 @@ const q = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
 const sh = (script, opts = {}) => (WIN ? execFileSync('wsl.exe', ['-e', 'bash', '-lc', script], {maxBuffer:1 << 27, ...opts})
                                        : execFileSync('bash', ['-lc', script], {maxBuffer:1 << 27, ...opts})).toString();
 const hostPath = p => WIN ? execFileSync('wsl.exe', ['wslpath', '-a', p.split(path.sep).join('/')]).toString().trim() : p;
+const EXP = process.env.OPENMC_MCNP_PROJECT || hostPath(path.join(REPO, 'mcnp-exporter'));
 // The exporter's Python must find `openmc` and Java next to it; put its bin first on PATH.
 const envPy = `export PATH="$(dirname ${q(MPY)}):$PATH";`;
 
 (async () => {
-  for (const [k, v] of Object.entries({OPENMC_CAD_PYTHON:CAD, OPENMC_MCNP_PYTHON:MPY, OPENMC_MCNP_PROJECT:EXP}))
+  for (const [k, v] of Object.entries({OPENMC_CAD_PYTHON:CAD, OPENMC_MCNP_PYTHON:MPY}))
     if (!v) throw new Error(`${k} must be set; this gate never skips`);
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-mcnp-parity-'));
   const tmpHost = hostPath(tmp), repoHost = hostPath(REPO);

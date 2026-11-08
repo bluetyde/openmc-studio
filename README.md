@@ -178,7 +178,7 @@ hexagonal rings. With **RectLattice** / **HexLattice** ticked (later: the array 
   - The element [0,0,0] is a box around the origin.
   - `FILL=u` when every site holds the same part; a FILL list when some sites are empty.
   - The cell that holds the lattice gets `FILL=L (x y z)` to place element [0,0,0].
-  - openmc-mcnp-project rewrites the cards MCNPy produces (MCNPy's own were wrong), and its geometry check follows the lattice down to each element.
+  - The exporter rewrites the cards MCNPy produces (MCNPy's own were wrong), and its geometry check follows the lattice down to each element.
   - A hexagonal array becomes MCNP `LAT=2`: a hexagonal prism element with its 8 faces in the manual's
     order, and a FILL list over the rings (sites outside the rings are the surrounding material).
 - **Cell tallies on parts inside a lattice work in model.py.** Such a part has no cell of its own, so its
@@ -303,16 +303,14 @@ The tabs above the viewport are **Viewport**, **model.py** and **model.mcnp**.
 model.py or model.mcnp on the right.
 
 - **model.py** is the OpenMC script Studio writes, updated as you edit.
-- **model.mcnp** is the MCNP input from openmc-mcnp-project (MCNPy translation,
+- **model.mcnp** is the MCNP input from Studio's exporter in `mcnp-exporter/` (MCNPy translation,
   remediation, validation and the geometry check), refreshed about a second after
   you stop editing. Edits to geometry or materials take about 10 s, because MCNPy
   has to translate again; other edits reuse the last translation and take about
   1 s. The status line says **✓ Validated**, what to fix, or why a model can't be
-  exported. It needs openmc-mcnp-project on the computer. Studio uses
-  `OPENMC_MCNP_PROJECT` if set, then the folder it found last time, then looks in
-  `~/openmc-mcnp-project` and `~/Developer`, `~/Projects`, `~/Documents`, `~/code`,
-  `~/git` or `~/repos`. A folder set once with `OPENMC_MCNP_PROJECT` is remembered
-  (in the runs folder), so each computer only needs it once.
+  exported. The exporter ships with Studio; it needs MCNPy and MontePy in Studio's
+  Python (INSTRUCTIONS.md). `OPENMC_MCNP_PROJECT` can point at a different copy of
+  `mcnp-exporter/`.
 - **Numbers with a dotted underline can be edited in place.** Click one, type,
   press Enter (Esc cancels). The change goes to the part, material, source, tally
   or setting it came from, and the viewport and both tabs update. Moving a plane
@@ -415,7 +413,7 @@ the drive is mounted.
 - **What's supported**: [docs/SUPPORT.md](docs/SUPPORT.md) lists, per feature, what the editor, model.py and the
   MCNP export do, what is refused, and the test behind each entry. Design plans are in `docs/design/`.
 - **Tests**: `node test/run_all.cjs quick` (Node only, about a minute), `browser`, `physics` (OpenMC runs and
-  the MCNP export; set `OPENMC_PYTHON`, `OPENMC_CROSS_SECTIONS`, `OPENMC_MCNP_PROJECT`) or `full` (adds the CAD
+  the MCNP export; set `OPENMC_PYTHON`, `OPENMC_CROSS_SECTIONS`) or `full` (adds the CAD
   job). A separate `nodal` profile runs the nodal-package checks (`test/nodal/`, needs `OPENNDM_PYTHON`, a Python with openmc and openndm). Anything that can't run is reported as NOT RUN, never skipped quietly; the summary is saved in
   `test/results/last-run.md`.
 - **Run records**: every run folder and every MCNP export folder has a `provenance.json`: Studio and exporter
@@ -459,18 +457,17 @@ Either way it is a one-time step per computer, and it survives moving or renamin
 still matches — run it again if the path changes. A copy on an internal disk loads faster than one on an
 external drive; a copy beside the repository travels with it.
 
-## Companion repository
+## MCNP exporter
 
-[openmc-mcnp-project](https://github.com/bluetyde/openmc-mcnp-project) is a separate
-dependency for MCNP export and live MCNP validation. Studio's geometry editor,
-visualization, and OpenMC workflow do not require that repository. OpenMC runs
-still require an installed OpenMC environment and suitable nuclear data.
+The MCNP export and live MCNP validation use the exporter in
+[mcnp-exporter/](mcnp-exporter/README.md), which ships with Studio (it was the
+separate openmc-mcnp-project repository until 2026-11-08). Studio's geometry editor,
+visualization, and OpenMC workflow do not need it. OpenMC runs still require an
+installed OpenMC environment and suitable nuclear data.
 
-For MCNP features, install the companion and its dependencies as described in
-[INSTRUCTIONS.md](INSTRUCTIONS.md). Set `OPENMC_MCNP_PROJECT` to its checkout when
-it is outside the automatically searched locations. Studio's MCNP worker uses
-the companion's remediation and validation modules together with NuCoMP MCNPy;
-the companion is not bundled with Studio. MCNPy and MetaPy are distributed from RPI's GitHub
+For MCNP features, install the exporter's dependencies as described in
+[INSTRUCTIONS.md](INSTRUCTIONS.md). Studio's MCNP worker uses the exporter's
+remediation and validation modules together with NuCoMP MCNPy. MCNPy and MetaPy are distributed from RPI's GitHub
 (`github.rpi.edu/NuCoMP`), which may need an RPI account; without them everything except the MCNP
 export and the live `model.mcnp` tab still works.
 

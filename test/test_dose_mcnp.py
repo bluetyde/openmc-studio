@@ -10,7 +10,7 @@ rotationally symmetric). The test:
   3. exports the deck and checks SD, the rate factor (FM, FACTOR), F4:P for the photon dose, DE/DF equal to
      model.py's own padded tables, and that the deck validates.
 
-Needs OpenMC with nuclear data, OPENMC_MCNP_PROJECT (the companion exporter) and the MCNPy gateway (port 25333;
+Needs OpenMC with nuclear data, the MCNP exporter (mcnp-exporter/, or OPENMC_MCNP_PROJECT) and the MCNPy gateway (port 25333;
 claim it where agents share a machine). Run `node test/generate_fixtures.js` first.
 Run: python test/test_dose_mcnp.py
 """
@@ -31,7 +31,7 @@ import openmc
 
 ROOT = Path(__file__).resolve().parents[1]
 GEN = ROOT / "test" / "generated"
-EXP = os.environ.get("OPENMC_MCNP_PROJECT")
+EXP = os.environ.get("OPENMC_MCNP_PROJECT") or str(Path(__file__).resolve().parents[1] / "mcnp-exporter")
 sys.path.insert(0, str(ROOT / "studio"))
 if EXP:
     sys.path.insert(0, str(Path(EXP) / "src"))

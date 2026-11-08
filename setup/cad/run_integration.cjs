@@ -5,10 +5,9 @@
 // Required (paths as the server host sees them; on Windows the host is WSL):
 //   OPENMC_CAD_PYTHON      pinned CAD interpreter (setup/cad/locks)
 //   OPENMC_PYTHON          Python with openmc (Studio's server environment)
-//   OPENMC_MCNP_PROJECT    companion exporter checkout
 //   OPENMC_CROSS_SECTIONS  cross_sections.xml, for the transport run in the CSG end-to-end
 //   NODE_PATH              must resolve playwright
-// Optional: OPENMC_MCNP_PYTHON (default OPENMC_PYTHON), E2E_PORT (default 8766),
+// Optional: OPENMC_MCNP_PROJECT (default: the bundled mcnp-exporter/), OPENMC_MCNP_PYTHON (default OPENMC_PYTHON), E2E_PORT (default 8766),
 //           BROWSER_CHANNEL (default msedge; use chromium on Linux CI).
 //
 // Run from the repository root:  node setup/cad/run_integration.cjs
@@ -20,7 +19,7 @@ const path = require('path');
 const REPO = path.resolve(__dirname, '..', '..');
 const WIN = process.platform === 'win32';
 const env = process.env;
-const need = ['OPENMC_CAD_PYTHON', 'OPENMC_PYTHON', 'OPENMC_MCNP_PROJECT', 'OPENMC_CROSS_SECTIONS', 'NODE_PATH'];
+const need = ['OPENMC_CAD_PYTHON', 'OPENMC_PYTHON', 'OPENMC_CROSS_SECTIONS', 'NODE_PATH'];
 const missing = need.filter(k => !env[k]);
 if (missing.length) {
   console.error(`CAD integration job: FAILED before starting - set ${missing.join(', ')}. Nothing is skipped here.`);
@@ -33,6 +32,7 @@ try { require.resolve('playwright', {paths:env.NODE_PATH.split(path.delimiter)})
 const q = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
 const repoHost = WIN ? execFileSync('wsl.exe', ['wslpath', '-a', REPO.split(path.sep).join('/')]).toString().trim() : REPO;
 const MPY = env.OPENMC_MCNP_PYTHON || env.OPENMC_PYTHON;
+if (!env.OPENMC_MCNP_PROJECT) env.OPENMC_MCNP_PROJECT = repoHost + '/mcnp-exporter';
 
 // A Python suite runs on the server host, with the interpreter's own bin first on PATH.
 const py = (interp, script, extra = '') => ({kind:'python', label:script,

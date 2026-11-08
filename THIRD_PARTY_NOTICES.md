@@ -89,12 +89,11 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-## Separate companion and optional CAD tools
+## MCNP exporter and optional CAD tools
 
-https://github.com/bluetyde/openmc-mcnp-project supplies remediation and validation
-for Studio's MCNP workflow. It is a separate repository, not covered by Studio's
-LICENSE. No root license file was found in the reviewed companion checkout at
-960c2f7; its licensing must be addressed separately before treating it as MIT.
+The MCNP exporter in `mcnp-exporter/` (remediation and validation for Studio's MCNP
+workflow) is original code by the same author, bundled from openmc-mcnp-project on
+2026-11-08. It is covered by Studio's LICENSE and AUTHORS.
 
 FreeCAD is an external optional STEP-export dependency. GEOUNED integration is
 planned, not currently implemented. Their respective licenses and the licenses

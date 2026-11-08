@@ -1,0 +1,165 @@
+"""
+Export any OpenMC model to a runnable, validated MCNP deck.
+
+    python src/export_mcnp.py path/to/model.xml
+    python src/export_mcnp.py path/to/folder            (model.xml, or geometry/materials/settings[/tallies].xml)
+    python src/export_mcnp.py model.xml --out-dir decks --name shielding --sab c_H_in_H2O=h-h2o.40t
+
+Stages (same as the pin-cell pipeline, generalized):
+  1. MCNPy translates geometry and materials  -> <name>.mcnp           (translator output, kept as-is)
+  2. remediate_deck adds what MCNPy leaves out -> <name>_runnable.mcnp
+  3. validate_deck checks the runnable deck, including the sampled geometry comparison
+
+Exit code 0 only if the deck validated. --report writes a JSON summary (used by OpenMC Studio).
+"""
+import argparse
+import contextlib
+import io
+import json
+import os
+import sys
+import traceback
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import lattice_cards  # noqa: E402
+import cell_regions  # noqa: E402
+import torus_cards  # noqa: E402
+import world_complement  # noqa: E402
+from mcnp_cards import UnsupportedFeature  # noqa: E402
+from remediate_deck import load_model, remediate  # noqa: E402
+from validate_deck import validate_deck  # noqa: E402
+
+
+def translate(model, out_path, stdout=None):
+    """MCNPy translation of the geometry and materials to out_path. MCNPy's printing goes to `stdout`
+    (discarded by default; OpenMC Studio passes a stream that turns its stage lines into progress).
+    Returns notes about changes made so MCNPy can translate the model."""
+    try:
+        from mcnpy.translate_mcnp_openmc import openmc_to_mcnp
+    except ImportError as e:
+        raise RuntimeError("MCNPy is not importable in this environment. See CLAUDE.md 'MCNPy install notes'. "
+                           f"Original error: {e}")
+    notes = lattice_cards.prepare(model)
+    import mcnpy_speed  # after the MCNPy import above: it needs py4j
+    speed = {}
+    wc = world_complement.plan(model.geometry)  # the rest-of-the-world cell, written as #cell complements below
+    tp = torus_cards.plan(model.geometry)       # tori: MCNPy has none, so it gets a stand-in sphere and the card is rewritten to TX/TY/TZ below
+    cr = cell_regions.plan(model.geometry, skip={wc["cell"].id} if wc else (),
+                           extra_seen=[h.surface.id for h in cell_regions._literals(wc["kept"])] if wc else ())
+
+    def run(cr):
+        with contextlib.redirect_stdout(stdout if stdout is not None else io.StringIO()), \
+                lattice_cards.mcnpy_view(model), world_complement.mcnpy_view(wc), torus_cards.mcnpy_view(tp, model.geometry), \
+                cell_regions.mcnpy_view(cr), mcnpy_speed.mcnpy_speedups() as status:
+            speed.update(status)
+            deck = openmc_to_mcnp(model.geometry, model.materials, model.settings)
+            deck.write(out_path)
+        if tp:
+            torus_cards.patch_file(out_path, tp)
+        if wc:
+            world_complement.patch_file(out_path, wc)
+        if cr:
+            cell_regions.patch_file(out_path, cr)
+
+    try:
+        run(cr)
+    except cell_regions.DirectCardsMismatch as e:
+        notes.append(f"The regions of plain cells were not written directly ({e}); MCNPy translated them.")
+        cr = None
+        run(None)
+    if tp:
+        notes.append(f"{len(tp)} torus surface{'s' if len(tp) != 1 else ''} written as MCNP " + "/".join(sorted({t['card'] for t in tp})) +
+                     " cards (surface number{} {}).".format('s' if len(tp) != 1 else '', ", ".join(str(t['id']) for t in tp)))
+    off = {k: v for k, v in speed.items() if v != "on"}
+    if off:
+        notes.append("MCNPy speedups left off: " + "; ".join(f"{k} {v}" for k, v in off.items()) + ".")
+    if wc:
+        notes.append(f"Cell {wc['cell'].id} (outside the other cells) is written with {len(wc['ids'])} #cell "
+                     f"complements instead of {wc['terms']} expanded terms; the geometry is the same.")
+    if cr:
+        notes.append(f"The regions of {len(cr['texts'])} plain cells are written directly (MCNPy translated one term "
+                     f"each); the geometry is the same.")
+    return notes
+
+
+def export(model_path, out_dir=None, name=None, sab=None, samples=20000, macrobodies=True, dose=None):
+    report = {"ok": False, "model": os.path.abspath(model_path), "stage": "load"}
+    model = load_model(model_path)
+    base = os.path.dirname(os.path.abspath(model_path)) if not os.path.isdir(model_path) else os.path.abspath(model_path)
+    out_dir = os.path.abspath(out_dir or base)
+    os.makedirs(out_dir, exist_ok=True)
+    name = name or "model"
+    translated = os.path.join(out_dir, f"{name}.mcnp")
+    runnable = os.path.join(out_dir, f"{name}_runnable.mcnp")
+    report.update(translated=translated, runnable=runnable)
+
+    report["stage"] = "translate"
+    prep_notes = translate(model, translated)
+
+    report["stage"] = "remediate"
+    report.update(remediate(translated, model, runnable, sab_map=sab, simplify_macrobodies=macrobodies, dose=dose))
+    report["notes"] = prep_notes + report.get("notes", [])
+
+    report["stage"] = "validate"
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        ok = validate_deck(runnable, model=model, geometry_samples=samples)
+    report["validation"] = buf.getvalue()
+    report["ok"] = bool(ok)
+    report["stage"] = "done"
+    return report
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("model", help="model.xml, or a folder with the model's XML files")
+    ap.add_argument("--out-dir", help="where to write the decks (default: next to the model)")
+    ap.add_argument("--name", default="model", help="deck file name stem (default: model)")
+    ap.add_argument("--sab", action="append", default=[], metavar="OPENMC_NAME=MCNP_ID",
+                    help="override an S(a,b) mapping, e.g. c_H_in_H2O=h-h2o.40t (repeatable)")
+    ap.add_argument("--samples", type=int, default=20000, help="geometry check sample points (0 to skip)")
+    ap.add_argument("--no-macrobodies", dest="macrobodies", action="store_false", default=True,
+                    help="disable standalone macrobody simplification (RPP, RCC)")
+    ap.add_argument("--report", help="write a JSON report here")
+    ap.add_argument("--dose", help="OpenMC Studio's dose.json (written next to a run's model.py): dose tallies, "
+                                   "cell volumes and the source rate, for DE/DF/SD/FM cards")
+    args = ap.parse_args(argv)
+
+    sab = {}
+    for item in args.sab:
+        if "=" not in item:
+            ap.error(f"--sab expects NAME=ID, got {item!r}")
+        k, v = item.split("=", 1)
+        sab[k.strip()] = v.strip()
+
+    try:
+        dose = None
+        if args.dose:
+            with open(args.dose, encoding="utf-8") as f:
+                dose = json.load(f)
+        report = export(args.model, args.out_dir, args.name, sab, args.samples, macrobodies=args.macrobodies, dose=dose)
+    except UnsupportedFeature as e:
+        report = {"ok": False, "stage": "remediate", "error": f"Not exportable: {e}"}
+    except Exception as e:
+        report = {"ok": False, "stage": "error", "error": f"{type(e).__name__}: {e}",
+                  "traceback": traceback.format_exc()}
+
+    if args.report:
+        with open(args.report, "w") as f:
+            json.dump(report, f, indent=2)
+    if report.get("error"):
+        print(report["error"])
+        return 1
+    print(f"Wrote {report['translated']}  (MCNPy translation)")
+    print(f"Wrote {report['runnable']}  (runnable)")
+    for a in report["added"]:
+        print(f"  + {a}")
+    for n in report["notes"]:
+        print(f"  note: {n}")
+    print(report["validation"].rstrip())
+    return 0 if report["ok"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

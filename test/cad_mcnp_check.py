@@ -11,7 +11,7 @@ This compares the deck with the CAD model directly, at points concentrated in
 each solid, so a small or tilted component can't escape it the way it could
 escape uniform sampling of a large world.
 
-Usage: OPENMC_MCNP_PROJECT=<exporter> python cad_mcnp_check.py CASES.json -> JSON verdict
+Usage: python cad_mcnp_check.py CASES.json -> JSON verdict   (OPENMC_MCNP_PROJECT overrides mcnp-exporter/)
 """
 import json
 import os
@@ -20,7 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(os.environ["OPENMC_MCNP_PROJECT"]) / "src"))
+sys.path.insert(0, str(Path(os.environ.get("OPENMC_MCNP_PROJECT") or str(Path(__file__).resolve().parents[1] / "mcnp-exporter")) / "src"))
 import geometry_check as gc  # noqa: E402
 from validate_deck import _read_deck  # noqa: E402
 

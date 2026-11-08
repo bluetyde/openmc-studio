@@ -349,7 +349,7 @@ input[type=checkbox]{accent-color:var(--accent)}
 
       <div class="doc" id="docMcnp" hidden>
         <div class="toolbar">
-          <span class="mstatus" id="mcnpStatus">MCNP input from openmc-mcnp-project, validated as you edit.</span>
+          <span class="mstatus" id="mcnpStatus">MCNP input from Studio's exporter, validated as you edit.</span>
           <span class="tlabel unitsnote" hidden>cm, g/cm³</span>
           <span class="spacer"></span>
           <button class="tbtn" type="button" id="refreshMcnpBtn" title="Re-run MCNP translation">Refresh</button>
@@ -2947,7 +2947,7 @@ function mcnpSource(s) {
   } else parts.push(`ERG=${dist(`H ${mcnpNum(s.emin)} ${mcnpNum(s.emax)}`, '0 1')}`);
   return [parts.join(' '), ...cards.map(c => c.replace(/^(SI\d+) $/, '$1'))].filter(c => !/^SI\d+$/.test(c)).join('\n');
 }
-// Mirrors src/mcnp_cards.py in openmc-mcnp-project: one MCNP tally per score, numbered 4, 14, 24… across all
+// Mirrors mcnp-exporter/src/mcnp_cards.py: one MCNP tally per score, numbered 4, 14, 24… across all
 // tallies, cell/material numbers = the OpenMC IDs model.py creates (used materials in order; parts, then World).
 function mcnpIds() {
   const used = usedMaterialIds();

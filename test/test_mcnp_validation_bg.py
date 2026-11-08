@@ -10,7 +10,7 @@ and (needs the MCNPy gateway, port 25333: claim it first where agents share a ma
 worker: a live job returns the deck with the check pending, and the verdict of the background check equals the one a
 synchronous job (the Export button) gives for the same model.
 
-Needs OPENMC_MCNP_PROJECT (the exporter) and OpenMC. Run: python test/test_mcnp_validation_bg.py
+Needs OpenMC; uses the bundled mcnp-exporter/. Run: python test/test_mcnp_validation_bg.py
 """
 import os
 import shutil
@@ -23,7 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "studio"))
 from openmc_studio.server import McnpWorker, Validator  # noqa: E402
 
-EXPORTER = Path(os.environ["OPENMC_MCNP_PROJECT"])
+EXPORTER = Path(os.environ.get("OPENMC_MCNP_PROJECT") or str(Path(__file__).resolve().parents[1] / "mcnp-exporter"))
 SLEEP = lambda work, name, samples: [sys.executable, "-c", "import time; time.sleep(600)"]  # a check that never ends
 
 

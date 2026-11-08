@@ -146,23 +146,18 @@ In Studio itself, **Physics > Check geometry** checks the model before a run: it
 overlaps and gaps and tracks 1,000 particles with OpenMC's geometry debugging. It takes a few seconds and
 reports anything it finds in Problems.
 
-The MCNP export has its own tests in the companion repository, `openmc-mcnp-project`. Point Studio at it
-with `OPENMC_MCNP_PROJECT=/path/to/openmc-mcnp-project` once: Studio remembers the path (in
-`~/OpenMC-runs/mcnp_project_path.txt`) after its first successful export. Without it, Studio looks in
-`~/openmc-mcnp-project` and a few common folders under your home directory (`~/Developer`, `~/Projects`,
-`~/Documents`, `~/code`, `~/git`, `~/repos`). Those tests need MCNPy, which needs Java, and MCNPy's bridge
+The MCNP exporter ships with Studio in `mcnp-exporter/`, with its own tests in `mcnp-exporter/tests/`.
+`OPENMC_MCNP_PROJECT` can point Studio at a different copy of that folder; without it Studio uses the bundled
+one. Those tests need MCNPy, which needs Java, and MCNPy's bridge
 uses a fixed port (25333), so only one MCNP export can run on a machine at a time.
 
-Some Studio tests import code from that companion repository, and expect it at its current version:
+Some Studio tests import the exporter's code directly:
 
 ```bash
-export OPENMC_MCNP_PROJECT=/path/to/openmc-mcnp-project
-PYTHONPATH="$OPENMC_MCNP_PROJECT/src" python test/test_mcnp_group_columns.py
-python test/test_thermal_scattering.py                     # finds the repository through OPENMC_MCNP_PROJECT
+python test/test_mcnp_group_columns.py
+python test/test_thermal_scattering.py
+(cd mcnp-exporter && python tests/test_deck_format.py)     # one of the exporter's own tests
 ```
-
-Run `git pull` in `openmc-mcnp-project` first. An old checkout fails these two tests, with
-`No module named 'deck_format'` and `Missing c_H_in_H2O_solid in SAB_MCNP_MAP`, and nothing else looks wrong.
 
 ## 6. Optional: CAD import (STEP files)
 
@@ -193,7 +188,7 @@ To check everything CAD-related end to end (engines, browser, OpenMC transport a
 integration job. It passes only if every suite runs; a missing tool is a failure, never a skip:
 
 ```bash
-export OPENMC_CAD_PYTHON=... OPENMC_PYTHON=... OPENMC_MCNP_PROJECT=... OPENMC_CROSS_SECTIONS=... NODE_PATH=...
+export OPENMC_CAD_PYTHON=... OPENMC_PYTHON=... OPENMC_CROSS_SECTIONS=... NODE_PATH=...
 node setup/cad/run_integration.cjs
 ```
 

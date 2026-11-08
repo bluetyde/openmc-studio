@@ -1,6 +1,6 @@
 """A Studio torus in the MCNP deck: written as a TX/TY/TZ card and compared with OpenMC point by point.
 
-The exporter (OPENMC_MCNP_PROJECT, src/torus_cards.py) hands MCNPy a stand-in sphere and rewrites its card, because MCNPy itself cannot translate an OpenMC torus.
+The exporter (mcnp-exporter/src/torus_cards.py) hands MCNPy a stand-in sphere and rewrites its card, because MCNPy itself cannot translate an OpenMC torus.
 Generate the fixtures first (`node test/generate_fixtures.js`); needs the MCNPy gateway (port 25333: claim it first where agents share a machine).
 
     python test/test_torus_mcnp.py
@@ -15,7 +15,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(os.environ["OPENMC_MCNP_PROJECT"]) / "src"))
+sys.path.insert(0, str(Path(os.environ.get("OPENMC_MCNP_PROJECT") or str(Path(__file__).resolve().parents[1] / "mcnp-exporter")) / "src"))
 import openmc  # noqa: E402
 from export_mcnp import translate  # noqa: E402
 from remediate_deck import remediate  # noqa: E402

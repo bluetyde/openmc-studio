@@ -476,7 +476,10 @@ export and the live `model.mcnp` tab still works.
 
 ## License
 
-OpenMC Studio's original code is available under the [MIT License](LICENSE).
+OpenMC Studio's original code is available under the GNU Affero General Public License,
+version 3 or (at your option) any later version ([LICENSE](LICENSE), SPDX `AGPL-3.0-or-later`).
+Under section 7(b) of the GNU Affero General Public License version 3, redistributions must preserve the attribution notice in AUTHORS.
+Versions published before 2026-11-07 were released under the MIT licence and stay under it.
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) preserves notices for OpenMC and
 NuCoMP MCNPy/MetaPy and explains the scope. Dependencies, third-party assets,
 nuclear data, and the separate companion repository retain their own terms;

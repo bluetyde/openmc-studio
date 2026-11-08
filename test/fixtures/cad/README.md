@@ -24,5 +24,5 @@ hollow sphere, a TRISO coating shell, a torus (refused), `mixed.step` (refused a
 commit for its overlap) and a clean four-solid assembly, with FreeCAD ground truth
 for thousands of points per case plus the stage-0 hole probes.
 
-These generated fixtures use this repository's MIT license. Do not add private
+These generated fixtures use this repository's license (AGPL-3.0-or-later). Do not add private
 or company CAD here.
